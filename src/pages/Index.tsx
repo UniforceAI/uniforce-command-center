@@ -141,7 +141,7 @@ const Index = () => {
     }
 
     if (setor !== "todos") {
-      filtered = filtered.filter((c) => c.Setor === setor);
+      filtered = filtered.filter((c) => c.Setor?.toLowerCase().trim() === setor.toLowerCase().trim());
     }
 
     setFilteredChamados(filtered);
@@ -256,7 +256,7 @@ const Index = () => {
   }
 
   if (setor !== "todos") {
-    clientesParaMostrar = clientesParaMostrar.filter(({ principal }) => principal.Setor === setor);
+    clientesParaMostrar = clientesParaMostrar.filter(({ principal }) => principal.Setor?.toLowerCase().trim() === setor.toLowerCase().trim());
   }
 
   // Converter para array com chamados anteriores e ordenar
