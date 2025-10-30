@@ -19,13 +19,13 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    const { data: requestData } = await req.json();
+    const requestData = await req.json();
     console.log(`📊 Total de chamados recebidos: ${requestData?.length || 0}`);
 
     if (!requestData || !Array.isArray(requestData)) {
       console.error('❌ Formato de dados inválido');
       return new Response(
-        JSON.stringify({ error: 'Formato de dados inválido. Esperado: { data: [...] }' }),
+        JSON.stringify({ error: 'Formato de dados inválido. Esperado: array de chamados' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
