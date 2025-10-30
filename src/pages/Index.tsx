@@ -189,6 +189,11 @@ const Index = () => {
     setSheetOpen(true);
   };
 
+  console.log('📦 Total de chamados carregados:', chamados.length);
+  const exemplo300792 = chamados.filter(c => c["ID Cliente"] === 300792);
+  console.log('🔍 Cliente 300792 no banco:', exemplo300792.length, 'registros');
+  console.log('🔍 Protocolos 300792:', exemplo300792.map(c => c.Protocolo));
+  
   // Agrupar TODOS os chamados por ID Cliente (sem filtro primeiro)
   const todosChamadosPorCliente = chamados.reduce((acc, chamado) => {
     const idCliente = chamado["ID Cliente"];
@@ -218,6 +223,20 @@ const Index = () => {
     
     return acc;
   }, {} as Record<number, { principal: Chamado; todos: Chamado[] }>);
+
+  // Corrigir a quantidade real de chamados baseado nos registros reais
+  Object.values(todosChamadosPorCliente).forEach(({ principal, todos }) => {
+    const qtdOriginal = principal["Qtd. Chamados"];
+    principal["Qtd. Chamados"] = todos.length;
+    
+    if (principal["ID Cliente"] === 300792) {
+      console.log('✅ Cliente 300792 ajustado:', {
+        qtdOriginal,
+        qtdReal: todos.length,
+        protocolos: todos.map(t => t.Protocolo)
+      });
+    }
+  });
 
   // Agora aplicar filtros para decidir quais CLIENTES mostrar
   let clientesParaMostrar = Object.values(todosChamadosPorCliente);
@@ -254,6 +273,8 @@ const Index = () => {
     clientesParaMostrar = clientesParaMostrar.filter(({ principal }) => principal.Setor === setor);
   }
 
+  console.log('📊 Clientes após filtros:', clientesParaMostrar.length);
+  
   // Converter para array com chamados anteriores e ordenar
   const clientesCriticos = clientesParaMostrar.map(({ principal, todos }) => {
     const ordenados = [...todos].sort((a, b) => {
