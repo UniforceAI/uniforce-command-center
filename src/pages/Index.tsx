@@ -46,29 +46,40 @@ const Index = () => {
         if (error) throw error;
 
         // Transformar dados do banco para o formato esperado
-        const chamadosTransformados: Chamado[] = (data || []).map((item: any) => ({
-          "ID Cliente": item.id_cliente,
-          "Qtd. Chamados": item.qtd_chamados,
-          "Protocolo": item.protocolo,
-          "Data de Abertura": item.data_abertura,
-          "Última Atualização": item.ultima_atualizacao,
-          "Responsável": item.responsavel,
-          "Setor": item.setor,
-          "Categoria": item.categoria,
-          "Motivo do Contato": item.motivo_contato,
-          "Origem": item.origem,
-          "Solicitante": item.solicitante,
-          "Urgência": item.urgencia,
-          "Status": item.status,
-          "Dias desde Último Chamado": item.dias_desde_ultimo,
-          "Tempo de Atendimento": item.tempo_atendimento,
-          "Classificação": item.classificacao,
-          "Insight": item.insight,
-          "Chamados Anteriores": item.chamados_anteriores,
-          "_id": item.id, // ID único do banco
-        }));
+        const chamadosTransformados: Chamado[] = (data || []).map((item: any) => {
+          const transformado = {
+            "ID Cliente": item.id_cliente,
+            "Qtd. Chamados": item.qtd_chamados,
+            "Protocolo": item.protocolo,
+            "Data de Abertura": item.data_abertura,
+            "Última Atualização": item.ultima_atualizacao,
+            "Responsável": item.responsavel,
+            "Setor": item.setor,
+            "Categoria": item.categoria,
+            "Motivo do Contato": item.motivo_contato,
+            "Origem": item.origem,
+            "Solicitante": item.solicitante,
+            "Urgência": item.urgencia,
+            "Status": item.status,
+            "Dias desde Último Chamado": item.dias_desde_ultimo,
+            "Tempo de Atendimento": item.tempo_atendimento,
+            "Classificação": item.classificacao,
+            "Insight": item.insight,
+            "Chamados Anteriores": item.chamados_anteriores,
+            "_id": item.id, // ID único do banco
+          };
+          
+          console.log('📋 Chamado mapeado:', {
+            id: transformado["ID Cliente"],
+            qtd: transformado["Qtd. Chamados"],
+            anteriores: transformado["Chamados Anteriores"]?.substring(0, 50)
+          });
+          
+          return transformado;
+        });
 
         console.log(`✅ ${chamadosTransformados.length} chamados carregados`);
+        console.log('🔍 Primeiro chamado completo:', chamadosTransformados[0]);
         setChamados(chamadosTransformados);
         
       } catch (error: any) {

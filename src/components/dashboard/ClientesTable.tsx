@@ -146,7 +146,11 @@ export function ClientesTable({ chamados, onClienteClick }: ClientesTableProps) 
     {
       accessorKey: 'Qtd. Chamados',
       header: 'Qtd. Chamados',
-      cell: info => <Badge variant="outline">{info.getValue() as number}</Badge>,
+      cell: info => {
+        const valor = info.getValue();
+        console.log('📊 Qtd. Chamados cell:', valor, typeof valor);
+        return <Badge variant="outline">{valor as number}</Badge>;
+      },
       size: 130,
     },
     {
@@ -247,6 +251,14 @@ export function ClientesTable({ chamados, onClienteClick }: ClientesTableProps) 
             const chamado = row.original;
             const chamadosAnteriores = parseChamadosAnteriores(chamado["Chamados Anteriores"]);
             const isExpanded = expandedRows.has(chamado._id || chamado.Protocolo);
+            
+            console.log('🔍 Renderizando linha:', {
+              id: chamado["ID Cliente"],
+              qtd: chamado["Qtd. Chamados"],
+              expandido: isExpanded,
+              anteriores: chamadosAnteriores.length,
+              dadosAnteriores: chamado["Chamados Anteriores"]?.substring(0, 100)
+            });
             
             return (
               <>
