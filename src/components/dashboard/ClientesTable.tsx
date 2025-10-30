@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Chamado } from "@/types/chamado";
 import { cn } from "@/lib/utils";
@@ -40,6 +40,28 @@ export function ClientesTable({ chamados, onClienteClick }: ClientesTableProps) 
     }
     setExpandedRows(newExpanded);
   };
+
+  // Adicionar classe ao body durante resize para melhorar UX
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (document.querySelector('.resizing')) {
+        document.body.classList.add('resizing-cursor-active');
+      }
+    };
+
+    const handleMouseUp = () => {
+      document.body.classList.remove('resizing-cursor-active');
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+      document.body.classList.remove('resizing-cursor-active');
+    };
+  }, []);
 
   const formatTempo = (tempo: string) => {
     if (!tempo || tempo === "—" || tempo === "-") {
@@ -263,6 +285,43 @@ export function ClientesTable({ chamados, onClienteClick }: ClientesTableProps) 
       size: 150,
     },
     {
+      accessorKey: 'Status',
+      header: ({ column }) => {
+        return (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+            className="hover:bg-transparent p-0 h-auto font-medium"
+          >
+            Status
+            {column.getIsSorted() === "asc" ? (
+              <ArrowUp className="ml-2 h-4 w-4" />
+            ) : column.getIsSorted() === "desc" ? (
+              <ArrowDown className="ml-2 h-4 w-4" />
+            ) : (
+              <ArrowUpDown className="ml-2 h-4 w-4" />
+            )}
+          </Button>
+        );
+      },
+      cell: info => {
+        const status = info.getValue() as string;
+        const statusColors: Record<string, string> = {
+          "Novo": "bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500/20",
+          "Em Andamento": "bg-yellow-500/10 text-yellow-700 dark:text-yellow-400 border-yellow-500/20",
+          "Resolvido": "bg-green-500/10 text-green-700 dark:text-green-400 border-green-500/20",
+          "Fechado": "bg-gray-500/10 text-gray-700 dark:text-gray-400 border-gray-500/20",
+        };
+        return (
+          <Badge className={cn("text-xs", statusColors[status] || "")}>
+            {status}
+          </Badge>
+        );
+      },
+      size: 130,
+    },
+    {
       accessorKey: 'Tempo de Atendimento',
       header: ({ column }) => {
         return (
@@ -385,8 +444,8 @@ export function ClientesTable({ chamados, onClienteClick }: ClientesTableProps) 
   });
 
   return (
-    <div className="rounded-md border bg-card overflow-auto">
-      <table className="w-full border-collapse">
+    <div className="rounded-md border bg-card overflow-x-auto">
+      <table className="w-full border-collapse" style={{ tableLayout: 'fixed' }}>
         <thead>
           {table.getHeaderGroups().map(headerGroup => (
             <tr key={headerGroup.id} className="border-b">
@@ -395,7 +454,8 @@ export function ClientesTable({ chamados, onClienteClick }: ClientesTableProps) 
                   key={header.id}
                   className="h-12 px-4 text-left align-middle font-medium text-muted-foreground relative"
                   style={{
-                    width: header.getSize(),
+                    width: `${header.getSize()}px`,
+                    minWidth: `${header.getSize()}px`,
                   }}
                 >
                   {header.isPlaceholder
@@ -408,10 +468,12 @@ export function ClientesTable({ chamados, onClienteClick }: ClientesTableProps) 
                     <div
                       onMouseDown={header.getResizeHandler()}
                       onTouchStart={header.getResizeHandler()}
+                      onDoubleClick={() => header.column.resetSize()}
                       className={cn(
-                        "absolute right-0 top-0 h-full w-1 cursor-col-resize select-none touch-none bg-border hover:bg-primary/50 transition-colors",
-                        header.column.getIsResizing() && "bg-primary"
+                        "table-resize-handle",
+                        header.column.getIsResizing() && "resizing"
                       )}
+                      title="Arraste para redimensionar, duplo clique para resetar"
                     />
                   )}
                 </th>
@@ -431,9 +493,11 @@ export function ClientesTable({ chamados, onClienteClick }: ClientesTableProps) 
                   {row.getVisibleCells().map(cell => (
                     <td
                       key={cell.id}
-                      className="p-4 align-middle"
+                      className="p-4 align-middle overflow-hidden"
                       style={{
-                        width: cell.column.getSize(),
+                        width: `${cell.column.getSize()}px`,
+                        minWidth: `${cell.column.getSize()}px`,
+                        maxWidth: `${cell.column.getSize()}px`,
                       }}
                     >
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}

@@ -104,3 +104,27 @@ All colors MUST be HSL.
     @apply bg-background text-foreground;
   }
 }
+
+/* Table column resizing styles */
+.table-resize-handle {
+  position: absolute;
+  right: 0;
+  top: 0;
+  height: 100%;
+  width: 8px;
+  cursor: col-resize;
+  user-select: none;
+  touch-action: none;
+  z-index: 1;
+}
+
+.table-resize-handle:hover,
+.table-resize-handle.resizing {
+  background: hsl(var(--primary) / 0.5);
+}
+
+/* Prevent text selection during resize */
+.resizing-cursor-active * {
+  cursor: col-resize !important;
+  user-select: none !important;
+}
