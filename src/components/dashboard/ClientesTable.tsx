@@ -30,6 +30,8 @@ export function ClientesTable({ chamados, onClienteClick }: ClientesTableProps) 
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const [columnResizeMode] = useState<ColumnResizeMode>('onChange');
   const [sorting, setSorting] = useState<SortingState>([]);
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 100;
 
   const toggleRow = (id: string) => {
     const newExpanded = new Set(expandedRows);
@@ -367,8 +369,14 @@ export function ClientesTable({ chamados, onClienteClick }: ClientesTableProps) 
     },
   ];
 
+  // Paginação
+  const totalPages = Math.ceil(chamados.length / ITEMS_PER_PAGE);
+  const startIdx = (currentPage - 1) * ITEMS_PER_PAGE;
+  const endIdx = startIdx + ITEMS_PER_PAGE;
+  const paginatedChamados = chamados.slice(startIdx, endIdx);
+
   const table = useReactTable({
-    data: chamados,
+    data: paginatedChamados,
     columns,
     columnResizeMode,
     state: {
@@ -381,116 +389,148 @@ export function ClientesTable({ chamados, onClienteClick }: ClientesTableProps) 
   });
 
   return (
-    <div className="rounded-md border bg-card overflow-x-auto">
-      <table className="w-full border-collapse" style={{ tableLayout: 'fixed' }}>
-        <thead>
-          {table.getHeaderGroups().map(headerGroup => (
-            <tr key={headerGroup.id} className="border-b">
-              {headerGroup.headers.map(header => (
-                <th
-                  key={header.id}
-                  className="h-12 px-4 text-left align-middle font-medium text-muted-foreground relative"
-                  style={{
-                    width: `${header.getSize()}px`,
-                    minWidth: `${header.getSize()}px`,
-                  }}
-                >
-                  {header.isPlaceholder
-                    ? null
-                    : flexRender(
-                        header.column.columnDef.header,
-                        header.getContext()
-                      )}
-                  {header.column.getCanResize() && (
-                    <div
-                      onMouseDown={header.getResizeHandler()}
-                      onTouchStart={header.getResizeHandler()}
-                      onDoubleClick={() => header.column.resetSize()}
-                      className={cn(
-                        "table-resize-handle",
-                        header.column.getIsResizing() && "resizing"
-                      )}
-                      title="Arraste para redimensionar, duplo clique para resetar"
-                    />
-                  )}
-                </th>
-              ))}
-            </tr>
-          ))}
-        </thead>
-        <tbody>
-          {table.getRowModel().rows.map(row => {
-            const chamado = row.original;
-            const chamadosAnteriores = chamado._chamadosAnteriores || [];
-            const isExpanded = expandedRows.has(chamado._id || chamado.Protocolo);
-            
-            return (
-              <>
-                <tr key={row.id} className={cn("border-b transition-colors", getRowColor(chamado.Classificação))}>
-                  {row.getVisibleCells().map(cell => (
-                    <td
-                      key={cell.id}
-                      className="p-4 align-middle overflow-hidden"
-                      style={{
-                        width: `${cell.column.getSize()}px`,
-                        minWidth: `${cell.column.getSize()}px`,
-                        maxWidth: `${cell.column.getSize()}px`,
-                      }}
-                    >
-                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                    </td>
-                  ))}
-                </tr>
-                {isExpanded && (
-                  <tr className="border-b bg-muted/30">
-                    <td colSpan={columns.length} className="p-0">
-                      <div className="p-4">
-                        <h4 className="font-semibold text-sm mb-3">Chamados Anteriores ({chamadosAnteriores.length}):</h4>
-                        {chamadosAnteriores.length > 0 ? (
-                          <div className="space-y-2">
-                            <div className="grid grid-cols-12 gap-2 text-xs font-medium text-muted-foreground pb-2 border-b">
-                              <div className="col-span-2">Protocolo</div>
-                              <div className="col-span-2">Data</div>
-                              <div className="col-span-3">Motivo</div>
-                              <div className="col-span-2">Status</div>
-                              <div className="col-span-2">Tempo</div>
-                              <div className="col-span-1">Classificação</div>
-                            </div>
-                            {chamadosAnteriores.map((anterior, idx) => (
-                              <div key={idx} className="grid grid-cols-12 gap-2 text-sm py-2 border-b last:border-b-0">
-                                <div className="col-span-2 font-medium truncate">{anterior.Protocolo}</div>
-                                <div className="col-span-2 text-muted-foreground text-xs">
-                                  {anterior["Data de Abertura"].split(" ")[0]}
-                                </div>
-                                <div className="col-span-3 truncate">{anterior["Motivo do Contato"]}</div>
-                                <div className="col-span-2">
-                                  <Badge variant="outline" className="text-xs">
-                                    {anterior.Status}
-                                  </Badge>
-                                </div>
-                                <div className="col-span-2 text-muted-foreground">
-                                  {formatTempo(anterior["Tempo de Atendimento"])}
-                                </div>
-                                <div className="col-span-1">
-                                  <Badge className={cn("text-xs", getClassificacaoColor(anterior.Classificação))}>
-                                    {anterior.Classificação}
-                                  </Badge>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <p className="text-sm text-muted-foreground">Este é o único chamado do cliente.</p>
+    <div className="rounded-md border bg-card">
+      <div className="overflow-x-auto">
+        <table className="w-full border-collapse" style={{ tableLayout: 'fixed' }}>
+          <thead>
+            {table.getHeaderGroups().map(headerGroup => (
+              <tr key={headerGroup.id} className="border-b">
+                {headerGroup.headers.map(header => (
+                  <th
+                    key={header.id}
+                    className="h-12 px-4 text-left align-middle font-medium text-muted-foreground relative"
+                    style={{
+                      width: `${header.getSize()}px`,
+                      minWidth: `${header.getSize()}px`,
+                    }}
+                  >
+                    {header.isPlaceholder
+                      ? null
+                      : flexRender(
+                          header.column.columnDef.header,
+                          header.getContext()
                         )}
-                      </div>
-                    </td>
+                    {header.column.getCanResize() && (
+                      <div
+                        onMouseDown={header.getResizeHandler()}
+                        onTouchStart={header.getResizeHandler()}
+                        onDoubleClick={() => header.column.resetSize()}
+                        className={cn(
+                          "table-resize-handle",
+                          header.column.getIsResizing() && "resizing"
+                        )}
+                        title="Arraste para redimensionar, duplo clique para resetar"
+                      />
+                    )}
+                  </th>
+                ))}
+              </tr>
+            ))}
+          </thead>
+          <tbody>
+            {table.getRowModel().rows.map(row => {
+              const chamado = row.original;
+              const chamadosAnteriores = chamado._chamadosAnteriores || [];
+              const isExpanded = expandedRows.has(chamado._id || chamado.Protocolo);
+              
+              return (
+                <>
+                  <tr key={row.id} className={cn("border-b transition-colors", getRowColor(chamado.Classificação))}>
+                    {row.getVisibleCells().map(cell => (
+                      <td
+                        key={cell.id}
+                        className="p-4 align-middle overflow-hidden"
+                        style={{
+                          width: `${cell.column.getSize()}px`,
+                          minWidth: `${cell.column.getSize()}px`,
+                          maxWidth: `${cell.column.getSize()}px`,
+                        }}
+                      >
+                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                      </td>
+                    ))}
                   </tr>
-                )}
-              </>
-            );
-          })}
-        </tbody>
-      </table>
+                  {isExpanded && (
+                    <tr className="border-b bg-muted/30">
+                      <td colSpan={columns.length} className="p-0">
+                        <div className="p-4">
+                          <h4 className="font-semibold text-sm mb-3">Chamados Anteriores ({chamadosAnteriores.length}):</h4>
+                          {chamadosAnteriores.length > 0 ? (
+                            <div className="space-y-2">
+                              <div className="grid grid-cols-12 gap-2 text-xs font-medium text-muted-foreground pb-2 border-b">
+                                <div className="col-span-2">Protocolo</div>
+                                <div className="col-span-2">Data</div>
+                                <div className="col-span-3">Motivo</div>
+                                <div className="col-span-2">Status</div>
+                                <div className="col-span-2">Tempo</div>
+                                <div className="col-span-1">Classificação</div>
+                              </div>
+                              {chamadosAnteriores.map((anterior, idx) => (
+                                <div key={idx} className="grid grid-cols-12 gap-2 text-sm py-2 border-b last:border-b-0">
+                                  <div className="col-span-2 font-medium truncate">{anterior.Protocolo}</div>
+                                  <div className="col-span-2 text-muted-foreground text-xs">
+                                    {anterior["Data de Abertura"].split(" ")[0]}
+                                  </div>
+                                  <div className="col-span-3 truncate">{anterior["Motivo do Contato"]}</div>
+                                  <div className="col-span-2">
+                                    <Badge variant="outline" className="text-xs">
+                                      {anterior.Status}
+                                    </Badge>
+                                  </div>
+                                  <div className="col-span-2 text-muted-foreground">
+                                    {formatTempo(anterior["Tempo de Atendimento"])}
+                                  </div>
+                                  <div className="col-span-1">
+                                    <Badge className={cn("text-xs", getClassificacaoColor(anterior.Classificação))}>
+                                      {anterior.Classificação}
+                                    </Badge>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="text-sm text-muted-foreground">Este é o único chamado do cliente.</p>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      
+      {/* Paginação */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between px-4 py-4 border-t">
+          <p className="text-sm text-muted-foreground">
+            Mostrando {startIdx + 1}-{Math.min(endIdx, chamados.length)} de {chamados.length}
+          </p>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+              disabled={currentPage === 1}
+            >
+              Anterior
+            </Button>
+            <span className="flex items-center px-3 text-sm">
+              Página {currentPage} de {totalPages}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+              disabled={currentPage === totalPages}
+            >
+              Próxima
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
