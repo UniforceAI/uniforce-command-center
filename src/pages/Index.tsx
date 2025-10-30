@@ -1,7 +1,9 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { Chamado } from "@/types/chamado";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { Button } from "@/components/ui/button";
 import { KPICard } from "@/components/dashboard/KPICard";
 import { DashboardFilters } from "@/components/dashboard/DashboardFilters";
 import { ClientesTable } from "@/components/dashboard/ClientesTable";
@@ -14,22 +16,54 @@ import {
   RefreshCcw, 
   CheckCircle2, 
   AlertCircle,
-  BarChart3 
+  BarChart3,
+  LogOut
 } from "lucide-react";
 
 const Index = () => {
+  const navigate = useNavigate();
   const { toast } = useToast();
   const [chamados, setChamados] = useState<Chamado[]>([]);
   const [filteredChamados, setFilteredChamados] = useState<Chamado[]>([]);
   const [selectedCliente, setSelectedCliente] = useState<Chamado | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [userEmail, setUserEmail] = useState<string>("");
   
   // Filtros
   const [periodo, setPeriodo] = useState("30");
   const [status, setStatus] = useState("todos");
   const [urgencia, setUrgencia] = useState("todas");
   const [setor, setSetor] = useState("todos");
+
+  // Verificar autenticação
+  useEffect(() => {
+    const checkAuth = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        navigate("/auth");
+      } else {
+        setUserEmail(session.user.email || "");
+      }
+    };
+
+    checkAuth();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (!session) {
+        navigate("/auth");
+      } else {
+        setUserEmail(session.user.email || "");
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, [navigate]);
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    navigate("/auth");
+  };
 
   // Buscar dados do banco
   useEffect(() => {
@@ -206,9 +240,18 @@ const Index = () => {
               </h1>
               <p className="text-muted-foreground mt-1">Agy Telecom</p>
             </div>
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <BarChart3 className="h-5 w-5" />
-              <span>Atualizado em tempo real</span>
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <BarChart3 className="h-5 w-5" />
+                <span>Atualizado em tempo real</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-muted-foreground">{userEmail}</span>
+                <Button variant="outline" size="sm" onClick={handleLogout}>
+                  <LogOut className="h-4 w-4 mr-2" />
+                  Sair
+                </Button>
+              </div>
             </div>
           </div>
         </div>
