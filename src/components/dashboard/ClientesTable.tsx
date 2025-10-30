@@ -225,41 +225,54 @@ export function ClientesTable({ chamados, onClienteClick }: ClientesTableProps) 
             const isExpanded = expandedRows.has(chamado._id || chamado.Protocolo);
             
             return (
-              <Collapsible key={row.id} asChild open={isExpanded}>
-                <>
-                  <tr className={cn("border-b transition-colors", getRowColor(chamado.Classificação))}>
-                    {row.getVisibleCells().map(cell => (
-                      <td
-                        key={cell.id}
-                        className="p-4 align-middle"
-                        style={{
-                          width: cell.column.getSize(),
-                        }}
-                      >
-                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                      </td>
-                    ))}
-                  </tr>
-                  {chamadosAnteriores.length > 0 && (
-                    <CollapsibleContent asChild>
-                      <tr className={cn("border-b-0", getRowColor(chamado.Classificação))}>
-                        <td colSpan={columns.length} className="bg-muted/30 p-4">
-                          <div className="space-y-2">
-                            <h4 className="font-semibold text-sm">Chamados Anteriores:</h4>
-                            <div className="flex flex-wrap gap-2">
-                              {chamadosAnteriores.map((anterior, idx) => (
-                                <Badge key={idx} variant="outline" className="text-xs">
-                                  {anterior.protocolo} - {anterior.data}
-                                </Badge>
-                              ))}
-                            </div>
+              <>
+                <tr key={row.id} className={cn("border-b transition-colors", getRowColor(chamado.Classificação))}>
+                  {row.getVisibleCells().map(cell => (
+                    <td
+                      key={cell.id}
+                      className="p-4 align-middle"
+                      style={{
+                        width: cell.column.getSize(),
+                      }}
+                    >
+                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                    </td>
+                  ))}
+                </tr>
+                {isExpanded && chamadosAnteriores.length > 0 && (
+                  <tr className="border-b">
+                    <td colSpan={columns.length} className="bg-muted/30 p-0">
+                      <div className="p-4">
+                        <h4 className="font-semibold text-sm mb-3">Chamados Anteriores:</h4>
+                        <div className="space-y-2">
+                          <div className="grid grid-cols-12 gap-2 text-xs font-medium text-muted-foreground pb-2 border-b">
+                            <div className="col-span-3">Protocolo</div>
+                            <div className="col-span-2">Data</div>
+                            <div className="col-span-3">Motivo</div>
+                            <div className="col-span-2">Status</div>
+                            <div className="col-span-2">Tempo</div>
                           </div>
-                        </td>
-                      </tr>
-                    </CollapsibleContent>
-                  )}
-                </>
-              </Collapsible>
+                          {chamadosAnteriores.map((anterior, idx) => (
+                            <div key={idx} className="grid grid-cols-12 gap-2 text-sm py-2 border-b last:border-b-0">
+                              <div className="col-span-3 font-medium">{anterior.protocolo}</div>
+                              <div className="col-span-2 text-muted-foreground">{anterior.data}</div>
+                              <div className="col-span-3 truncate">{chamado["Motivo do Contato"]}</div>
+                              <div className="col-span-2">
+                                <Badge variant="outline" className="text-xs">
+                                  {chamado.Status}
+                                </Badge>
+                              </div>
+                              <div className="col-span-2 text-muted-foreground">
+                                {formatTempo(chamado["Tempo de Atendimento"])}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </>
             );
           })}
         </tbody>
