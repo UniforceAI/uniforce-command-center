@@ -189,20 +189,18 @@ const Index = () => {
     setSheetOpen(true);
   };
 
-  // Agrupar todos os chamados por ID Cliente
-  const chamadosPorCliente = filteredChamados.reduce((acc, chamado) => {
+  // Agrupar TODOS os chamados por ID Cliente (sem filtro primeiro)
+  const todosChamadosPorCliente = chamados.reduce((acc, chamado) => {
     const idCliente = chamado["ID Cliente"];
     
     if (!acc[idCliente]) {
       acc[idCliente] = {
-        principal: chamado, // Chamado principal (mais recente)
-        todos: [chamado]     // Lista com todos os chamados
+        principal: chamado,
+        todos: [chamado]
       };
     } else {
-      // Adicionar à lista de todos
       acc[idCliente].todos.push(chamado);
       
-      // Atualizar o principal se este for mais recente
       const parseData = (dataStr: string) => {
         const [datePart, timePart] = dataStr.split(" ");
         const [dia, mes, ano] = datePart.split("/");
@@ -221,9 +219,43 @@ const Index = () => {
     return acc;
   }, {} as Record<number, { principal: Chamado; todos: Chamado[] }>);
 
-  // Converter para array com o chamado principal e adicionar lista de anteriores
-  const clientesCriticos = Object.values(chamadosPorCliente).map(({ principal, todos }) => {
-    // Ordenar todos por data (mais recente primeiro) e pegar os anteriores (exceto o principal)
+  // Agora aplicar filtros para decidir quais CLIENTES mostrar
+  let clientesParaMostrar = Object.values(todosChamadosPorCliente);
+  
+  // Filtrar por período baseado no chamado mais recente
+  if (periodo !== "todos") {
+    const diasAtras = parseInt(periodo);
+    const dataLimite = new Date();
+    dataLimite.setDate(dataLimite.getDate() - diasAtras);
+
+    clientesParaMostrar = clientesParaMostrar.filter(({ principal }) => {
+      try {
+        const dataString = principal["Data de Abertura"];
+        const [datePart] = dataString.split(" ");
+        const [dia, mes, ano] = datePart.split("/");
+        const dataAbertura = new Date(parseInt(ano), parseInt(mes) - 1, parseInt(dia));
+        return dataAbertura >= dataLimite;
+      } catch (e) {
+        return true;
+      }
+    });
+  }
+
+  // Filtrar por status, urgência e setor no chamado principal
+  if (status !== "todos") {
+    clientesParaMostrar = clientesParaMostrar.filter(({ principal }) => principal.Status === status);
+  }
+
+  if (urgencia !== "todas") {
+    clientesParaMostrar = clientesParaMostrar.filter(({ principal }) => principal.Urgência === urgencia);
+  }
+
+  if (setor !== "todos") {
+    clientesParaMostrar = clientesParaMostrar.filter(({ principal }) => principal.Setor === setor);
+  }
+
+  // Converter para array com chamados anteriores e ordenar
+  const clientesCriticos = clientesParaMostrar.map(({ principal, todos }) => {
     const ordenados = [...todos].sort((a, b) => {
       const parseData = (dataStr: string) => {
         const [datePart, timePart] = dataStr.split(" ");
@@ -234,10 +266,9 @@ const Index = () => {
       return parseData(b["Data de Abertura"]) - parseData(a["Data de Abertura"]);
     });
     
-    // Retornar o principal com a lista de todos os chamados (para expansão)
     return {
       ...principal,
-      _chamadosAnteriores: ordenados.slice(1) // Todos exceto o primeiro (principal)
+      _chamadosAnteriores: ordenados.slice(1)
     };
   }).sort((a, b) => b["Qtd. Chamados"] - a["Qtd. Chamados"]);
 
