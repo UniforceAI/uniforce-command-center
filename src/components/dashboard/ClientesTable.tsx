@@ -54,7 +54,7 @@ export function ClientesTable({ chamados, onClienteClick }: ClientesTableProps) 
         <TableBody>
           {chamados.map((chamado) => (
             <TableRow 
-              key={chamado.Protocolo} 
+              key={chamado._id || chamado.Protocolo} 
               className={cn("transition-colors", getRowColor(chamado.Classificação))}
             >
               <TableCell className="font-medium">{chamado["ID Cliente"]}</TableCell>

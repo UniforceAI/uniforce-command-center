@@ -41,8 +41,8 @@ export function InsightsPanel({ chamados }: InsightsPanelProps) {
                   {reabertosRapido.length} cliente(s) reabriram chamados em menos de 5 dias
                 </p>
                 <div className="flex flex-wrap gap-2">
-                  {reabertosRapido.slice(0, 5).map((c) => (
-                    <Badge key={c.Protocolo} variant="outline" className="border-destructive/30">
+                  {reabertosRapido.slice(0, 5).map((c, idx) => (
+                    <Badge key={`reaberto-${c.Protocolo}-${idx}`} variant="outline" className="border-destructive/30">
                       ID {c["ID Cliente"]} - {c["Qtd. Chamados"]} chamados
                     </Badge>
                   ))}
@@ -65,8 +65,8 @@ export function InsightsPanel({ chamados }: InsightsPanelProps) {
                   {muitosChamados.length} cliente(s) com mais de 3 chamados no período
                 </p>
                 <div className="flex flex-wrap gap-2">
-                  {muitosChamados.slice(0, 5).map((c) => (
-                    <Badge key={c.Protocolo} variant="outline" className="border-warning/30">
+                  {muitosChamados.slice(0, 5).map((c, idx) => (
+                    <Badge key={`muitos-${c.Protocolo}-${idx}`} variant="outline" className="border-warning/30">
                       ID {c["ID Cliente"]} - {c["Qtd. Chamados"]} chamados
                     </Badge>
                   ))}
@@ -87,8 +87,8 @@ export function InsightsPanel({ chamados }: InsightsPanelProps) {
                   {demorados.length} chamado(s) com tempo de resolução acima da média
                 </p>
                 <div className="flex flex-wrap gap-2">
-                  {demorados.slice(0, 5).map((c) => (
-                    <Badge key={c.Protocolo} variant="outline">
+                  {demorados.slice(0, 5).map((c, idx) => (
+                    <Badge key={`demorado-${c.Protocolo}-${idx}`} variant="outline">
                       ID {c["ID Cliente"]} - {c["Tempo de Atendimento"]}
                     </Badge>
                   ))}

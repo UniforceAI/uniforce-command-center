@@ -1,4 +1,5 @@
 export interface Chamado {
+  "_id"?: string; // ID único do banco de dados
   "ID Cliente": number;
   "Qtd. Chamados": number;
   "Protocolo": string;

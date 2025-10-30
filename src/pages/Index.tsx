@@ -65,6 +65,7 @@ const Index = () => {
           "Classificação": item.classificacao,
           "Insight": item.insight,
           "Chamados Anteriores": item.chamados_anteriores,
+          "_id": item.id, // ID único do banco
         }));
 
         console.log(`✅ ${chamadosTransformados.length} chamados carregados`);
@@ -117,11 +118,17 @@ const Index = () => {
       dataLimite.setDate(dataLimite.getDate() - diasAtras);
 
       filtered = filtered.filter((c) => {
-        // Converter string DD/MM/YYYY para Date
-        const [dia, mes, ano] = c["Data de Abertura"].split("/");
-        const [anoNum, horaCompleta] = ano.split(" ");
-        const dataAbertura = new Date(parseInt(anoNum), parseInt(mes) - 1, parseInt(dia));
-        return dataAbertura >= dataLimite;
+        try {
+          // Converter string DD/MM/YYYY HH:MM:SS para Date
+          const dataString = c["Data de Abertura"];
+          const [datePart] = dataString.split(" "); // Separar data de hora
+          const [dia, mes, ano] = datePart.split("/");
+          const dataAbertura = new Date(parseInt(ano), parseInt(mes) - 1, parseInt(dia));
+          return dataAbertura >= dataLimite;
+        } catch (e) {
+          console.error("Erro ao parsear data:", c["Data de Abertura"], e);
+          return true; // Incluir em caso de erro
+        }
       });
     }
 
