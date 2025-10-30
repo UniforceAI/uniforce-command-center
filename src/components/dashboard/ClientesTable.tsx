@@ -46,7 +46,7 @@ export function ClientesTable({ chamados, onClienteClick }: ClientesTableProps) 
     let totalHoras = 0;
     
     if (tempo.includes("d")) {
-      // Converter dias para horas (exemplo: 1.8d = 43.2h)
+      // Converter dias para horas para poder calcular
       const dias = parseFloat(tempo.split("d")[0]);
       totalHoras = dias * 24;
     } else if (tempo.includes("h")) {
@@ -62,13 +62,19 @@ export function ClientesTable({ chamados, onClienteClick }: ClientesTableProps) 
       return "0h";
     }
     
+    // Se for >= 24 horas (1 dia ou mais), mostrar em dias
+    if (totalHoras >= 24) {
+      const dias = (totalHoras / 24).toFixed(1);
+      return `${dias}d`;
+    }
+    
     // Se for menos de 1 hora, mostrar em minutos
     if (totalHoras < 1) {
       const minutos = Math.round(totalHoras * 60);
       return `${minutos}min`;
     }
     
-    // Sempre mostrar em horas com 1 casa decimal
+    // Mostrar em horas com 1 casa decimal
     return `${totalHoras.toFixed(1)}h`;
   };
 
