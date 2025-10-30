@@ -132,6 +132,16 @@ export function ClientesTable({ chamados, onClienteClick }: ClientesTableProps) 
       size: 100,
     },
     {
+      accessorKey: 'Data de Abertura',
+      header: 'Data Abertura',
+      cell: info => {
+        const dataCompleta = info.getValue() as string;
+        const [datePart] = dataCompleta.split(" ");
+        return <span className="text-sm text-muted-foreground">{datePart}</span>;
+      },
+      size: 120,
+    },
+    {
       id: 'qtd-chamados',
       accessorFn: row => row["Qtd. Chamados"],
       header: 'Qtd. Chamados',
