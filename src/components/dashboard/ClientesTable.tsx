@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, memo } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Chamado } from "@/types/chamado";
 import { cn } from "@/lib/utils";
@@ -26,7 +26,69 @@ interface ClientesTableProps {
   onClienteClick: (chamado: Chamado) => void;
 }
 
-export function ClientesTable({ chamados, onClienteClick }: ClientesTableProps) {
+// Funções utilitárias fora do componente
+const formatTempo = (tempo: string) => {
+  if (!tempo || tempo === "—" || tempo === "-") {
+    return "—";
+  }
+  
+  let totalHoras = 0;
+  
+  if (tempo.includes("d")) {
+    const dias = parseFloat(tempo.split("d")[0]);
+    totalHoras = dias * 24;
+  } else if (tempo.includes("h")) {
+    totalHoras = parseFloat(tempo.split("h")[0]);
+  } else if (tempo.includes("min")) {
+    totalHoras = parseFloat(tempo.split("min")[0]) / 60;
+  } else {
+    return tempo;
+  }
+  
+  if (totalHoras === 0) {
+    return "0h";
+  }
+  
+  if (totalHoras >= 24) {
+    const dias = (totalHoras / 24).toFixed(1);
+    return `${dias}d`;
+  }
+  
+  if (totalHoras < 1) {
+    const minutos = Math.round(totalHoras * 60);
+    return `${minutos}min`;
+  }
+  
+  return `${totalHoras.toFixed(1)}h`;
+};
+
+const getClassificacaoColor = (classificacao: string) => {
+  switch (classificacao) {
+    case "Reincidente":
+      return "bg-destructive/10 text-destructive border-destructive/20";
+    case "Lento":
+      return "bg-warning/10 text-warning border-warning/20";
+    case "Rápido":
+      return "bg-success/10 text-success border-success/20";
+    default:
+      return "bg-muted text-muted-foreground";
+  }
+};
+
+const getRowColor = (classificacao: string) => {
+  switch (classificacao) {
+    case "Reincidente":
+      return "bg-destructive/5 hover:bg-destructive/10";
+    case "Lento":
+      return "bg-warning/5 hover:bg-warning/10";
+    case "Rápido":
+      return "bg-success/5 hover:bg-success/10";
+    default:
+      return "hover:bg-muted/50";
+  }
+};
+
+export const ClientesTable = memo(({ chamados, onClienteClick }: ClientesTableProps) => {
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const [columnResizeMode] = useState<ColumnResizeMode>('onChange');
   const [sorting, setSorting] = useState<SortingState>([]);
@@ -65,72 +127,6 @@ export function ClientesTable({ chamados, onClienteClick }: ClientesTableProps) 
     };
   }, []);
 
-  const formatTempo = (tempo: string) => {
-    if (!tempo || tempo === "—" || tempo === "-") {
-      return "—";
-    }
-    
-    let totalHoras = 0;
-    
-    if (tempo.includes("d")) {
-      // Converter dias para horas para poder calcular
-      const dias = parseFloat(tempo.split("d")[0]);
-      totalHoras = dias * 24;
-    } else if (tempo.includes("h")) {
-      totalHoras = parseFloat(tempo.split("h")[0]);
-    } else if (tempo.includes("min")) {
-      totalHoras = parseFloat(tempo.split("min")[0]) / 60;
-    } else {
-      return tempo;
-    }
-    
-    // Se for 0, mostrar como tal
-    if (totalHoras === 0) {
-      return "0h";
-    }
-    
-    // Se for >= 24 horas (1 dia ou mais), mostrar em dias
-    if (totalHoras >= 24) {
-      const dias = (totalHoras / 24).toFixed(1);
-      return `${dias}d`;
-    }
-    
-    // Se for menos de 1 hora, mostrar em minutos
-    if (totalHoras < 1) {
-      const minutos = Math.round(totalHoras * 60);
-      return `${minutos}min`;
-    }
-    
-    // Mostrar em horas com 1 casa decimal
-    return `${totalHoras.toFixed(1)}h`;
-  };
-
-
-  const getClassificacaoColor = (classificacao: string) => {
-    switch (classificacao) {
-      case "Reincidente":
-        return "bg-destructive/10 text-destructive border-destructive/20";
-      case "Lento":
-        return "bg-warning/10 text-warning border-warning/20";
-      case "Rápido":
-        return "bg-success/10 text-success border-success/20";
-      default:
-        return "bg-muted text-muted-foreground";
-    }
-  };
-
-  const getRowColor = (classificacao: string) => {
-    switch (classificacao) {
-      case "Reincidente":
-        return "bg-destructive/5 hover:bg-destructive/10";
-      case "Lento":
-        return "bg-warning/5 hover:bg-warning/10";
-      case "Rápido":
-        return "bg-success/5 hover:bg-success/10";
-      default:
-        return "hover:bg-muted/50";
-    }
-  };
 
   const columns: ColumnDef<Chamado>[] = [
     {
@@ -369,11 +365,14 @@ export function ClientesTable({ chamados, onClienteClick }: ClientesTableProps) 
     },
   ];
 
-  // Paginação
-  const totalPages = Math.ceil(chamados.length / ITEMS_PER_PAGE);
-  const startIdx = (currentPage - 1) * ITEMS_PER_PAGE;
-  const endIdx = startIdx + ITEMS_PER_PAGE;
-  const paginatedChamados = chamados.slice(startIdx, endIdx);
+  // Paginação com useMemo
+  const { totalPages, startIdx, endIdx, paginatedChamados } = useMemo(() => {
+    const totalPages = Math.ceil(chamados.length / ITEMS_PER_PAGE);
+    const startIdx = (currentPage - 1) * ITEMS_PER_PAGE;
+    const endIdx = startIdx + ITEMS_PER_PAGE;
+    const paginatedChamados = chamados.slice(startIdx, endIdx);
+    return { totalPages, startIdx, endIdx, paginatedChamados };
+  }, [chamados, currentPage, ITEMS_PER_PAGE]);
 
   const table = useReactTable({
     data: paginatedChamados,
@@ -526,11 +525,11 @@ export function ClientesTable({ chamados, onClienteClick }: ClientesTableProps) 
               onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
               disabled={currentPage === totalPages}
             >
-              Próxima
+               Próxima
             </Button>
           </div>
         </div>
       )}
     </div>
   );
-}
+});
