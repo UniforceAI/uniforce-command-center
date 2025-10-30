@@ -63,6 +63,7 @@ export function ClientesTable({ chamados, onClienteClick }: ClientesTableProps) 
         return { protocolo, data };
       }).filter(item => item.protocolo && item.data);
     } catch (e) {
+      console.error("Erro ao parsear chamados anteriores:", e);
       return [];
     }
   };
@@ -224,6 +225,8 @@ export function ClientesTable({ chamados, onClienteClick }: ClientesTableProps) 
             const chamadosAnteriores = parseChamadosAnteriores(chamado["Chamados Anteriores"]);
             const isExpanded = expandedRows.has(chamado._id || chamado.Protocolo);
             
+            console.log("Chamado:", chamado["ID Cliente"], "Expandido:", isExpanded, "Anteriores:", chamadosAnteriores.length);
+            
             return (
               <>
                 <tr key={row.id} className={cn("border-b transition-colors", getRowColor(chamado.Classificação))}>
@@ -239,35 +242,39 @@ export function ClientesTable({ chamados, onClienteClick }: ClientesTableProps) 
                     </td>
                   ))}
                 </tr>
-                {isExpanded && chamadosAnteriores.length > 0 && (
-                  <tr className="border-b">
-                    <td colSpan={columns.length} className="bg-muted/30 p-0">
+                {isExpanded && (
+                  <tr className="border-b bg-muted/30">
+                    <td colSpan={columns.length} className="p-0">
                       <div className="p-4">
                         <h4 className="font-semibold text-sm mb-3">Chamados Anteriores:</h4>
-                        <div className="space-y-2">
-                          <div className="grid grid-cols-12 gap-2 text-xs font-medium text-muted-foreground pb-2 border-b">
-                            <div className="col-span-3">Protocolo</div>
-                            <div className="col-span-2">Data</div>
-                            <div className="col-span-3">Motivo</div>
-                            <div className="col-span-2">Status</div>
-                            <div className="col-span-2">Tempo</div>
-                          </div>
-                          {chamadosAnteriores.map((anterior, idx) => (
-                            <div key={idx} className="grid grid-cols-12 gap-2 text-sm py-2 border-b last:border-b-0">
-                              <div className="col-span-3 font-medium">{anterior.protocolo}</div>
-                              <div className="col-span-2 text-muted-foreground">{anterior.data}</div>
-                              <div className="col-span-3 truncate">{chamado["Motivo do Contato"]}</div>
-                              <div className="col-span-2">
-                                <Badge variant="outline" className="text-xs">
-                                  {chamado.Status}
-                                </Badge>
-                              </div>
-                              <div className="col-span-2 text-muted-foreground">
-                                {formatTempo(chamado["Tempo de Atendimento"])}
-                              </div>
+                        {chamadosAnteriores.length > 0 ? (
+                          <div className="space-y-2">
+                            <div className="grid grid-cols-12 gap-2 text-xs font-medium text-muted-foreground pb-2 border-b">
+                              <div className="col-span-3">Protocolo</div>
+                              <div className="col-span-2">Data</div>
+                              <div className="col-span-3">Motivo</div>
+                              <div className="col-span-2">Status</div>
+                              <div className="col-span-2">Tempo</div>
                             </div>
-                          ))}
-                        </div>
+                            {chamadosAnteriores.map((anterior, idx) => (
+                              <div key={idx} className="grid grid-cols-12 gap-2 text-sm py-2 border-b last:border-b-0">
+                                <div className="col-span-3 font-medium">{anterior.protocolo}</div>
+                                <div className="col-span-2 text-muted-foreground">{anterior.data}</div>
+                                <div className="col-span-3 truncate">{chamado["Motivo do Contato"]}</div>
+                                <div className="col-span-2">
+                                  <Badge variant="outline" className="text-xs">
+                                    {chamado.Status}
+                                  </Badge>
+                                </div>
+                                <div className="col-span-2 text-muted-foreground">
+                                  {formatTempo(chamado["Tempo de Atendimento"])}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-sm text-muted-foreground">Nenhum chamado anterior encontrado.</p>
+                        )}
                       </div>
                     </td>
                   </tr>
