@@ -4,7 +4,12 @@ import { Chamado } from "@/types/chamado";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Eye, ChevronDown, ChevronRight } from "lucide-react";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import {
   useReactTable,
   getCoreRowModel,
@@ -34,23 +39,37 @@ export function ClientesTable({ chamados, onClienteClick }: ClientesTableProps) 
   };
 
   const formatTempo = (tempo: string) => {
+    if (!tempo || tempo === "0h" || tempo === "—" || tempo === "-") {
+      return "0h";
+    }
+    
     let totalHoras = 0;
     
-    if (tempo.includes("h")) {
+    if (tempo.includes("d")) {
+      // Converter dias para horas (exemplo: 1.8d = 43.2h)
+      const dias = parseFloat(tempo.split("d")[0]);
+      totalHoras = dias * 24;
+    } else if (tempo.includes("h")) {
       totalHoras = parseFloat(tempo.split("h")[0]);
     } else if (tempo.includes("min")) {
       totalHoras = parseFloat(tempo.split("min")[0]) / 60;
-    } else if (tempo.includes("dia")) {
-      return tempo;
     } else {
       return tempo;
     }
     
-    if (totalHoras >= 24) {
-      const dias = Math.floor(totalHoras / 24);
-      return `${dias} dia${dias > 1 ? 's' : ''}`;
+    // Se for menos de 1 hora, mostrar em minutos
+    if (totalHoras < 1) {
+      const minutos = Math.round(totalHoras * 60);
+      return `${minutos}min`;
     }
     
+    // Se for 24h ou mais, mostrar em dias
+    if (totalHoras >= 24) {
+      const dias = (totalHoras / 24).toFixed(1);
+      return `${dias}d`;
+    }
+    
+    // Mostrar em horas com 1 casa decimal
     return `${totalHoras.toFixed(1)}h`;
   };
 
@@ -144,7 +163,23 @@ export function ClientesTable({ chamados, onClienteClick }: ClientesTableProps) 
     {
       accessorKey: 'Insight',
       header: 'Insight',
-      cell: info => <span className="truncate max-w-[300px] block text-sm">{info.getValue() as string}</span>,
+      cell: info => {
+        const insight = info.getValue() as string;
+        return (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="truncate max-w-[300px] block text-sm cursor-help">
+                  {insight}
+                </span>
+              </TooltipTrigger>
+              <TooltipContent side="top" className="max-w-md">
+                <p className="text-sm">{insight}</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        );
+      },
       size: 300,
     },
     {
