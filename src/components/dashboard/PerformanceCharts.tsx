@@ -7,23 +7,26 @@ interface PerformanceChartsProps {
 }
 
 export function PerformanceCharts({ chamados }: PerformanceChartsProps) {
-  // Dados para gráfico de urgência (rosca)
-  const urgenciaData = [
-    {
-      name: "Alta",
-      value: chamados.filter((c) => c.Urgência === "Alta").length,
-      color: "hsl(var(--destructive))",
-    },
-    {
-      name: "Média",
-      value: chamados.filter((c) => c.Urgência === "Média").length,
-      color: "hsl(var(--warning))",
-    },
-    {
-      name: "Baixa",
-      value: chamados.filter((c) => c.Urgência === "Baixa").length,
-      color: "hsl(var(--success))",
-    },
+  // Dados para principais motivos de chamados
+  const motivosMap = new Map<string, number>();
+  chamados.forEach((chamado) => {
+    const motivo = chamado["Motivo do Contato"];
+    motivosMap.set(motivo, (motivosMap.get(motivo) || 0) + 1);
+  });
+
+  // Pegar os 5 principais motivos
+  const motivosData = Array.from(motivosMap.entries())
+    .map(([name, value]) => ({ name, value }))
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 5);
+
+  // Cores para os motivos
+  const coresMotivos = [
+    "hsl(var(--destructive))",
+    "hsl(var(--warning))",
+    "hsl(var(--success))",
+    "hsl(var(--primary))",
+    "hsl(var(--secondary))",
   ];
 
   // Dados para tempo de atendimento por responsável
@@ -79,16 +82,16 @@ export function PerformanceCharts({ chamados }: PerformanceChartsProps) {
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-      {/* Gráfico de Urgência (Rosca) */}
+      {/* Gráfico de Principais Motivos (Rosca) */}
       <Card>
         <CardHeader>
-          <CardTitle>Distribuição de Urgência</CardTitle>
+          <CardTitle>Principais Motivos de Chamados</CardTitle>
         </CardHeader>
         <CardContent>
           <ResponsiveContainer width="100%" height={300}>
             <PieChart>
               <Pie
-                data={urgenciaData}
+                data={motivosData}
                 cx="50%"
                 cy="50%"
                 innerRadius={60}
@@ -97,8 +100,8 @@ export function PerformanceCharts({ chamados }: PerformanceChartsProps) {
                 dataKey="value"
                 label={({ name, value }) => `${name}: ${value}`}
               >
-                {urgenciaData.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={entry.color} />
+                {motivosData.map((entry, index) => (
+                  <Cell key={`cell-${index}`} fill={coresMotivos[index % coresMotivos.length]} />
                 ))}
               </Pie>
               <Tooltip />
