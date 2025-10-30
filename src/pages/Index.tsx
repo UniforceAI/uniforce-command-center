@@ -46,40 +46,29 @@ const Index = () => {
         if (error) throw error;
 
         // Transformar dados do banco para o formato esperado
-        const chamadosTransformados: Chamado[] = (data || []).map((item: any) => {
-          const transformado = {
-            "ID Cliente": item.id_cliente,
-            "Qtd. Chamados": item.qtd_chamados,
-            "Protocolo": item.protocolo,
-            "Data de Abertura": item.data_abertura,
-            "Última Atualização": item.ultima_atualizacao,
-            "Responsável": item.responsavel,
-            "Setor": item.setor,
-            "Categoria": item.categoria,
-            "Motivo do Contato": item.motivo_contato,
-            "Origem": item.origem,
-            "Solicitante": item.solicitante,
-            "Urgência": item.urgencia,
-            "Status": item.status,
-            "Dias desde Último Chamado": item.dias_desde_ultimo,
-            "Tempo de Atendimento": item.tempo_atendimento,
-            "Classificação": item.classificacao,
-            "Insight": item.insight,
-            "Chamados Anteriores": item.chamados_anteriores,
-            "_id": item.id, // ID único do banco
-          };
-          
-          console.log('📋 Chamado mapeado:', {
-            id: transformado["ID Cliente"],
-            qtd: transformado["Qtd. Chamados"],
-            anteriores: transformado["Chamados Anteriores"]?.substring(0, 50)
-          });
-          
-          return transformado;
-        });
+        const chamadosTransformados: Chamado[] = (data || []).map((item: any) => ({
+          "ID Cliente": item.id_cliente,
+          "Qtd. Chamados": item.qtd_chamados,
+          "Protocolo": item.protocolo,
+          "Data de Abertura": item.data_abertura,
+          "Última Atualização": item.ultima_atualizacao,
+          "Responsável": item.responsavel,
+          "Setor": item.setor,
+          "Categoria": item.categoria,
+          "Motivo do Contato": item.motivo_contato,
+          "Origem": item.origem,
+          "Solicitante": item.solicitante,
+          "Urgência": item.urgencia,
+          "Status": item.status,
+          "Dias desde Último Chamado": item.dias_desde_ultimo,
+          "Tempo de Atendimento": item.tempo_atendimento,
+          "Classificação": item.classificacao,
+          "Insight": item.insight,
+          "Chamados Anteriores": item.chamados_anteriores,
+          "_id": item.id, // ID único do banco
+        }));
 
         console.log(`✅ ${chamadosTransformados.length} chamados carregados`);
-        console.log('🔍 Primeiro chamado completo:', chamadosTransformados[0]);
         setChamados(chamadosTransformados);
         
       } catch (error: any) {
@@ -200,8 +189,36 @@ const Index = () => {
     setSheetOpen(true);
   };
 
-  // Ordenar todos os clientes críticos por quantidade de chamados (sem limite)
-  const clientesCriticos = [...filteredChamados]
+  // Agrupar chamados por ID Cliente e pegar o mais recente de cada cliente
+  const chamadosPorCliente = filteredChamados.reduce((acc, chamado) => {
+    const idCliente = chamado["ID Cliente"];
+    
+    // Se ainda não temos esse cliente OU se este chamado é mais recente
+    if (!acc[idCliente]) {
+      acc[idCliente] = chamado;
+    } else {
+      // Comparar datas para pegar o mais recente
+      const dataAtual = acc[idCliente]["Data de Abertura"];
+      const dataNovoChama = chamado["Data de Abertura"];
+      
+      // Converter strings DD/MM/YYYY HH:MM:SS para timestamp
+      const parseData = (dataStr: string) => {
+        const [datePart, timePart] = dataStr.split(" ");
+        const [dia, mes, ano] = datePart.split("/");
+        const [hora, min, seg] = (timePart || "00:00:00").split(":");
+        return new Date(parseInt(ano), parseInt(mes) - 1, parseInt(dia), parseInt(hora || "0"), parseInt(min || "0"), parseInt(seg || "0")).getTime();
+      };
+      
+      if (parseData(dataNovoChama) > parseData(dataAtual)) {
+        acc[idCliente] = chamado;
+      }
+    }
+    
+    return acc;
+  }, {} as Record<number, Chamado>);
+
+  // Converter de objeto para array e ordenar por quantidade de chamados
+  const clientesCriticos = Object.values(chamadosPorCliente)
     .sort((a, b) => b["Qtd. Chamados"] - a["Qtd. Chamados"]);
 
   return (
