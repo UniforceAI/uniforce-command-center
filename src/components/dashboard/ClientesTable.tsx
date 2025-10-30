@@ -39,8 +39,8 @@ export function ClientesTable({ chamados, onClienteClick }: ClientesTableProps) 
   };
 
   const formatTempo = (tempo: string) => {
-    if (!tempo || tempo === "0h" || tempo === "—" || tempo === "-") {
-      return "0h";
+    if (!tempo || tempo === "—" || tempo === "-") {
+      return "—";
     }
     
     let totalHoras = 0;
@@ -57,19 +57,18 @@ export function ClientesTable({ chamados, onClienteClick }: ClientesTableProps) 
       return tempo;
     }
     
+    // Se for 0, mostrar como tal
+    if (totalHoras === 0) {
+      return "0h";
+    }
+    
     // Se for menos de 1 hora, mostrar em minutos
     if (totalHoras < 1) {
       const minutos = Math.round(totalHoras * 60);
       return `${minutos}min`;
     }
     
-    // Se for 24h ou mais, mostrar em dias
-    if (totalHoras >= 24) {
-      const dias = (totalHoras / 24).toFixed(1);
-      return `${dias}d`;
-    }
-    
-    // Mostrar em horas com 1 casa decimal
+    // Sempre mostrar em horas com 1 casa decimal
     return `${totalHoras.toFixed(1)}h`;
   };
 
