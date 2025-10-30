@@ -162,13 +162,6 @@ export function ClientesTable({ chamados, onClienteClick }: ClientesTableProps) 
             className="hover:bg-transparent p-0 h-auto font-medium"
           >
             ID Cliente
-            {column.getIsSorted() === "asc" ? (
-              <ArrowUp className="ml-2 h-4 w-4" />
-            ) : column.getIsSorted() === "desc" ? (
-              <ArrowDown className="ml-2 h-4 w-4" />
-            ) : (
-              <ArrowUpDown className="ml-2 h-4 w-4" />
-            )}
           </Button>
         );
       },
@@ -186,13 +179,6 @@ export function ClientesTable({ chamados, onClienteClick }: ClientesTableProps) 
             className="hover:bg-transparent p-0 h-auto font-medium"
           >
             Data Abertura
-            {column.getIsSorted() === "asc" ? (
-              <ArrowUp className="ml-2 h-4 w-4" />
-            ) : column.getIsSorted() === "desc" ? (
-              <ArrowDown className="ml-2 h-4 w-4" />
-            ) : (
-              <ArrowUpDown className="ml-2 h-4 w-4" />
-            )}
           </Button>
         );
       },
@@ -223,13 +209,6 @@ export function ClientesTable({ chamados, onClienteClick }: ClientesTableProps) 
             className="hover:bg-transparent p-0 h-auto font-medium"
           >
             Qtd. Chamados
-            {column.getIsSorted() === "asc" ? (
-              <ArrowUp className="ml-2 h-4 w-4" />
-            ) : column.getIsSorted() === "desc" ? (
-              <ArrowDown className="ml-2 h-4 w-4" />
-            ) : (
-              <ArrowUpDown className="ml-2 h-4 w-4" />
-            )}
           </Button>
         );
       },
@@ -247,13 +226,6 @@ export function ClientesTable({ chamados, onClienteClick }: ClientesTableProps) 
             className="hover:bg-transparent p-0 h-auto font-medium"
           >
             Último Motivo
-            {column.getIsSorted() === "asc" ? (
-              <ArrowUp className="ml-2 h-4 w-4" />
-            ) : column.getIsSorted() === "desc" ? (
-              <ArrowDown className="ml-2 h-4 w-4" />
-            ) : (
-              <ArrowUpDown className="ml-2 h-4 w-4" />
-            )}
           </Button>
         );
       },
@@ -271,13 +243,6 @@ export function ClientesTable({ chamados, onClienteClick }: ClientesTableProps) 
             className="hover:bg-transparent p-0 h-auto font-medium"
           >
             Dias desde Último
-            {column.getIsSorted() === "asc" ? (
-              <ArrowUp className="ml-2 h-4 w-4" />
-            ) : column.getIsSorted() === "desc" ? (
-              <ArrowDown className="ml-2 h-4 w-4" />
-            ) : (
-              <ArrowUpDown className="ml-2 h-4 w-4" />
-            )}
           </Button>
         );
       },
@@ -295,13 +260,6 @@ export function ClientesTable({ chamados, onClienteClick }: ClientesTableProps) 
             className="hover:bg-transparent p-0 h-auto font-medium"
           >
             Status
-            {column.getIsSorted() === "asc" ? (
-              <ArrowUp className="ml-2 h-4 w-4" />
-            ) : column.getIsSorted() === "desc" ? (
-              <ArrowDown className="ml-2 h-4 w-4" />
-            ) : (
-              <ArrowUpDown className="ml-2 h-4 w-4" />
-            )}
           </Button>
         );
       },
@@ -332,13 +290,6 @@ export function ClientesTable({ chamados, onClienteClick }: ClientesTableProps) 
             className="hover:bg-transparent p-0 h-auto font-medium"
           >
             Tempo de Atendimento
-            {column.getIsSorted() === "asc" ? (
-              <ArrowUp className="ml-2 h-4 w-4" />
-            ) : column.getIsSorted() === "desc" ? (
-              <ArrowDown className="ml-2 h-4 w-4" />
-            ) : (
-              <ArrowUpDown className="ml-2 h-4 w-4" />
-            )}
           </Button>
         );
       },
@@ -356,13 +307,6 @@ export function ClientesTable({ chamados, onClienteClick }: ClientesTableProps) 
             className="hover:bg-transparent p-0 h-auto font-medium"
           >
             Classificação
-            {column.getIsSorted() === "asc" ? (
-              <ArrowUp className="ml-2 h-4 w-4" />
-            ) : column.getIsSorted() === "desc" ? (
-              <ArrowDown className="ml-2 h-4 w-4" />
-            ) : (
-              <ArrowUpDown className="ml-2 h-4 w-4" />
-            )}
           </Button>
         );
       },
@@ -383,13 +327,6 @@ export function ClientesTable({ chamados, onClienteClick }: ClientesTableProps) 
             className="hover:bg-transparent p-0 h-auto font-medium"
           >
             Insight
-            {column.getIsSorted() === "asc" ? (
-              <ArrowUp className="ml-2 h-4 w-4" />
-            ) : column.getIsSorted() === "desc" ? (
-              <ArrowDown className="ml-2 h-4 w-4" />
-            ) : (
-              <ArrowUpDown className="ml-2 h-4 w-4" />
-            )}
           </Button>
         );
       },
