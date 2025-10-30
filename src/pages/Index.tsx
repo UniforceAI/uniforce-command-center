@@ -8,14 +8,7 @@ import { ClientesTable } from "@/components/dashboard/ClientesTable";
 import { ClienteDetailsSheet } from "@/components/dashboard/ClienteDetailsSheet";
 import { PerformanceCharts } from "@/components/dashboard/PerformanceCharts";
 import { InsightsPanel } from "@/components/dashboard/InsightsPanel";
-import { 
-  Phone, 
-  Clock, 
-  RefreshCcw, 
-  CheckCircle2, 
-  AlertCircle,
-  BarChart3
-} from "lucide-react";
+import { Phone, Clock, RefreshCcw, CheckCircle2, AlertCircle, BarChart3 } from "lucide-react";
 
 const Index = () => {
   const { toast } = useToast();
@@ -23,7 +16,7 @@ const Index = () => {
   const [selectedCliente, setSelectedCliente] = useState<Chamado | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  
+
   // Filtros
   const [periodo, setPeriodo] = useState("30");
   const [status, setStatus] = useState("todos");
@@ -35,12 +28,12 @@ const Index = () => {
     const fetchChamados = async () => {
       try {
         setIsLoading(true);
-        console.log('🔄 Buscando chamados do banco...');
-        
+        console.log("🔄 Buscando chamados do banco...");
+
         const { data, error } = await supabase
-          .from('chamados')
-          .select('*')
-          .order('data_abertura', { ascending: false });
+          .from("chamados")
+          .select("*")
+          .order("data_abertura", { ascending: false });
 
         if (error) throw error;
 
@@ -48,40 +41,42 @@ const Index = () => {
         const chamadosTransformados: Chamado[] = (data || []).map((item: any) => ({
           "ID Cliente": item.id_cliente,
           "Qtd. Chamados": item.qtd_chamados,
-          "Protocolo": item.protocolo,
+          Protocolo: item.protocolo,
           "Data de Abertura": item.data_abertura,
           "Última Atualização": item.ultima_atualizacao,
-          "Responsável": item.responsavel,
-          "Setor": item.setor,
-          "Categoria": item.categoria,
+          Responsável: item.responsavel,
+          Setor: item.setor,
+          Categoria: item.categoria,
           "Motivo do Contato": item.motivo_contato,
-          "Origem": item.origem,
-          "Solicitante": item.solicitante,
-          "Urgência": item.urgencia,
-          "Status": item.status,
-          "Dias desde Último Chamado": item.dias_desde_ultimo,
+          Origem: item.origem,
+          Solicitante: item.solicitante,
+          Urgência: item.urgencia,
+          Status: item.status,
+          "Dias Último Chamado": item.dias_desde_ultimo,
           "Tempo de Atendimento": item.tempo_atendimento,
-          "Classificação": item.classificacao,
-          "Insight": item.insight,
+          Classificação: item.classificacao,
+          Insight: item.insight,
           "Chamados Anteriores": item.chamados_anteriores,
-          "_id": item.id, // ID único do banco
+          _id: item.id, // ID único do banco
         }));
 
         console.log(`✅ ${chamadosTransformados.length} chamados carregados`);
-        
+
         // Log de debug: contar chamados por cliente
-        const countPorCliente = chamadosTransformados.reduce((acc, c) => {
-          const id = c["ID Cliente"];
-          acc[id] = (acc[id] || 0) + 1;
-          return acc;
-        }, {} as Record<number, number>);
-        
-        console.log('📊 Chamados por cliente do banco:', countPorCliente);
-        
+        const countPorCliente = chamadosTransformados.reduce(
+          (acc, c) => {
+            const id = c["ID Cliente"];
+            acc[id] = (acc[id] || 0) + 1;
+            return acc;
+          },
+          {} as Record<number, number>,
+        );
+
+        console.log("📊 Chamados por cliente do banco:", countPorCliente);
+
         setChamados(chamadosTransformados);
-        
       } catch (error: any) {
-        console.error('❌ Erro ao buscar chamados:', error);
+        console.error("❌ Erro ao buscar chamados:", error);
         toast({
           title: "Erro ao carregar dados",
           description: "Não foi possível carregar os chamados. Tente novamente.",
@@ -96,18 +91,18 @@ const Index = () => {
 
     // Configurar realtime para atualizar automaticamente
     const channel = supabase
-      .channel('chamados-changes')
+      .channel("chamados-changes")
       .on(
-        'postgres_changes',
+        "postgres_changes",
         {
-          event: '*',
-          schema: 'public',
-          table: 'chamados'
+          event: "*",
+          schema: "public",
+          table: "chamados",
         },
         () => {
-          console.log('🔄 Dados atualizados, recarregando...');
+          console.log("🔄 Dados atualizados, recarregando...");
           fetchChamados();
-        }
+        },
       )
       .subscribe();
 
@@ -159,15 +154,17 @@ const Index = () => {
   // Calcular KPIs com useMemo
   const kpis = useMemo(() => {
     const totalChamados = filteredChamados.length;
-    const chamadosResolvidos = filteredChamados.filter((c) => c.Status === "Resolvido" || c.Status === "Fechado").length;
+    const chamadosResolvidos = filteredChamados.filter(
+      (c) => c.Status === "Resolvido" || c.Status === "Fechado",
+    ).length;
     const chamadosAbertos = filteredChamados.filter((c) => c.Status === "Novo" || c.Status === "Em Andamento").length;
     const reincidentes = filteredChamados.filter((c) => c.Classificação === "Reincidente").length;
     const percentualReincidentes = totalChamados > 0 ? ((reincidentes / totalChamados) * 100).toFixed(1) : "0";
-    
+
     // Calcular tempo médio
     let totalHoras = 0;
     let count = 0;
-    
+
     filteredChamados.forEach((chamado) => {
       const tempo = chamado["Tempo de Atendimento"];
       if (tempo !== "0h") {
@@ -181,7 +178,7 @@ const Index = () => {
         count++;
       }
     });
-    
+
     const tempoMedio = count > 0 ? (totalHoras / count).toFixed(1) : "0";
     const percentualAbertos = totalChamados > 0 ? ((chamadosAbertos / totalChamados) * 100).toFixed(0) : "0";
 
@@ -200,7 +197,7 @@ const Index = () => {
       percentualAbertos,
       urgenciaAlta,
       urgenciaMedia,
-      urgenciaBaixa
+      urgenciaBaixa,
     };
   }, [filteredChamados]);
 
@@ -216,12 +213,12 @@ const Index = () => {
       const [dia, mes, ano] = datePart.split("/");
       const [hora, min, seg] = (timePart || "00:00:00").split(":");
       return new Date(
-        parseInt(ano), 
-        parseInt(mes) - 1, 
-        parseInt(dia), 
-        parseInt(hora || "0"), 
-        parseInt(min || "0"), 
-        parseInt(seg || "0")
+        parseInt(ano),
+        parseInt(mes) - 1,
+        parseInt(dia),
+        parseInt(hora || "0"),
+        parseInt(min || "0"),
+        parseInt(seg || "0"),
       ).getTime();
     } catch (e) {
       console.error("Erro ao parsear data:", dataStr, e);
@@ -232,32 +229,35 @@ const Index = () => {
   // Agrupar e processar clientes com useMemo
   const clientesCriticos = useMemo(() => {
     // Agrupar TODOS os chamados por ID Cliente
-    const todosChamadosPorCliente = chamados.reduce((acc, chamado) => {
-      const idCliente = Number(chamado["ID Cliente"]);
-      
-      if (isNaN(idCliente)) {
-        console.warn("ID Cliente inválido:", chamado["ID Cliente"], chamado);
-        return acc;
-      }
-      
-      if (!acc[idCliente]) {
-        acc[idCliente] = {
-          principal: chamado,
-          todos: [chamado]
-        };
-      } else {
-        acc[idCliente].todos.push(chamado);
-        
-        const dataAtual = parseData(acc[idCliente].principal["Data de Abertura"]);
-        const dataNovo = parseData(chamado["Data de Abertura"]);
-        
-        if (dataNovo > dataAtual) {
-          acc[idCliente].principal = chamado;
+    const todosChamadosPorCliente = chamados.reduce(
+      (acc, chamado) => {
+        const idCliente = Number(chamado["ID Cliente"]);
+
+        if (isNaN(idCliente)) {
+          console.warn("ID Cliente inválido:", chamado["ID Cliente"], chamado);
+          return acc;
         }
-      }
-      
-      return acc;
-    }, {} as Record<number, { principal: Chamado; todos: Chamado[] }>);
+
+        if (!acc[idCliente]) {
+          acc[idCliente] = {
+            principal: chamado,
+            todos: [chamado],
+          };
+        } else {
+          acc[idCliente].todos.push(chamado);
+
+          const dataAtual = parseData(acc[idCliente].principal["Data de Abertura"]);
+          const dataNovo = parseData(chamado["Data de Abertura"]);
+
+          if (dataNovo > dataAtual) {
+            acc[idCliente].principal = chamado;
+          }
+        }
+
+        return acc;
+      },
+      {} as Record<number, { principal: Chamado; todos: Chamado[] }>,
+    );
 
     // Corrigir a quantidade real de chamados
     Object.entries(todosChamadosPorCliente).forEach(([idCliente, { principal, todos }]) => {
@@ -267,7 +267,7 @@ const Index = () => {
 
     // Aplicar filtros para decidir quais CLIENTES mostrar
     let clientesParaMostrar = Object.values(todosChamadosPorCliente);
-    
+
     // Filtrar por período baseado no chamado mais recente
     if (periodo !== "todos") {
       const diasAtras = parseInt(periodo);
@@ -297,23 +297,27 @@ const Index = () => {
     }
 
     if (setor !== "todos") {
-      clientesParaMostrar = clientesParaMostrar.filter(({ principal }) => principal.Setor?.toLowerCase().trim() === setor.toLowerCase().trim());
+      clientesParaMostrar = clientesParaMostrar.filter(
+        ({ principal }) => principal.Setor?.toLowerCase().trim() === setor.toLowerCase().trim(),
+      );
     }
 
     // Converter para array com chamados anteriores e ordenar
-    return clientesParaMostrar.map(({ principal, todos }) => {
-      const ordenados = [...todos].sort((a, b) => {
-        return parseData(b["Data de Abertura"]) - parseData(a["Data de Abertura"]);
-      });
-      
-      const chamadosAnteriores = ordenados.slice(1);
-      
-      return {
-        ...principal,
-        "Qtd. Chamados": todos.length,
-        _chamadosAnteriores: chamadosAnteriores
-      };
-    }).sort((a, b) => b["Qtd. Chamados"] - a["Qtd. Chamados"]);
+    return clientesParaMostrar
+      .map(({ principal, todos }) => {
+        const ordenados = [...todos].sort((a, b) => {
+          return parseData(b["Data de Abertura"]) - parseData(a["Data de Abertura"]);
+        });
+
+        const chamadosAnteriores = ordenados.slice(1);
+
+        return {
+          ...principal,
+          "Qtd. Chamados": todos.length,
+          _chamadosAnteriores: chamadosAnteriores,
+        };
+      })
+      .sort((a, b) => b["Qtd. Chamados"] - a["Qtd. Chamados"]);
   }, [chamados, periodo, status, urgencia, setor]);
 
   return (
@@ -432,10 +436,7 @@ const Index = () => {
             {/* Clientes Críticos */}
             <div>
               <h2 className="text-2xl font-bold mb-4">🔴 Clientes Críticos</h2>
-              <ClientesTable 
-                chamados={clientesCriticos} 
-                onClienteClick={handleClienteClick}
-              />
+              <ClientesTable chamados={clientesCriticos} onClienteClick={handleClienteClick} />
             </div>
 
             {/* Insights */}
@@ -448,11 +449,7 @@ const Index = () => {
       </main>
 
       {/* Sheet de Detalhes */}
-      <ClienteDetailsSheet
-        chamado={selectedCliente}
-        open={sheetOpen}
-        onOpenChange={setSheetOpen}
-      />
+      <ClienteDetailsSheet chamado={selectedCliente} open={sheetOpen} onOpenChange={setSheetOpen} />
     </div>
   );
 };
