@@ -143,7 +143,8 @@ export function ClientesTable({ chamados, onClienteClick }: ClientesTableProps) 
       size: 100,
     },
     {
-      accessorKey: 'Qtd. Chamados',
+      id: 'qtd-chamados',
+      accessorFn: row => row["Qtd. Chamados"],
       header: 'Qtd. Chamados',
       cell: info => <Badge variant="outline">{info.getValue() as number}</Badge>,
       size: 130,
