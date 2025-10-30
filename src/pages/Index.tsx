@@ -189,19 +189,20 @@ const Index = () => {
     setSheetOpen(true);
   };
 
-  // Agrupar chamados por ID Cliente e pegar o mais recente de cada cliente
+  // Agrupar todos os chamados por ID Cliente
   const chamadosPorCliente = filteredChamados.reduce((acc, chamado) => {
     const idCliente = chamado["ID Cliente"];
     
-    // Se ainda não temos esse cliente OU se este chamado é mais recente
     if (!acc[idCliente]) {
-      acc[idCliente] = chamado;
+      acc[idCliente] = {
+        principal: chamado, // Chamado principal (mais recente)
+        todos: [chamado]     // Lista com todos os chamados
+      };
     } else {
-      // Comparar datas para pegar o mais recente
-      const dataAtual = acc[idCliente]["Data de Abertura"];
-      const dataNovoChama = chamado["Data de Abertura"];
+      // Adicionar à lista de todos
+      acc[idCliente].todos.push(chamado);
       
-      // Converter strings DD/MM/YYYY HH:MM:SS para timestamp
+      // Atualizar o principal se este for mais recente
       const parseData = (dataStr: string) => {
         const [datePart, timePart] = dataStr.split(" ");
         const [dia, mes, ano] = datePart.split("/");
@@ -209,17 +210,36 @@ const Index = () => {
         return new Date(parseInt(ano), parseInt(mes) - 1, parseInt(dia), parseInt(hora || "0"), parseInt(min || "0"), parseInt(seg || "0")).getTime();
       };
       
-      if (parseData(dataNovoChama) > parseData(dataAtual)) {
-        acc[idCliente] = chamado;
+      const dataAtual = acc[idCliente].principal["Data de Abertura"];
+      const dataNovo = chamado["Data de Abertura"];
+      
+      if (parseData(dataNovo) > parseData(dataAtual)) {
+        acc[idCliente].principal = chamado;
       }
     }
     
     return acc;
-  }, {} as Record<number, Chamado>);
+  }, {} as Record<number, { principal: Chamado; todos: Chamado[] }>);
 
-  // Converter de objeto para array e ordenar por quantidade de chamados
-  const clientesCriticos = Object.values(chamadosPorCliente)
-    .sort((a, b) => b["Qtd. Chamados"] - a["Qtd. Chamados"]);
+  // Converter para array com o chamado principal e adicionar lista de anteriores
+  const clientesCriticos = Object.values(chamadosPorCliente).map(({ principal, todos }) => {
+    // Ordenar todos por data (mais recente primeiro) e pegar os anteriores (exceto o principal)
+    const ordenados = [...todos].sort((a, b) => {
+      const parseData = (dataStr: string) => {
+        const [datePart, timePart] = dataStr.split(" ");
+        const [dia, mes, ano] = datePart.split("/");
+        const [hora, min, seg] = (timePart || "00:00:00").split(":");
+        return new Date(parseInt(ano), parseInt(mes) - 1, parseInt(dia), parseInt(hora || "0"), parseInt(min || "0"), parseInt(seg || "0")).getTime();
+      };
+      return parseData(b["Data de Abertura"]) - parseData(a["Data de Abertura"]);
+    });
+    
+    // Retornar o principal com a lista de todos os chamados (para expansão)
+    return {
+      ...principal,
+      _chamadosAnteriores: ordenados.slice(1) // Todos exceto o primeiro (principal)
+    };
+  }).sort((a, b) => b["Qtd. Chamados"] - a["Qtd. Chamados"]);
 
   return (
     <div className="min-h-screen bg-background">

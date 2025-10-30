@@ -18,6 +18,7 @@ export interface Chamado {
   "Classificação": "Rápido" | "Normal" | "Lento" | "Reincidente";
   "Insight": string;
   "Chamados Anteriores": string;
+  "_chamadosAnteriores"?: Chamado[]; // Lista real de chamados anteriores deste cliente
 }
 
 export interface DashboardData {

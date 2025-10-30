@@ -54,41 +54,6 @@ export function ClientesTable({ chamados, onClienteClick }: ClientesTableProps) 
     return `${totalHoras.toFixed(1)}h`;
   };
 
-  const parseChamadosAnteriores = (chamadosStr: string) => {
-    try {
-      // Verificar se tem dados válidos
-      if (!chamadosStr || chamadosStr.trim() === "" || chamadosStr === "—" || chamadosStr === "-") {
-        return [];
-      }
-      
-      // Separar por quebra de linha
-      return chamadosStr.split("\n").map(item => {
-        // Remover emojis de número (1️⃣, 2️⃣, etc.) e espaços extras
-        const semEmoji = item.replace(/\d+️⃣\s*/g, "").trim();
-        
-        // Separar por travessão (–) ou hífen (-)
-        const separadores = ["–", "-", "—"];
-        let descricao = "";
-        let data = "";
-        
-        for (const sep of separadores) {
-          if (semEmoji.includes(sep)) {
-            const partes = semEmoji.split(sep);
-            descricao = partes[0]?.trim() || "";
-            data = partes[1]?.trim() || "";
-            break;
-          }
-        }
-        
-        return { 
-          protocolo: descricao, 
-          data: data 
-        };
-      }).filter(item => item.protocolo && item.data);
-    } catch (e) {
-      return [];
-    }
-  };
 
   const getClassificacaoColor = (classificacao: string) => {
     switch (classificacao) {
@@ -245,7 +210,7 @@ export function ClientesTable({ chamados, onClienteClick }: ClientesTableProps) 
         <tbody>
           {table.getRowModel().rows.map(row => {
             const chamado = row.original;
-            const chamadosAnteriores = parseChamadosAnteriores(chamado["Chamados Anteriores"]);
+            const chamadosAnteriores = chamado._chamadosAnteriores || [];
             const isExpanded = expandedRows.has(chamado._id || chamado.Protocolo);
             
             return (
@@ -267,34 +232,42 @@ export function ClientesTable({ chamados, onClienteClick }: ClientesTableProps) 
                   <tr className="border-b bg-muted/30">
                     <td colSpan={columns.length} className="p-0">
                       <div className="p-4">
-                        <h4 className="font-semibold text-sm mb-3">Chamados Anteriores:</h4>
+                        <h4 className="font-semibold text-sm mb-3">Chamados Anteriores ({chamadosAnteriores.length}):</h4>
                         {chamadosAnteriores.length > 0 ? (
                           <div className="space-y-2">
                             <div className="grid grid-cols-12 gap-2 text-xs font-medium text-muted-foreground pb-2 border-b">
-                              <div className="col-span-3">Protocolo</div>
+                              <div className="col-span-2">Protocolo</div>
                               <div className="col-span-2">Data</div>
                               <div className="col-span-3">Motivo</div>
                               <div className="col-span-2">Status</div>
                               <div className="col-span-2">Tempo</div>
+                              <div className="col-span-1">Classificação</div>
                             </div>
                             {chamadosAnteriores.map((anterior, idx) => (
                               <div key={idx} className="grid grid-cols-12 gap-2 text-sm py-2 border-b last:border-b-0">
-                                <div className="col-span-3 font-medium">{anterior.protocolo}</div>
-                                <div className="col-span-2 text-muted-foreground">{anterior.data}</div>
-                                <div className="col-span-3 truncate">{chamado["Motivo do Contato"]}</div>
+                                <div className="col-span-2 font-medium truncate">{anterior.Protocolo}</div>
+                                <div className="col-span-2 text-muted-foreground text-xs">
+                                  {anterior["Data de Abertura"].split(" ")[0]}
+                                </div>
+                                <div className="col-span-3 truncate">{anterior["Motivo do Contato"]}</div>
                                 <div className="col-span-2">
                                   <Badge variant="outline" className="text-xs">
-                                    {chamado.Status}
+                                    {anterior.Status}
                                   </Badge>
                                 </div>
                                 <div className="col-span-2 text-muted-foreground">
-                                  {formatTempo(chamado["Tempo de Atendimento"])}
+                                  {formatTempo(anterior["Tempo de Atendimento"])}
+                                </div>
+                                <div className="col-span-1">
+                                  <Badge className={cn("text-xs", getClassificacaoColor(anterior.Classificação))}>
+                                    {anterior.Classificação}
+                                  </Badge>
                                 </div>
                               </div>
                             ))}
                           </div>
                         ) : (
-                          <p className="text-sm text-muted-foreground">Nenhum chamado anterior encontrado.</p>
+                          <p className="text-sm text-muted-foreground">Este é o único chamado do cliente.</p>
                         )}
                       </div>
                     </td>
