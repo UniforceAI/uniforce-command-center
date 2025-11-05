@@ -29,10 +29,19 @@ export const PerformanceCharts = memo(({ chamados }: PerformanceChartsProps) => 
       const tempo = chamado["Tempo de Atendimento"];
       
       let horas = 0;
-      if (tempo.includes("h")) {
-        horas = parseInt(tempo.split("h")[0]);
-      } else if (tempo.includes("min")) {
-        horas = parseInt(tempo.split("min")[0]) / 60;
+      if (typeof tempo === 'number') {
+        horas = tempo;
+      } else if (typeof tempo === 'string') {
+        if (tempo.includes("h")) {
+          horas = parseFloat(tempo.split("h")[0]);
+        } else if (tempo.includes("min")) {
+          horas = parseFloat(tempo.split("min")[0]) / 60;
+        } else {
+          const parsed = parseFloat(tempo);
+          if (!isNaN(parsed)) {
+            horas = parsed;
+          }
+        }
       }
 
       if (!responsaveisMap.has(responsavel)) {

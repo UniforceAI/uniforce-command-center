@@ -33,9 +33,10 @@ export function DashboardFilters({
               <SelectValue placeholder="Selecione" />
             </SelectTrigger>
             <SelectContent>
+              <SelectItem value="0">Hoje</SelectItem>
+              <SelectItem value="1">Ontem</SelectItem>
               <SelectItem value="7">Últimos 7 dias</SelectItem>
               <SelectItem value="30">Últimos 30 dias</SelectItem>
-              <SelectItem value="90">Últimos 90 dias</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -79,9 +80,11 @@ export function DashboardFilters({
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="todos">Todos</SelectItem>
-              <SelectItem value="Técnico">Técnico</SelectItem>
-              <SelectItem value="Comercial">Comercial</SelectItem>
-              <SelectItem value="Financeiro">Financeiro</SelectItem>
+              <SelectItem value="técnico">Técnico</SelectItem>
+              <SelectItem value="comercial">Comercial</SelectItem>
+              <SelectItem value="financeiro">Financeiro</SelectItem>
+              <SelectItem value="administração">Administração</SelectItem>
+              <SelectItem value="agendamento / operacional">Agendamento / Operacional</SelectItem>
             </SelectContent>
           </Select>
         </div>

@@ -23,7 +23,7 @@ const Index = () => {
   const [isLoading, setIsLoading] = useState(true);
 
   // Filtros
-  const [periodo, setPeriodo] = useState("30");
+  const [periodo, setPeriodo] = useState("7");
   const [status, setStatus] = useState("todos");
   const [urgencia, setUrgencia] = useState("todas");
   const [setor, setSetor] = useState("todos");
@@ -144,8 +144,22 @@ const Index = () => {
     // Filtro por período baseado na data de abertura
     if (periodo !== "todos") {
       const diasAtras = parseInt(periodo);
-      const dataLimite = new Date();
-      dataLimite.setDate(dataLimite.getDate() - diasAtras);
+      const agora = new Date();
+      let dataLimite: Date;
+      
+      if (diasAtras === 0) {
+        // Hoje: desde 00:00 de hoje
+        dataLimite = new Date(agora.getFullYear(), agora.getMonth(), agora.getDate(), 0, 0, 0);
+      } else if (diasAtras === 1) {
+        // Ontem: desde 00:00 de ontem
+        const ontem = new Date(agora);
+        ontem.setDate(ontem.getDate() - 1);
+        dataLimite = new Date(ontem.getFullYear(), ontem.getMonth(), ontem.getDate(), 0, 0, 0);
+      } else {
+        // X dias atrás
+        dataLimite = new Date();
+        dataLimite.setDate(dataLimite.getDate() - diasAtras);
+      }
 
       filtered = filtered.filter((c) => {
         try {
@@ -193,13 +207,30 @@ const Index = () => {
 
     filteredChamados.forEach((chamado) => {
       const tempo = chamado["Tempo de Atendimento"];
-      if (tempo !== "0h") {
-        let horas = 0;
-        if (tempo.includes("h")) {
-          horas = parseInt(tempo.split("h")[0]);
+      
+      // Converter para número se for string ou número
+      let horas = 0;
+      
+      if (typeof tempo === 'number') {
+        horas = tempo;
+      } else if (typeof tempo === 'string') {
+        if (tempo.includes("d")) {
+          const dias = parseFloat(tempo.split("d")[0]);
+          horas = dias * 24;
+        } else if (tempo.includes("h")) {
+          horas = parseFloat(tempo.split("h")[0]);
         } else if (tempo.includes("min")) {
-          horas = parseInt(tempo.split("min")[0]) / 60;
+          horas = parseFloat(tempo.split("min")[0]) / 60;
+        } else {
+          // Tentar parsear como número
+          const parsed = parseFloat(tempo);
+          if (!isNaN(parsed)) {
+            horas = parsed;
+          }
         }
+      }
+      
+      if (horas > 0) {
         totalHoras += horas;
         count++;
       }
@@ -297,8 +328,22 @@ const Index = () => {
     // Filtrar por período baseado no chamado mais recente
     if (periodo !== "todos") {
       const diasAtras = parseInt(periodo);
-      const dataLimite = new Date();
-      dataLimite.setDate(dataLimite.getDate() - diasAtras);
+      const agora = new Date();
+      let dataLimite: Date;
+      
+      if (diasAtras === 0) {
+        // Hoje: desde 00:00 de hoje
+        dataLimite = new Date(agora.getFullYear(), agora.getMonth(), agora.getDate(), 0, 0, 0);
+      } else if (diasAtras === 1) {
+        // Ontem: desde 00:00 de ontem
+        const ontem = new Date(agora);
+        ontem.setDate(ontem.getDate() - 1);
+        dataLimite = new Date(ontem.getFullYear(), ontem.getMonth(), ontem.getDate(), 0, 0, 0);
+      } else {
+        // X dias atrás
+        dataLimite = new Date();
+        dataLimite.setDate(dataLimite.getDate() - diasAtras);
+      }
 
       clientesParaMostrar = clientesParaMostrar.filter(({ principal }) => {
         try {
