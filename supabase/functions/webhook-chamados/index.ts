@@ -13,7 +13,21 @@ serve(async (req) => {
   }
 
   try {
-    console.log('📥 Recebendo dados do n8n...');
+    console.log('📥 Recebendo requisição do webhook...');
+    
+    // Validar autenticação via secret
+    const webhookSecret = Deno.env.get('WEBHOOK_SECRET');
+    const authHeader = req.headers.get('x-webhook-secret');
+    
+    if (!authHeader || authHeader !== webhookSecret) {
+      console.error('❌ Autenticação falhou - secret inválido ou ausente');
+      return new Response(
+        JSON.stringify({ error: 'Não autorizado. Secret inválido ou ausente.' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+    
+    console.log('✅ Autenticação validada');
     
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -42,27 +56,61 @@ serve(async (req) => {
       throw deleteError;
     }
 
-    // Transformar dados do formato do n8n para o formato do banco
-    const chamadosParaInserir = requestData.map((item: any) => ({
-      id_cliente: item["ID Cliente"],
-      qtd_chamados: item["Qtd. Chamados"],
-      protocolo: item["Protocolo"],
-      data_abertura: item["Data de Abertura"],
-      ultima_atualizacao: item["Última Atualização"],
-      responsavel: item["Responsável"],
-      setor: item["Setor"],
-      categoria: item["Categoria"],
-      motivo_contato: item["Motivo do Contato"],
-      origem: item["Origem"],
-      solicitante: item["Solicitante"],
-      urgencia: item["Urgência"],
-      status: item["Status"],
-      dias_desde_ultimo: item["Dias desde Último Chamado"],
-      tempo_atendimento: item["Tempo de Atendimento"],
-      classificacao: item["Classificação"],
-      insight: item["Insight"],
-      chamados_anteriores: item["Chamados Anteriores"],
-    }));
+    // Validar e transformar dados do formato do n8n para o formato do banco
+    const chamadosParaInserir = requestData.map((item: any, index: number) => {
+      // Validação de campos obrigatórios
+      if (!item["ID Cliente"] || typeof item["ID Cliente"] !== 'string') {
+        throw new Error(`Chamado ${index + 1}: Campo "ID Cliente" é obrigatório e deve ser texto`);
+      }
+      
+      if (!item["Protocolo"] || typeof item["Protocolo"] !== 'string') {
+        throw new Error(`Chamado ${index + 1}: Campo "Protocolo" é obrigatório e deve ser texto`);
+      }
+      
+      // Validar campos numéricos
+      const qtdChamados = item["Qtd. Chamados"];
+      if (qtdChamados !== null && qtdChamados !== undefined && typeof qtdChamados !== 'number') {
+        throw new Error(`Chamado ${index + 1}: Campo "Qtd. Chamados" deve ser numérico`);
+      }
+      
+      const diasDesdeUltimo = item["Dias desde Último Chamado"];
+      if (diasDesdeUltimo !== null && diasDesdeUltimo !== undefined && typeof diasDesdeUltimo !== 'number') {
+        throw new Error(`Chamado ${index + 1}: Campo "Dias desde Último Chamado" deve ser numérico`);
+      }
+      
+      const tempoAtendimento = item["Tempo de Atendimento"];
+      if (tempoAtendimento !== null && tempoAtendimento !== undefined && typeof tempoAtendimento !== 'number') {
+        throw new Error(`Chamado ${index + 1}: Campo "Tempo de Atendimento" deve ser numérico`);
+      }
+      
+      // Limitar tamanho de strings para prevenir ataques
+      const maxStringLength = 1000;
+      const truncateString = (str: any) => {
+        if (typeof str !== 'string') return str;
+        return str.length > maxStringLength ? str.substring(0, maxStringLength) : str;
+      };
+      
+      return {
+        id_cliente: truncateString(item["ID Cliente"]),
+        qtd_chamados: qtdChamados,
+        protocolo: truncateString(item["Protocolo"]),
+        data_abertura: item["Data de Abertura"] || null,
+        ultima_atualizacao: item["Última Atualização"] || null,
+        responsavel: truncateString(item["Responsável"]) || null,
+        setor: truncateString(item["Setor"]) || null,
+        categoria: truncateString(item["Categoria"]) || null,
+        motivo_contato: truncateString(item["Motivo do Contato"]) || null,
+        origem: truncateString(item["Origem"]) || null,
+        solicitante: truncateString(item["Solicitante"]) || null,
+        urgencia: truncateString(item["Urgência"]) || null,
+        status: truncateString(item["Status"]) || null,
+        dias_desde_ultimo: diasDesdeUltimo,
+        tempo_atendimento: tempoAtendimento,
+        classificacao: truncateString(item["Classificação"]) || null,
+        insight: truncateString(item["Insight"]) || null,
+        chamados_anteriores: item["Chamados Anteriores"] || null,
+      };
+    });
 
     console.log('💾 Inserindo novos dados...');
     const { data: insertedData, error: insertError } = await supabase
