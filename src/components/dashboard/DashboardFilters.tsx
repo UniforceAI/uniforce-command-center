@@ -80,11 +80,14 @@ export function DashboardFilters({
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="todos">Todos</SelectItem>
-              <SelectItem value="técnico">Técnico</SelectItem>
-              <SelectItem value="comercial">Comercial</SelectItem>
-              <SelectItem value="financeiro">Financeiro</SelectItem>
-              <SelectItem value="administração">Administração</SelectItem>
-              <SelectItem value="agendamento / operacional">Agendamento / Operacional</SelectItem>
+              <SelectItem value="Cobrança">Cobrança</SelectItem>
+              <SelectItem value="Agendamento / Operacional">Agendamento / Operacional</SelectItem>
+              <SelectItem value="Administração">Administração</SelectItem>
+              <SelectItem value="Suporte Interno">Suporte Interno</SelectItem>
+              <SelectItem value="N2 Suporte Interno">N2 Suporte Interno</SelectItem>
+              <SelectItem value="Comercial">Comercial</SelectItem>
+              <SelectItem value="N1 Atendimento">N1 Atendimento</SelectItem>
+              <SelectItem value="Atendimento Escritorio">Atendimento Escritorio</SelectItem>
             </SelectContent>
           </Select>
         </div>

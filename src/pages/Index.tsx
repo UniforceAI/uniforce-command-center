@@ -185,7 +185,11 @@ const Index = () => {
     }
 
     if (setor !== "todos") {
-      filtered = filtered.filter((c) => c.Setor?.toLowerCase().trim() === setor.toLowerCase().trim());
+      filtered = filtered.filter((c) => {
+        const setorChamado = c.Setor?.trim() || "";
+        const setorFiltro = setor.trim();
+        return setorChamado === setorFiltro;
+      });
     }
 
     return filtered;
@@ -368,9 +372,11 @@ const Index = () => {
     }
 
     if (setor !== "todos") {
-      clientesParaMostrar = clientesParaMostrar.filter(
-        ({ principal }) => principal.Setor?.toLowerCase().trim() === setor.toLowerCase().trim(),
-      );
+      clientesParaMostrar = clientesParaMostrar.filter(({ principal }) => {
+        const setorChamado = principal.Setor?.trim() || "";
+        const setorFiltro = setor.trim();
+        return setorChamado === setorFiltro;
+      });
     }
 
     // Converter para array com chamados anteriores e ordenar
