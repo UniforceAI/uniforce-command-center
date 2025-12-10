@@ -137,18 +137,18 @@ const Index = () => {
 
     fetchChamados();
 
-    // Configurar realtime para atualizar automaticamente
+    // Configurar realtime para atualizar apenas quando houver novos dados (INSERT)
     const channel = supabase
       .channel("chamados-changes")
       .on(
         "postgres_changes",
         {
-          event: "*",
+          event: "INSERT",
           schema: "public",
           table: "chamados",
         },
         () => {
-          console.log("🔄 Dados atualizados, recarregando...");
+          console.log("📥 Novos chamados recebidos, recarregando...");
           fetchChamados();
         },
       )
