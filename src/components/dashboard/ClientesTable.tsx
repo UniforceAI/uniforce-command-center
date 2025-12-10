@@ -118,7 +118,7 @@ const getRowColor = (classificacao: string) => {
 export const ClientesTable = memo(({ chamados, onClienteClick }: ClientesTableProps) => {
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const [columnResizeMode] = useState<ColumnResizeMode>('onChange');
-  const [sorting, setSorting] = useState<SortingState>([]);
+  const [sorting, setSorting] = useState<SortingState>([{ id: 'Data de Abertura', desc: true }]);
   const [currentPage, setCurrentPage] = useState(1);
   const [nomeFilter, setNomeFilter] = useState("");
   const [motivoFilter, setMotivoFilter] = useState("todos");
