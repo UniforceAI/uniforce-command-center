@@ -47,7 +47,7 @@ const Index = () => {
     return () => subscription.unsubscribe();
   }, [navigate]);
 
-  // Buscar dados do banco
+  // Buscar dados do banco - em batches para superar limite de 1000
   useEffect(() => {
     if (!user) return;
     
@@ -56,18 +56,43 @@ const Index = () => {
         setIsLoading(true);
         console.log("🔄 Buscando chamados do banco...");
 
-        // Buscar TODOS os registros (Supabase tem limite padrão de 1000)
-        // Usar range para buscar mais de 1000 registros
-        const { data, error, count } = await supabase
+        // Primeiro, obter a contagem total
+        const { count: totalCount, error: countError } = await supabase
           .from("chamados")
-          .select("*", { count: "exact" })
-          .order("data_abertura", { ascending: false })
-          .range(0, 9999); // Buscar até 10000 registros
+          .select("*", { count: "exact", head: true });
 
-        if (error) throw error;
+        if (countError) throw countError;
+
+        console.log(`📊 Total de registros no banco: ${totalCount}`);
+
+        // Buscar em batches de 1000
+        const BATCH_SIZE = 1000;
+        const totalBatches = Math.ceil((totalCount || 0) / BATCH_SIZE);
+        let allData: any[] = [];
+
+        for (let i = 0; i < totalBatches; i++) {
+          const start = i * BATCH_SIZE;
+          const end = start + BATCH_SIZE - 1;
+          
+          console.log(`📥 Buscando batch ${i + 1}/${totalBatches} (${start}-${end})...`);
+          
+          const { data, error } = await supabase
+            .from("chamados")
+            .select("*")
+            .order("data_abertura", { ascending: false })
+            .range(start, end);
+
+          if (error) throw error;
+          
+          if (data) {
+            allData = [...allData, ...data];
+          }
+        }
+
+        console.log(`✅ Total de registros buscados: ${allData.length}`);
 
         // Transformar dados do banco para o formato esperado
-        const chamadosTransformados: Chamado[] = (data || []).map((item: any) => ({
+        const chamadosTransformados: Chamado[] = allData.map((item: any) => ({
           "ID Cliente": item.id_cliente,
           "Qtd. Chamados": item.qtd_chamados,
           Protocolo: item.protocolo,
@@ -89,19 +114,13 @@ const Index = () => {
           _id: item.id, // ID único do banco
         }));
 
-        console.log(`✅ ${chamadosTransformados.length} chamados carregados`);
+        console.log(`✅ ${chamadosTransformados.length} chamados transformados`);
 
-        // Log de debug: contar chamados por cliente
-        const countPorCliente = chamadosTransformados.reduce(
-          (acc, c) => {
-            const id = c["ID Cliente"];
-            acc[id] = (acc[id] || 0) + 1;
-            return acc;
-          },
-          {} as Record<number, number>,
+        // Log de debug: contar chamados por cliente ALLAN
+        const allanChamados = chamadosTransformados.filter(c => 
+          c.Solicitante?.toLowerCase().includes('allan')
         );
-
-        console.log("📊 Chamados por cliente do banco:", countPorCliente);
+        console.log(`🔍 Chamados do ALLAN encontrados: ${allanChamados.length}`, allanChamados);
 
         setChamados(chamadosTransformados);
       } catch (error: any) {
