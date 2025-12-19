@@ -1,7 +1,6 @@
 import { memo, useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Label } from "@/components/ui/label";
+import { Toggle } from "@/components/ui/toggle";
 import {
   LineChart,
   Line,
@@ -27,7 +26,7 @@ const COLORS = {
   promotor: "hsl(142, 71%, 45%)",
   neutro: "hsl(38, 92%, 50%)",
   detrator: "hsl(0, 84%, 60%)",
-  geral: "hsl(var(--primary))",
+  geral: "hsl(220, 70%, 50%)",
   pos_instalacao: "hsl(221, 83%, 53%)",
   pos_os: "hsl(262, 83%, 58%)",
   pos_atendimento: "hsl(142, 71%, 45%)",
@@ -46,7 +45,6 @@ export const NPSCharts = memo(({ respostas }: NPSChartsProps) => {
   const toggleFilter = (filterId: string) => {
     setSelectedFilters(prev => {
       if (prev.includes(filterId)) {
-        // Don't allow deselecting all
         if (prev.length === 1) return prev;
         return prev.filter(f => f !== filterId);
       }
@@ -104,18 +102,21 @@ export const NPSCharts = memo(({ respostas }: NPSChartsProps) => {
 
   // Comparação entre tipos
   const comparacaoData = useMemo(() => {
-    const tipos = ["pos_instalacao", "pos_os", "pos_atendimento"];
+    const tipos = [
+      { id: "pos_instalacao", name: "Pós-Instalação", color: COLORS.pos_instalacao },
+      { id: "pos_os", name: "Pós-O.S", color: COLORS.pos_os },
+      { id: "pos_atendimento", name: "Pós-Atendimento", color: COLORS.pos_atendimento },
+    ];
     return tipos.map((tipo) => {
-      const filtradas = respostas.filter((r) => r.tipo_nps === tipo);
+      const filtradas = respostas.filter((r) => r.tipo_nps === tipo.id);
       const promotores = filtradas.filter((r) => r.classificacao === "Promotor").length;
       const detratores = filtradas.filter((r) => r.classificacao === "Detrator").length;
       const total = filtradas.length;
       
       return {
-        name: tipo === "pos_instalacao" ? "Pós-Instalação" 
-            : tipo === "pos_os" ? "Pós-O.S" 
-            : "Pós-Atendimento",
+        name: tipo.name,
         nps: total > 0 ? Math.round(((promotores - detratores) / total) * 100) : 0,
+        fill: tipo.color,
       };
     });
   }, [respostas]);
@@ -140,25 +141,22 @@ export const NPSCharts = memo(({ respostas }: NPSChartsProps) => {
         <CardHeader className="pb-2">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <CardTitle className="text-base">📈 Evolução do NPS</CardTitle>
-            <div className="flex flex-wrap gap-4">
+            <div className="flex flex-wrap gap-1">
               {FILTER_OPTIONS.map((option) => (
-                <div key={option.id} className="flex items-center gap-2">
-                  <Checkbox
-                    id={option.id}
-                    checked={selectedFilters.includes(option.id)}
-                    onCheckedChange={() => toggleFilter(option.id)}
-                  />
-                  <Label 
-                    htmlFor={option.id} 
-                    className="text-sm cursor-pointer flex items-center gap-1.5"
-                  >
-                    <span 
-                      className="w-3 h-3 rounded-full" 
-                      style={{ backgroundColor: option.color }}
-                    />
-                    {option.label}
-                  </Label>
-                </div>
+                <Toggle
+                  key={option.id}
+                  pressed={selectedFilters.includes(option.id)}
+                  onPressedChange={() => toggleFilter(option.id)}
+                  size="sm"
+                  className="text-xs px-3 data-[state=on]:text-white transition-all"
+                  style={{
+                    backgroundColor: selectedFilters.includes(option.id) ? option.color : undefined,
+                    borderColor: option.color,
+                    color: selectedFilters.includes(option.id) ? 'white' : option.color,
+                  }}
+                >
+                  {option.label}
+                </Toggle>
               ))}
             </div>
           </div>
@@ -240,7 +238,11 @@ export const NPSCharts = memo(({ respostas }: NPSChartsProps) => {
                 <XAxis dataKey="name" fontSize={10} />
                 <YAxis domain={[-100, 100]} fontSize={11} />
                 <Tooltip />
-                <Bar dataKey="nps" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="nps" radius={[4, 4, 0, 0]}>
+                  {comparacaoData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.fill} />
+                  ))}
+                </Bar>
               </BarChart>
             </ResponsiveContainer>
           </CardContent>
