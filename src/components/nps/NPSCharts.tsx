@@ -1,9 +1,8 @@
 import { memo, useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Toggle } from "@/components/ui/toggle";
 import {
-  LineChart,
-  Line,
+  AreaChart,
+  Area,
   BarChart,
   Bar,
   PieChart,
@@ -141,74 +140,104 @@ export const NPSCharts = memo(({ respostas }: NPSChartsProps) => {
         <CardHeader className="pb-2">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <CardTitle className="text-base">📈 Evolução do NPS</CardTitle>
-            <div className="flex flex-wrap gap-1">
-              {FILTER_OPTIONS.map((option) => (
-                <Toggle
-                  key={option.id}
-                  pressed={selectedFilters.includes(option.id)}
-                  onPressedChange={() => toggleFilter(option.id)}
-                  size="sm"
-                  className="text-xs px-3 data-[state=on]:text-white transition-all"
-                  style={{
-                    backgroundColor: selectedFilters.includes(option.id) ? option.color : undefined,
-                    borderColor: option.color,
-                    color: selectedFilters.includes(option.id) ? 'white' : option.color,
-                  }}
-                >
-                  {option.label}
-                </Toggle>
-              ))}
+            <div className="flex flex-wrap gap-2">
+              {FILTER_OPTIONS.map((option) => {
+                const isSelected = selectedFilters.includes(option.id);
+                return (
+                  <button
+                    key={option.id}
+                    onClick={() => toggleFilter(option.id)}
+                    className={`
+                      text-xs px-3 py-1.5 rounded-full font-medium transition-all duration-200
+                      ${isSelected 
+                        ? 'text-white shadow-md' 
+                        : 'bg-muted/50 text-muted-foreground hover:bg-muted'
+                      }
+                    `}
+                    style={{
+                      backgroundColor: isSelected ? option.color : undefined,
+                    }}
+                  >
+                    {option.label}
+                  </button>
+                );
+              })}
             </div>
           </div>
         </CardHeader>
         <CardContent>
           <ResponsiveContainer width="100%" height={280}>
-            <LineChart data={evolucaoData}>
-              <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
-              <XAxis dataKey="date" fontSize={11} />
-              <YAxis domain={[-100, 100]} fontSize={11} />
-              <Tooltip />
+            <AreaChart data={evolucaoData}>
+              <defs>
+                <linearGradient id="gradientGeral" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor={COLORS.geral} stopOpacity={0.4}/>
+                  <stop offset="95%" stopColor={COLORS.geral} stopOpacity={0.05}/>
+                </linearGradient>
+                <linearGradient id="gradientPosInstalacao" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor={COLORS.pos_instalacao} stopOpacity={0.4}/>
+                  <stop offset="95%" stopColor={COLORS.pos_instalacao} stopOpacity={0.05}/>
+                </linearGradient>
+                <linearGradient id="gradientPosOs" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor={COLORS.pos_os} stopOpacity={0.4}/>
+                  <stop offset="95%" stopColor={COLORS.pos_os} stopOpacity={0.05}/>
+                </linearGradient>
+                <linearGradient id="gradientPosAtendimento" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor={COLORS.pos_atendimento} stopOpacity={0.4}/>
+                  <stop offset="95%" stopColor={COLORS.pos_atendimento} stopOpacity={0.05}/>
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" className="opacity-20" />
+              <XAxis dataKey="date" fontSize={11} tickLine={false} axisLine={false} />
+              <YAxis domain={[-100, 100]} fontSize={11} tickLine={false} axisLine={false} />
+              <Tooltip 
+                contentStyle={{ 
+                  backgroundColor: 'hsl(var(--card))', 
+                  border: '1px solid hsl(var(--border))',
+                  borderRadius: '8px',
+                  boxShadow: '0 4px 12px rgba(0,0,0,0.15)'
+                }}
+              />
               {selectedFilters.includes("geral") && (
-                <Line 
+                <Area 
                   type="monotone" 
                   dataKey="geral" 
                   name="Geral"
                   stroke={COLORS.geral}
                   strokeWidth={2}
-                  dot={{ fill: COLORS.geral, r: 3 }}
+                  fill="url(#gradientGeral)"
                   connectNulls
                 />
               )}
               {selectedFilters.includes("pos_instalacao") && (
-                <Line 
+                <Area 
                   type="monotone" 
                   dataKey="pos_instalacao" 
                   name="Pós-Instalação"
                   stroke={COLORS.pos_instalacao}
                   strokeWidth={2}
-                  dot={{ fill: COLORS.pos_instalacao, r: 3 }}
+                  fill="url(#gradientPosInstalacao)"
                   connectNulls
                 />
               )}
               {selectedFilters.includes("pos_os") && (
-                <Line 
+                <Area 
                   type="monotone" 
                   dataKey="pos_os" 
                   name="Pós-O.S"
                   stroke={COLORS.pos_os}
                   strokeWidth={2}
-                  dot={{ fill: COLORS.pos_os, r: 3 }}
+                  fill="url(#gradientPosOs)"
                   connectNulls
                 />
               )}
               {selectedFilters.includes("pos_atendimento") && (
-                <Line 
+                <Area 
                   type="monotone" 
                   dataKey="pos_atendimento" 
                   name="Pós-Atendimento"
                   stroke={COLORS.pos_atendimento}
                   strokeWidth={2}
-                  dot={{ fill: COLORS.pos_atendimento, r: 3 }}
+                  fill="url(#gradientPosAtendimento)"
                   connectNulls
                 />
               )}
@@ -219,7 +248,7 @@ export const NPSCharts = memo(({ respostas }: NPSChartsProps) => {
                   formatter={(value) => <span className="text-xs">{value}</span>}
                 />
               )}
-            </LineChart>
+            </AreaChart>
           </ResponsiveContainer>
         </CardContent>
       </Card>
