@@ -1,5 +1,5 @@
 import { Card } from "@/components/ui/card";
-import { LucideIcon, TrendingUp, TrendingDown } from "lucide-react";
+import { LucideIcon, TrendingUp, TrendingDown, Smile, Meh, Frown } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface NPSKPICardProps {
@@ -9,15 +9,16 @@ interface NPSKPICardProps {
   icon: LucideIcon;
 }
 
-function getNPSStatus(value: number): { label: string; variant: string } {
-  if (value >= 75) return { label: "Excelente", variant: "success" };
-  if (value >= 50) return { label: "Bom", variant: "default" };
-  if (value >= 0) return { label: "Alerta", variant: "warning" };
-  return { label: "Crítico", variant: "destructive" };
+function getNPSStatus(value: number): { label: string; variant: string; FaceIcon: LucideIcon } {
+  if (value >= 75) return { label: "Excelente", variant: "success", FaceIcon: Smile };
+  if (value >= 50) return { label: "Bom", variant: "default", FaceIcon: Smile };
+  if (value >= 0) return { label: "Alerta", variant: "warning", FaceIcon: Meh };
+  return { label: "Crítico", variant: "destructive", FaceIcon: Frown };
 }
 
 export function NPSKPICard({ title, value, trend, icon: Icon }: NPSKPICardProps) {
   const status = getNPSStatus(value);
+  const { FaceIcon } = status;
   
   const variantClasses = {
     success: "border-l-4 border-l-success bg-success/5",
@@ -33,6 +34,13 @@ export function NPSKPICard({ title, value, trend, icon: Icon }: NPSKPICardProps)
     destructive: "bg-destructive/10 text-destructive",
   };
 
+  const faceClasses = {
+    success: "text-success",
+    default: "text-primary",
+    warning: "text-warning",
+    destructive: "text-destructive",
+  };
+
   return (
     <Card className={cn("p-4", variantClasses[status.variant as keyof typeof variantClasses])}>
       <div className="flex items-start justify-between">
@@ -40,6 +48,7 @@ export function NPSKPICard({ title, value, trend, icon: Icon }: NPSKPICardProps)
           <p className="text-sm font-medium text-muted-foreground">{title}</p>
           <div className="flex items-baseline gap-2">
             <span className="text-3xl font-bold">{value}</span>
+            <FaceIcon className={cn("h-7 w-7", faceClasses[status.variant as keyof typeof faceClasses])} />
             {trend !== undefined && (
               <span className={cn(
                 "flex items-center text-sm font-medium",
