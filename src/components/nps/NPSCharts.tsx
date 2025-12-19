@@ -25,10 +25,10 @@ const COLORS = {
   promotor: "hsl(142, 71%, 45%)",
   neutro: "hsl(38, 92%, 50%)",
   detrator: "hsl(0, 84%, 60%)",
-  geral: "hsl(25, 95%, 53%)",        // Laranja - bem distinto
-  pos_instalacao: "hsl(199, 89%, 48%)", // Ciano/Azul claro
-  pos_os: "hsl(280, 87%, 60%)",      // Roxo vibrante
-  pos_atendimento: "hsl(142, 71%, 45%)", // Verde
+  geral: "hsl(221, 83%, 53%)",           // Azul
+  pos_instalacao: "hsl(142, 71%, 45%)",  // Verde
+  pos_os: "hsl(280, 87%, 60%)",          // Roxo
+  pos_atendimento: "hsl(0, 84%, 60%)",   // Vermelho
 };
 
 const FILTER_OPTIONS = [
