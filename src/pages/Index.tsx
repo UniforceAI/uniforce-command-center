@@ -11,7 +11,7 @@ import { ClientesTable } from "@/components/dashboard/ClientesTable";
 import { ClienteDetailsSheet } from "@/components/dashboard/ClienteDetailsSheet";
 import { PerformanceCharts } from "@/components/dashboard/PerformanceCharts";
 import { InsightsPanel } from "@/components/dashboard/InsightsPanel";
-import { Phone, Clock, RefreshCcw, CheckCircle2, AlertCircle, BarChart3 } from "lucide-react";
+import { Phone, Clock, RefreshCcw, CheckCircle2, AlertCircle } from "lucide-react";
 
 const Index = () => {
   const navigate = useNavigate();
@@ -137,26 +137,6 @@ const Index = () => {
 
     fetchChamados();
 
-    // Configurar realtime para atualizar apenas quando houver novos dados (INSERT)
-    const channel = supabase
-      .channel("chamados-changes")
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "chamados",
-        },
-        () => {
-          console.log("📥 Novos chamados recebidos, recarregando...");
-          fetchChamados();
-        },
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
   }, [user, toast]);
 
   // Aplicar filtros com useMemo
@@ -445,10 +425,6 @@ const Index = () => {
               <p className="text-muted-foreground mt-1">Agy Telecom</p>
             </div>
             <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <BarChart3 className="h-5 w-5" />
-                <span>Atualizado em tempo real</span>
-              </div>
               <Button variant="outline" onClick={handleLogout}>
                 Sair
               </Button>
