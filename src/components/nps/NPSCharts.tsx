@@ -32,37 +32,78 @@ const COLORS = {
   promotor: "hsl(142, 71%, 45%)",
   neutro: "hsl(38, 92%, 50%)",
   detrator: "hsl(0, 84%, 60%)",
+  pos_instalacao: "hsl(221, 83%, 53%)",
+  pos_os: "hsl(262, 83%, 58%)",
+  pos_atendimento: "hsl(142, 71%, 45%)",
 };
 
 export const NPSCharts = memo(({ respostas }: NPSChartsProps) => {
-  const [chartFilter, setChartFilter] = useState("geral");
+  const [chartFilter, setChartFilter] = useState("todos");
 
-  // Evolução do NPS no tempo
+  // Evolução do NPS no tempo - agora suporta múltiplas linhas
   const evolucaoData = useMemo(() => {
-    const byDate: Record<string, { promotores: number; detratores: number; total: number }> = {};
-    
-    const filteredRespostas = chartFilter === "geral" 
-      ? respostas 
-      : respostas.filter(r => r.tipo_nps === chartFilter);
+    const byDate: Record<string, { 
+      pos_instalacao: { promotores: number; detratores: number; total: number };
+      pos_os: { promotores: number; detratores: number; total: number };
+      pos_atendimento: { promotores: number; detratores: number; total: number };
+      geral: { promotores: number; detratores: number; total: number };
+    }> = {};
 
-    filteredRespostas.forEach((r) => {
+    respostas.forEach((r) => {
       if (!byDate[r.data_resposta]) {
-        byDate[r.data_resposta] = { promotores: 0, detratores: 0, total: 0 };
+        byDate[r.data_resposta] = {
+          pos_instalacao: { promotores: 0, detratores: 0, total: 0 },
+          pos_os: { promotores: 0, detratores: 0, total: 0 },
+          pos_atendimento: { promotores: 0, detratores: 0, total: 0 },
+          geral: { promotores: 0, detratores: 0, total: 0 },
+        };
       }
-      byDate[r.data_resposta].total++;
-      if (r.classificacao === "Promotor") byDate[r.data_resposta].promotores++;
-      if (r.classificacao === "Detrator") byDate[r.data_resposta].detratores++;
+      
+      const tipo = r.tipo_nps as keyof typeof byDate[string];
+      byDate[r.data_resposta][tipo].total++;
+      byDate[r.data_resposta].geral.total++;
+      
+      if (r.classificacao === "Promotor") {
+        byDate[r.data_resposta][tipo].promotores++;
+        byDate[r.data_resposta].geral.promotores++;
+      }
+      if (r.classificacao === "Detrator") {
+        byDate[r.data_resposta][tipo].detratores++;
+        byDate[r.data_resposta].geral.detratores++;
+      }
     });
+
+    const calcNPS = (data: { promotores: number; detratores: number; total: number }) => 
+      data.total > 0 ? Math.round(((data.promotores - data.detratores) / data.total) * 100) : null;
 
     return Object.entries(byDate)
       .map(([date, data]) => ({
         date: new Date(date).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }),
-        nps: data.total > 0 
-          ? Math.round(((data.promotores - data.detratores) / data.total) * 100)
-          : 0,
+        dateSort: date,
+        nps_instalacao: calcNPS(data.pos_instalacao),
+        nps_os: calcNPS(data.pos_os),
+        nps_atendimento: calcNPS(data.pos_atendimento),
+        nps_geral: calcNPS(data.geral),
       }))
-      .sort((a, b) => a.date.localeCompare(b.date));
-  }, [respostas, chartFilter]);
+      .sort((a, b) => a.dateSort.localeCompare(b.dateSort));
+  }, [respostas]);
+
+  // Dados filtrados para gráfico de linha única
+  const evolucaoDataFiltered = useMemo(() => {
+    if (chartFilter === "todos") return evolucaoData;
+    
+    const keyMap: Record<string, string> = {
+      geral: "nps_geral",
+      pos_instalacao: "nps_instalacao",
+      pos_os: "nps_os",
+      pos_atendimento: "nps_atendimento",
+    };
+    
+    return evolucaoData.map(d => ({
+      ...d,
+      nps: d[keyMap[chartFilter] as keyof typeof d],
+    }));
+  }, [evolucaoData, chartFilter]);
 
   // Comparação entre tipos
   const comparacaoData = useMemo(() => {
@@ -107,6 +148,7 @@ export const NPSCharts = memo(({ respostas }: NPSChartsProps) => {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value="todos">Todos</SelectItem>
                 <SelectItem value="geral">Geral</SelectItem>
                 <SelectItem value="pos_instalacao">Pós-Instalação</SelectItem>
                 <SelectItem value="pos_os">Pós-O.S</SelectItem>
@@ -117,18 +159,56 @@ export const NPSCharts = memo(({ respostas }: NPSChartsProps) => {
         </CardHeader>
         <CardContent>
           <ResponsiveContainer width="100%" height={200}>
-            <LineChart data={evolucaoData}>
+            <LineChart data={chartFilter === "todos" ? evolucaoData : evolucaoDataFiltered}>
               <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
               <XAxis dataKey="date" fontSize={11} />
               <YAxis domain={[-100, 100]} fontSize={11} />
               <Tooltip />
-              <Line 
-                type="monotone" 
-                dataKey="nps" 
-                stroke="hsl(var(--primary))" 
-                strokeWidth={2}
-                dot={{ fill: "hsl(var(--primary))" }}
-              />
+              {chartFilter === "todos" ? (
+                <>
+                  <Line 
+                    type="monotone" 
+                    dataKey="nps_instalacao" 
+                    name="Pós-Instalação"
+                    stroke={COLORS.pos_instalacao}
+                    strokeWidth={2}
+                    dot={{ fill: COLORS.pos_instalacao, r: 3 }}
+                    connectNulls
+                  />
+                  <Line 
+                    type="monotone" 
+                    dataKey="nps_os" 
+                    name="Pós-O.S"
+                    stroke={COLORS.pos_os}
+                    strokeWidth={2}
+                    dot={{ fill: COLORS.pos_os, r: 3 }}
+                    connectNulls
+                  />
+                  <Line 
+                    type="monotone" 
+                    dataKey="nps_atendimento" 
+                    name="Pós-Atendimento"
+                    stroke={COLORS.pos_atendimento}
+                    strokeWidth={2}
+                    dot={{ fill: COLORS.pos_atendimento, r: 3 }}
+                    connectNulls
+                  />
+                  <Legend 
+                    verticalAlign="bottom" 
+                    height={36}
+                    formatter={(value) => <span className="text-xs">{value}</span>}
+                  />
+                </>
+              ) : (
+                <Line 
+                  type="monotone" 
+                  dataKey="nps" 
+                  stroke="hsl(var(--primary))" 
+                  strokeWidth={2}
+                  dot={{ fill: "hsl(var(--primary))" }}
+                  connectNulls
+                />
+              )}
             </LineChart>
           </ResponsiveContainer>
         </CardContent>
