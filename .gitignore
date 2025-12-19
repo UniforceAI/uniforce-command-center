@@ -1,0 +1,157 @@
+# ============================================
+# ARQUIVOS DE CONFIGURAÇÃO E CREDENCIAIS
+# ============================================
+# NUNCA commitar estes arquivos!
+
+# Arquivo de ambiente com credenciais
+.env
+.env.local
+.env.*.local
+
+# Backups de configuração (podem conter credenciais)
+backups/
+*.backup
+*.bak
+
+# Logs que podem conter informações sensíveis
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ============================================
+# DEPENDÊNCIAS
+# ============================================
+
+# Node modules
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# ============================================
+# ARQUIVOS DO SISTEMA OPERACIONAL
+# ============================================
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+*.stackdump
+[Dd]esktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msix
+*.msm
+*.msp
+*.lnk
+
+# Linux
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*
+
+# ============================================
+# IDEs e EDITORES
+# ============================================
+
+# Visual Studio Code
+.vscode/
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.code-workspace
+
+# JetBrains IDEs
+.idea/
+*.iml
+*.iws
+*.ipr
+out/
+
+# Sublime Text
+*.sublime-workspace
+*.sublime-project
+
+# ============================================
+# ARQUIVOS TEMPORÁRIOS E CACHE
+# ============================================
+
+# Cache de build
+.cache/
+dist/
+build/
+tmp/
+temp/
+
+# Coverage e testes
+coverage/
+.nyc_output/
+*.lcov
+
+# ============================================
+# ARQUIVOS ESPECÍFICOS DO PROJETO
+# ============================================
+
+# Screenshots temporários (manter apenas os essenciais)
+screenshots/temp/
+
+# Downloads temporários
+downloads/temp/
+
+# Arquivos de análise local
+*.local.md
+TEMP_*.md
+
+# ============================================
+# SEGURANÇA
+# ============================================
+
+# Chaves privadas
+*.key
+*.pem
+*.p12
+*.pfx
+*.cer
+*.crt
+*.der
+
+# Certificados
+certificates/
+
+# Tokens e secrets
+secrets/
+.secrets
+*.secret
+
+# ============================================
+# IMPORTANTE: ARQUIVOS QUE DEVEM SER COMMITADOS
+# ============================================
+# .env.example - Template de configuração (SEM credenciais)
+# README.md - Documentação
+# package.json - Dependências
+# Código fonte - Todos os arquivos .js, .ts, etc.
