@@ -10,6 +10,22 @@ const EventosDebug = () => {
   useEffect(() => {
     const fetchEventos = async () => {
       try {
+        // Primeiro, buscar sem filtro para ver os isp_ids disponíveis
+        console.log("🔍 Buscando TODOS os dados da tabela 'eventos' (sem filtro)...");
+        
+        const { data: allData, error: allError } = await externalSupabase
+          .from("eventos")
+          .select("*")
+          .limit(20);
+
+        if (allError) {
+          console.error("❌ Erro ao buscar todos:", allError);
+        } else {
+          console.log("📋 ISP_IDs encontrados:", [...new Set(allData?.map(e => e.isp_id))]);
+          console.log("✅ Dados (primeiros 20):", allData);
+        }
+        
+        // Agora buscar com filtro d-kiros
         console.log("🔍 Buscando dados da tabela 'eventos' para isp_id='d-kiros'...");
         
         const { data: eventosData, error: eventosError } = await externalSupabase
