@@ -1,19 +1,24 @@
 import { useState, useMemo, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { externalSupabase, ISP_ID } from "@/integrations/supabase/external-client";
 import type { User } from "@supabase/supabase-js";
 import { Button } from "@/components/ui/button";
-import { ThumbsUp, Gauge, Wrench, Headphones } from "lucide-react";
+import { ThumbsUp, Gauge, Wrench, Headphones, AlertCircle } from "lucide-react";
 import { NPSFilters } from "@/components/nps/NPSFilters";
 import { NPSKPICard } from "@/components/nps/NPSKPICard";
 import { NPSCharts } from "@/components/nps/NPSCharts";
 import { NPSTable } from "@/components/nps/NPSTable";
 import { NPSInsightsPanel } from "@/components/nps/NPSInsightsPanel";
-import { mockNPSData } from "@/lib/mockDataNPS";
+import { RespostaNPS, ClassificacaoNPS, TipoNPS } from "@/types/nps";
+import { useToast } from "@/hooks/use-toast";
 
 const NPS = () => {
   const navigate = useNavigate();
+  const { toast } = useToast();
   const [user, setUser] = useState<User | null>(null);
+  const [respostasNPS, setRespostasNPS] = useState<RespostaNPS[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
   // Filtros
   const [periodo, setPeriodo] = useState("30");
@@ -39,9 +44,76 @@ const NPS = () => {
     return () => subscription.unsubscribe();
   }, [navigate]);
 
+  // Função para mapear tipo_nps do banco para o formato esperado
+  const mapTipoNPS = (tipo: string): TipoNPS => {
+    const tipoLower = tipo?.toLowerCase() || "";
+    if (tipoLower.includes("instalacao") || tipoLower.includes("instalação")) return "pos_instalacao";
+    if (tipoLower.includes("os") || tipoLower.includes("o.s")) return "pos_os";
+    if (tipoLower.includes("atendimento")) return "pos_atendimento";
+    return "pos_atendimento"; // default
+  };
+
+  // Função para calcular classificação baseada na nota
+  const calcClassificacao = (nota: number): ClassificacaoNPS => {
+    if (nota <= 6) return "Detrator";
+    if (nota <= 8) return "Neutro";
+    return "Promotor";
+  };
+
+  // Buscar dados do Supabase externo - tabela nps-check
+  useEffect(() => {
+    if (!user) return;
+
+    const fetchNPSData = async () => {
+      try {
+        setIsLoading(true);
+        console.log("🔄 Buscando dados NPS do Supabase externo...");
+        console.log(`🏢 Filtro multi-tenant: isp_id = ${ISP_ID}`);
+        console.log(`📊 Tabela: nps-check`);
+
+        const { data, error } = await externalSupabase
+          .from("nps-check")
+          .select("*")
+          .eq("isp_id", ISP_ID)
+          .order("data_resposta", { ascending: false });
+
+        if (error) throw error;
+
+        console.log(`✅ ${data?.length || 0} respostas NPS encontradas`);
+
+        // Transformar dados do banco para o formato esperado
+        const respostasTransformadas: RespostaNPS[] = (data || []).map((item: any) => {
+          const nota = Number(item.nota) || 0;
+          return {
+            cliente_id: item.cliente_id || item.id_cliente || 0,
+            cliente_nome: item.cliente_nome || item.solicitante || "N/A",
+            tipo_nps: mapTipoNPS(item.tipo_nps || item.tipo || ""),
+            nota,
+            classificacao: calcClassificacao(nota),
+            comentario: item.comentario || item.observacao || "",
+            data_resposta: item.data_resposta || new Date().toISOString().split('T')[0],
+          };
+        });
+
+        setRespostasNPS(respostasTransformadas);
+      } catch (error: any) {
+        console.error("❌ Erro ao buscar dados NPS:", error);
+        toast({
+          title: "Erro ao carregar dados NPS",
+          description: error.message || "Não foi possível carregar os dados. Tente novamente.",
+          variant: "destructive",
+        });
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchNPSData();
+  }, [user, toast]);
+
   // Aplicar filtros
   const filteredRespostas = useMemo(() => {
-    let filtered = [...mockNPSData];
+    let filtered = [...respostasNPS];
 
     // Filtro por período
     if (periodo !== "todos") {
@@ -62,11 +134,11 @@ const NPS = () => {
     }
 
     return filtered;
-  }, [periodo, tipoNPS, classificacao]);
+  }, [respostasNPS, periodo, tipoNPS, classificacao]);
 
   // Calcular KPIs
   const kpis = useMemo(() => {
-    const calcNPS = (respostas: typeof mockNPSData) => {
+    const calcNPS = (respostas: RespostaNPS[]) => {
       if (respostas.length === 0) return 0;
       const promotores = respostas.filter(r => r.classificacao === "Promotor").length;
       const detratores = respostas.filter(r => r.classificacao === "Detrator").length;
@@ -116,6 +188,25 @@ const NPS = () => {
       </header>
 
       <main className="container mx-auto px-6 py-8 space-y-8">
+        {isLoading ? (
+          <div className="flex items-center justify-center py-12">
+            <div className="text-center space-y-4">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
+              <p className="text-muted-foreground">Carregando dados NPS...</p>
+            </div>
+          </div>
+        ) : respostasNPS.length === 0 ? (
+          <div className="flex items-center justify-center py-12">
+            <div className="text-center space-y-4">
+              <AlertCircle className="h-12 w-12 text-muted-foreground mx-auto" />
+              <div>
+                <h3 className="text-lg font-semibold">Nenhuma resposta NPS encontrada</h3>
+                <p className="text-muted-foreground">Aguardando dados da tabela nps-check...</p>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <>
         {/* Filtros */}
         <NPSFilters
           periodo={periodo}
@@ -171,6 +262,8 @@ const NPS = () => {
           <h2 className="text-2xl font-bold mb-4">📋 Respostas NPS</h2>
           <NPSTable respostas={filteredRespostas} />
         </div>
+          </>
+        )}
       </main>
     </div>
   );

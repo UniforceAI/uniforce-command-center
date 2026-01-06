@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { Chamado } from "@/types/chamado";
 import { supabase } from "@/integrations/supabase/client";
+import { externalSupabase, ISP_ID } from "@/integrations/supabase/external-client";
 import type { User } from "@supabase/supabase-js";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
@@ -54,16 +55,18 @@ const Index = () => {
     const fetchChamados = async () => {
       try {
         setIsLoading(true);
-        console.log("🔄 Buscando chamados do banco...");
+        console.log("🔄 Buscando chamados do Supabase externo...");
+        console.log(`🏢 Filtro multi-tenant: isp_id = ${ISP_ID}`);
 
-        // Primeiro, obter a contagem total
-        const { count: totalCount, error: countError } = await supabase
+        // Primeiro, obter a contagem total com filtro isp_id
+        const { count: totalCount, error: countError } = await externalSupabase
           .from("chamados")
-          .select("*", { count: "exact", head: true });
+          .select("*", { count: "exact", head: true })
+          .eq("isp_id", ISP_ID);
 
         if (countError) throw countError;
 
-        console.log(`📊 Total de registros no banco: ${totalCount}`);
+        console.log(`📊 Total de registros no banco (${ISP_ID}): ${totalCount}`);
 
         // Buscar em batches de 1000
         const BATCH_SIZE = 1000;
@@ -76,9 +79,10 @@ const Index = () => {
           
           console.log(`📥 Buscando batch ${i + 1}/${totalBatches} (${start}-${end})...`);
           
-          const { data, error } = await supabase
+          const { data, error } = await externalSupabase
             .from("chamados")
             .select("*")
+            .eq("isp_id", ISP_ID)
             .order("data_abertura", { ascending: false })
             .range(start, end);
 
