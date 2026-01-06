@@ -1,4 +1,4 @@
-import { AlertTriangle, ThumbsUp } from "lucide-react";
+import { AlertTriangle, ThumbsUp, LayoutDashboard, DollarSign, TrendingDown } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
 import {
   Sidebar,
@@ -13,7 +13,10 @@ import {
 } from "@/components/ui/sidebar";
 
 const menuItems = [
-  { title: "Churn Alert", url: "/", icon: AlertTriangle },
+  { title: "Visão Geral", url: "/visao-geral", icon: LayoutDashboard },
+  { title: "Financeiro", url: "/financeiro", icon: DollarSign },
+  { title: "Chamados Frequentes", url: "/", icon: AlertTriangle },
+  { title: "Churn & Retenção", url: "/churn-retencao", icon: TrendingDown },
   { title: "NPS", url: "/nps", icon: ThumbsUp },
 ];
 
@@ -27,7 +30,7 @@ export function AppSidebar() {
       <SidebarContent className="pt-4">
         <SidebarGroup>
           <SidebarGroupLabel className={collapsed ? "sr-only" : ""}>
-            Monitor OPS
+            Command Center
           </SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>

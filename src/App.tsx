@@ -8,7 +8,9 @@ import Index from "./pages/Index";
 import NPS from "./pages/NPS";
 import Auth from "./pages/Auth";
 import NotFound from "./pages/NotFound";
-import EventosDebug from "./pages/EventosDebug";
+import VisaoGeral from "./pages/VisaoGeral";
+import Financeiro from "./pages/Financeiro";
+import ChurnRetencao from "./pages/ChurnRetencao";
 
 const queryClient = new QueryClient();
 
@@ -20,12 +22,35 @@ const App = () => (
       <BrowserRouter>
         <Routes>
           <Route path="/auth" element={<Auth />} />
-          <Route path="/eventos-debug" element={<EventosDebug />} />
           <Route
             path="/"
             element={
               <MainLayout>
                 <Index />
+              </MainLayout>
+            }
+          />
+          <Route
+            path="/visao-geral"
+            element={
+              <MainLayout>
+                <VisaoGeral />
+              </MainLayout>
+            }
+          />
+          <Route
+            path="/financeiro"
+            element={
+              <MainLayout>
+                <Financeiro />
+              </MainLayout>
+            }
+          />
+          <Route
+            path="/churn-retencao"
+            element={
+              <MainLayout>
+                <ChurnRetencao />
               </MainLayout>
             }
           />
@@ -37,7 +62,6 @@ const App = () => (
               </MainLayout>
             }
           />
-          {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
