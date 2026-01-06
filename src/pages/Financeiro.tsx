@@ -18,7 +18,8 @@ import {
   CreditCard,
   Calendar,
   Percent,
-  Clock
+  Clock,
+  Users
 } from "lucide-react";
 import {
   BarChart,
@@ -63,35 +64,27 @@ const Financeiro = () => {
     return () => subscription.unsubscribe();
   }, [navigate]);
 
-  // Filtrar eventos financeiros
+  // Filtrar eventos financeiros (COBRANCA)
   const eventosFinanceiros = useMemo(() => {
-    return eventos.filter(e => {
-      const tipo = (e.tipo_evento || e.tipo || e.categoria || "").toLowerCase();
-      return tipo.includes("financ") || 
-             tipo.includes("pagamento") || 
-             tipo.includes("cobranca") ||
-             tipo.includes("fatura") ||
-             tipo.includes("boleto") ||
-             tipo.includes("inadimpl") ||
-             e.valor !== undefined;
-    });
+    return eventos.filter(e => e.event_type === "COBRANCA");
   }, [eventos]);
 
   // Extrair opções dinâmicas
   const filterOptions = useMemo(() => {
     const planos = new Set<string>();
     const metodos = new Set<string>();
+    const statusCobranca = new Set<string>();
 
     eventosFinanceiros.forEach((e) => {
-      if (e.plano) planos.add(e.plano);
-      if (e.plano_atual) planos.add(e.plano_atual);
-      if (e.metodo_pagamento) metodos.add(e.metodo_pagamento);
-      if (e.forma_pagamento) metodos.add(e.forma_pagamento);
+      if (e.plano_nome) planos.add(e.plano_nome);
+      if (e.metodo_cobranca) metodos.add(e.metodo_cobranca);
+      if (e.cobranca_status) statusCobranca.add(e.cobranca_status);
     });
 
     return {
       planos: Array.from(planos).sort(),
       metodos: Array.from(metodos).sort(),
+      statusCobranca: Array.from(statusCobranca).sort(),
     };
   }, [eventosFinanceiros]);
 
@@ -105,18 +98,18 @@ const Financeiro = () => {
       dataLimite.setDate(dataLimite.getDate() - diasAtras);
 
       filtered = filtered.filter((e) => {
-        const dataEvento = e.data_evento || e.created_at || e.data || e.vencimento;
+        const dataEvento = e.event_datetime || e.data_vencimento;
         if (!dataEvento) return true;
         return new Date(dataEvento) >= dataLimite;
       });
     }
 
     if (plano !== "todos") {
-      filtered = filtered.filter((e) => (e.plano || e.plano_atual) === plano);
+      filtered = filtered.filter((e) => e.plano_nome === plano);
     }
 
     if (metodo !== "todos") {
-      filtered = filtered.filter((e) => (e.metodo_pagamento || e.forma_pagamento) === metodo);
+      filtered = filtered.filter((e) => e.metodo_cobranca === metodo);
     }
 
     return filtered;
@@ -124,84 +117,63 @@ const Financeiro = () => {
 
   // Calcular KPIs
   const kpis = useMemo(() => {
-    const temValor = filteredEventos.some(e => e.valor !== undefined);
-    const temDiasAtraso = filteredEventos.some(e => e.dias_atraso !== undefined);
-    const temStatus = filteredEventos.some(e => e.status !== undefined);
-
-    // Contar por status (tentativas genéricas)
-    const vencidos = filteredEventos.filter(e => {
-      const status = (e.status || "").toLowerCase();
-      return status.includes("vencid") || status.includes("atrasad") || 
-             (e.dias_atraso && Number(e.dias_atraso) > 0);
-    });
-
-    const recuperados = filteredEventos.filter(e => {
-      const status = (e.status || "").toLowerCase();
-      return status.includes("recuperad") || status.includes("pago") || status.includes("quitad");
-    });
-
-    const emAberto = filteredEventos.filter(e => {
-      const status = (e.status || "").toLowerCase();
-      return status.includes("aberto") || status.includes("pendente") || status.includes("aguard");
-    });
-
-    // Valores
-    const valorVencido = temValor 
-      ? vencidos.reduce((acc, e) => acc + (Number(e.valor) || 0), 0)
-      : null;
+    // Clientes únicos
+    const clientesUnicos = new Set(filteredEventos.map(e => e.cliente_id)).size;
     
-    const valorRecuperado = temValor
-      ? recuperados.reduce((acc, e) => acc + (Number(e.valor) || 0), 0)
-      : null;
-
-    const valorAberto = temValor
-      ? emAberto.reduce((acc, e) => acc + (Number(e.valor) || 0), 0)
-      : null;
-
-    const taxaRecuperacao = valorVencido && valorRecuperado
-      ? ((valorRecuperado / (valorVencido + valorRecuperado)) * 100).toFixed(1)
-      : null;
+    // Cobranças por status usando os campos reais
+    const vencidos = filteredEventos.filter(e => e.vencido === true || e.dias_atraso > 0);
+    const aVencer = filteredEventos.filter(e => e.cobranca_status === "A Vencer" && !e.vencido);
+    const pagos = filteredEventos.filter(e => e.data_pagamento || e.cobranca_status === "Pago");
+    
+    // Valores usando valor_cobranca
+    const valorVencido = vencidos.reduce((acc, e) => acc + (e.valor_cobranca || e.valor_mensalidade || 0), 0);
+    const valorAVencer = aVencer.reduce((acc, e) => acc + (e.valor_cobranca || e.valor_mensalidade || 0), 0);
+    const valorPago = pagos.reduce((acc, e) => acc + (e.valor_pago || e.valor_cobranca || 0), 0);
+    const valorTotal = filteredEventos.reduce((acc, e) => acc + (e.valor_cobranca || e.valor_mensalidade || 0), 0);
+    
+    // Taxa de inadimplência
+    const taxaInadimplencia = filteredEventos.length > 0 
+      ? ((vencidos.length / filteredEventos.length) * 100).toFixed(1) 
+      : "0";
+    
+    // Taxa de recuperação (pagos vs vencidos históricos)
+    const taxaRecuperacao = (valorVencido + valorPago) > 0
+      ? ((valorPago / (valorVencido + valorPago)) * 100).toFixed(1)
+      : "0";
+    
+    // Aging - distribuição por dias de atraso
+    const aging = {
+      ate7: vencidos.filter(e => e.dias_atraso >= 1 && e.dias_atraso <= 7).length,
+      ate15: vencidos.filter(e => e.dias_atraso >= 8 && e.dias_atraso <= 15).length,
+      ate30: vencidos.filter(e => e.dias_atraso >= 16 && e.dias_atraso <= 30).length,
+      ate60: vencidos.filter(e => e.dias_atraso >= 31 && e.dias_atraso <= 60).length,
+      mais60: vencidos.filter(e => e.dias_atraso > 60).length,
+    };
+    
+    // Ticket médio
+    const ticketMedio = filteredEventos.length > 0 
+      ? valorTotal / filteredEventos.length 
+      : 0;
 
     return {
-      totalEventos: filteredEventos.length,
-      cobrancasAbertas: { 
-        valor: emAberto.length, 
-        disponivel: temStatus,
-        tooltip: "Campo 'status' não encontrado"
-      },
-      cobrancasVencidas: { 
-        valor: vencidos.length, 
-        disponivel: temStatus || temDiasAtraso,
-        tooltip: "Campo 'status' ou 'dias_atraso' não encontrado"
-      },
-      valorAberto: {
-        valor: valorAberto !== null ? `R$ ${valorAberto.toLocaleString("pt-BR")}` : "Indisponível",
-        disponivel: valorAberto !== null,
-        tooltip: "Campo 'valor' não encontrado"
-      },
-      valorVencido: {
-        valor: valorVencido !== null ? `R$ ${valorVencido.toLocaleString("pt-BR")}` : "Indisponível",
-        disponivel: valorVencido !== null,
-        tooltip: "Campo 'valor' não encontrado"
-      },
-      valorRecuperado: {
-        valor: valorRecuperado !== null ? `R$ ${valorRecuperado.toLocaleString("pt-BR")}` : "Indisponível",
-        disponivel: valorRecuperado !== null,
-        tooltip: "Campo 'valor' não encontrado"
-      },
-      taxaRecuperacao: {
-        valor: taxaRecuperacao !== null ? `${taxaRecuperacao}%` : "Indisponível",
-        disponivel: taxaRecuperacao !== null,
-        tooltip: "Necessário campo 'valor' e 'status'"
-      },
+      totalCobrancas: filteredEventos.length,
+      clientesUnicos,
+      vencidos: vencidos.length,
+      aVencer: aVencer.length,
+      pagos: pagos.length,
+      valorVencido,
+      valorAVencer,
+      valorPago,
+      valorTotal,
+      taxaInadimplencia,
+      taxaRecuperacao,
+      aging,
+      ticketMedio,
     };
   }, [filteredEventos]);
 
   // Aging (dias de atraso)
   const agingData = useMemo(() => {
-    const temDiasAtraso = filteredEventos.some(e => e.dias_atraso !== undefined);
-    if (!temDiasAtraso) return [];
-
     const faixas = FAIXAS_AGING.map(faixa => ({
       faixa: faixa.label,
       quantidade: 0,
@@ -209,13 +181,13 @@ const Financeiro = () => {
     }));
 
     filteredEventos.forEach(e => {
-      const dias = Number(e.dias_atraso) || 0;
+      const dias = e.dias_atraso || 0;
       if (dias <= 0) return;
 
       const faixaIndex = FAIXAS_AGING.findIndex(f => dias >= f.min && dias <= f.max);
       if (faixaIndex >= 0) {
         faixas[faixaIndex].quantidade++;
-        faixas[faixaIndex].valor += Number(e.valor) || 0;
+        faixas[faixaIndex].valor += e.valor_cobranca || e.valor_mensalidade || 0;
       }
     });
 
@@ -227,49 +199,58 @@ const Financeiro = () => {
     const porPlano: Record<string, { quantidade: number; valor: number }> = {};
 
     filteredEventos
-      .filter(e => {
-        const status = (e.status || "").toLowerCase();
-        return status.includes("vencid") || (e.dias_atraso && Number(e.dias_atraso) > 0);
-      })
+      .filter(e => e.vencido === true || e.dias_atraso > 0)
       .forEach(e => {
-        const plano = e.plano || e.plano_atual || "Sem plano";
-        if (!porPlano[plano]) {
-          porPlano[plano] = { quantidade: 0, valor: 0 };
+        const planoNome = e.plano_nome || "Sem plano";
+        if (!porPlano[planoNome]) {
+          porPlano[planoNome] = { quantidade: 0, valor: 0 };
         }
-        porPlano[plano].quantidade++;
-        porPlano[plano].valor += Number(e.valor) || 0;
+        porPlano[planoNome].quantidade++;
+        porPlano[planoNome].valor += e.valor_cobranca || e.valor_mensalidade || 0;
       });
 
     return Object.entries(porPlano)
       .map(([plano, data]) => ({ plano, ...data }))
       .sort((a, b) => b.valor - a.valor)
-      .slice(0, 5);
+      .slice(0, 8);
   }, [filteredEventos]);
 
-  // Fila de cobrança
+  // Por método de cobrança
+  const porMetodo = useMemo(() => {
+    const metodos: Record<string, { quantidade: number; valor: number }> = {};
+
+    filteredEventos.forEach(e => {
+      const metodo = e.metodo_cobranca || "Não informado";
+      if (!metodos[metodo]) {
+        metodos[metodo] = { quantidade: 0, valor: 0 };
+      }
+      metodos[metodo].quantidade++;
+      metodos[metodo].valor += e.valor_cobranca || e.valor_mensalidade || 0;
+    });
+
+    return Object.entries(metodos)
+      .map(([metodo, data]) => ({ metodo, ...data }))
+      .sort((a, b) => b.quantidade - a.quantidade);
+  }, [filteredEventos]);
+
+  // Fila de cobrança - clientes com maior risco/atraso
   const filaCobranca = useMemo(() => {
     return filteredEventos
-      .filter(e => {
-        const status = (e.status || "").toLowerCase();
-        return status.includes("vencid") || status.includes("aberto") || 
-               (e.dias_atraso && Number(e.dias_atraso) > 0);
-      })
+      .filter(e => e.vencido === true || e.dias_atraso > 0)
       .map(e => ({
-        cliente_id: e.cliente_id || e.id_cliente,
-        cliente_nome: e.cliente_nome || e.nome_cliente || `Cliente ${e.cliente_id || e.id_cliente}`,
-        plano: e.plano || e.plano_atual || "N/A",
-        status: e.status || "Vencido",
-        vencimento: e.vencimento || e.data_vencimento || e.data_evento || "N/A",
-        valor: e.valor ? `R$ ${Number(e.valor).toLocaleString("pt-BR")}` : "N/A",
-        metodo: e.metodo_pagamento || e.forma_pagamento || "N/A",
-        atraso: e.dias_atraso ? `${e.dias_atraso} dias` : "N/A",
+        cliente_id: e.cliente_id,
+        cliente_nome: e.cliente_nome,
+        plano: e.plano_nome,
+        status: e.cobranca_status,
+        vencimento: e.data_vencimento ? new Date(e.data_vencimento).toLocaleDateString("pt-BR") : "N/A",
+        valor: e.valor_cobranca || e.valor_mensalidade || 0,
+        metodo: e.metodo_cobranca || "N/A",
+        dias_atraso: e.dias_atraso || 0,
+        celular: e.cliente_celular,
+        email: e.cliente_email,
       }))
-      .sort((a, b) => {
-        const diasA = parseInt(a.atraso) || 0;
-        const diasB = parseInt(b.atraso) || 0;
-        return diasB - diasA;
-      })
-      .slice(0, 20);
+      .sort((a, b) => b.dias_atraso - a.dias_atraso)
+      .slice(0, 30);
   }, [filteredEventos]);
 
   const filaCobrancaColumns: Column<typeof filaCobranca[0]>[] = [
@@ -277,9 +258,10 @@ const Financeiro = () => {
     { key: "plano", label: "Plano" },
     { key: "status", label: "Status", render: (item) => <StatusBadge status={item.status} /> },
     { key: "vencimento", label: "Vencimento" },
-    { key: "valor", label: "Valor" },
+    { key: "valor", label: "Valor", render: (item) => `R$ ${item.valor.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}` },
     { key: "metodo", label: "Método" },
-    { key: "atraso", label: "Atraso" },
+    { key: "dias_atraso", label: "Dias Atraso", render: (item) => item.dias_atraso > 0 ? `${item.dias_atraso} dias` : "-" },
+    { key: "celular", label: "Celular" },
   ];
 
   const handleLogout = async () => {
@@ -388,59 +370,53 @@ const Financeiro = () => {
             <GlobalFilters filters={filters} />
 
             {/* KPIs */}
-            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-4">
               <KPICardNew
-                title="Total Eventos"
-                value={kpis.totalEventos}
+                title="Total Cobranças"
+                value={kpis.totalCobrancas.toLocaleString()}
                 icon={DollarSign}
                 variant="default"
               />
               <KPICardNew
-                title="Cobranças Abertas"
-                value={kpis.cobrancasAbertas.valor}
-                disponivel={kpis.cobrancasAbertas.disponivel}
-                tooltip={kpis.cobrancasAbertas.tooltip}
+                title="Clientes"
+                value={kpis.clientesUnicos.toLocaleString()}
+                icon={Users}
+                variant="info"
+              />
+              <KPICardNew
+                title="A Vencer"
+                value={kpis.aVencer.toLocaleString()}
                 icon={Clock}
                 variant="warning"
               />
               <KPICardNew
-                title="Cobranças Vencidas"
-                value={kpis.cobrancasVencidas.valor}
-                disponivel={kpis.cobrancasVencidas.disponivel}
-                tooltip={kpis.cobrancasVencidas.tooltip}
+                title="Vencidos"
+                value={kpis.vencidos.toLocaleString()}
                 icon={Calendar}
                 variant="danger"
               />
               <KPICardNew
-                title="R$ em Aberto"
-                value={kpis.valorAberto.valor}
-                disponivel={kpis.valorAberto.disponivel}
-                tooltip={kpis.valorAberto.tooltip}
+                title="R$ A Vencer"
+                value={`R$ ${kpis.valorAVencer.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`}
                 icon={CreditCard}
                 variant="warning"
               />
               <KPICardNew
                 title="R$ Vencido"
-                value={kpis.valorVencido.valor}
-                disponivel={kpis.valorVencido.disponivel}
-                tooltip={kpis.valorVencido.tooltip}
+                value={`R$ ${kpis.valorVencido.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`}
                 icon={TrendingDown}
                 variant="danger"
               />
               <KPICardNew
-                title="R$ Recuperado"
-                value={kpis.valorRecuperado.valor}
-                disponivel={kpis.valorRecuperado.disponivel}
-                tooltip={kpis.valorRecuperado.tooltip}
-                icon={TrendingUp}
-                variant="success"
+                title="% Inadimplência"
+                value={`${kpis.taxaInadimplencia}%`}
+                icon={Percent}
+                variant="danger"
               />
               <KPICardNew
-                title="Taxa Recuperação"
-                value={kpis.taxaRecuperacao.valor}
-                disponivel={kpis.taxaRecuperacao.disponivel}
-                tooltip={kpis.taxaRecuperacao.tooltip}
-                icon={Percent}
+                title="Ticket Médio"
+                value={`R$ ${kpis.ticketMedio.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`}
+                icon={TrendingUp}
                 variant="info"
               />
             </div>
@@ -474,24 +450,84 @@ const Financeiro = () => {
               {/* Vencido por Plano */}
               <Card>
                 <CardHeader>
-                  <CardTitle>📊 Vencido por Plano</CardTitle>
+                  <CardTitle>📊 Vencido por Plano (Top 8)</CardTitle>
                 </CardHeader>
                 <CardContent>
                   {vencidoPorPlano.length > 0 ? (
                     <ResponsiveContainer width="100%" height={250}>
                       <BarChart data={vencidoPorPlano} layout="vertical">
                         <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis type="number" fontSize={12} />
-                        <YAxis dataKey="plano" type="category" fontSize={12} width={100} />
-                        <Tooltip />
-                        <Bar dataKey="quantidade" fill="#f97316" name="Quantidade" />
+                        <XAxis type="number" fontSize={12} tickFormatter={(v) => `R$ ${v.toLocaleString()}`} />
+                        <YAxis dataKey="plano" type="category" fontSize={10} width={150} />
+                        <Tooltip formatter={(v) => `R$ ${Number(v).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`} />
+                        <Bar dataKey="valor" fill="#f97316" name="Valor Vencido" />
                       </BarChart>
                     </ResponsiveContainer>
                   ) : (
                     <p className="text-center text-muted-foreground py-8">
-                      Dados insuficientes para ranking por plano
+                      Nenhuma cobrança vencida
                     </p>
                   )}
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Gráficos Linha 2 */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Por Método de Cobrança */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>💳 Por Método de Cobrança</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {porMetodo.length > 0 ? (
+                    <div className="space-y-3">
+                      {porMetodo.map((m, i) => (
+                        <div key={i} className="flex items-center justify-between p-3 bg-muted rounded-lg">
+                          <div>
+                            <span className="font-medium">{m.metodo}</span>
+                            <span className="text-muted-foreground ml-2">({m.quantidade} cobranças)</span>
+                          </div>
+                          <span className="font-semibold">R$ {m.valor.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-center text-muted-foreground py-8">
+                      Sem dados de métodos
+                    </p>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Resumo por Status */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>📋 Resumo por Status</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="p-4 bg-green-100 dark:bg-green-900/30 rounded-lg">
+                      <p className="text-sm text-muted-foreground">Pagos</p>
+                      <p className="text-2xl font-bold text-green-600">{kpis.pagos.toLocaleString()}</p>
+                      <p className="text-sm text-green-600">R$ {kpis.valorPago.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</p>
+                    </div>
+                    <div className="p-4 bg-yellow-100 dark:bg-yellow-900/30 rounded-lg">
+                      <p className="text-sm text-muted-foreground">A Vencer</p>
+                      <p className="text-2xl font-bold text-yellow-600">{kpis.aVencer.toLocaleString()}</p>
+                      <p className="text-sm text-yellow-600">R$ {kpis.valorAVencer.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</p>
+                    </div>
+                    <div className="p-4 bg-red-100 dark:bg-red-900/30 rounded-lg">
+                      <p className="text-sm text-muted-foreground">Vencidos</p>
+                      <p className="text-2xl font-bold text-red-600">{kpis.vencidos.toLocaleString()}</p>
+                      <p className="text-sm text-red-600">R$ {kpis.valorVencido.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</p>
+                    </div>
+                    <div className="p-4 bg-blue-100 dark:bg-blue-900/30 rounded-lg">
+                      <p className="text-sm text-muted-foreground">Total Geral</p>
+                      <p className="text-2xl font-bold text-blue-600">{kpis.totalCobrancas.toLocaleString()}</p>
+                      <p className="text-sm text-blue-600">R$ {kpis.valorTotal.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</p>
+                    </div>
+                  </div>
                 </CardContent>
               </Card>
             </div>
