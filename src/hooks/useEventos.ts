@@ -17,17 +17,52 @@ export function useEventos() {
         setError(null);
         
         console.log("🔄 Buscando eventos do Supabase externo...");
-        console.log(`🏢 Filtro multi-tenant: isp_id = ${EVENTOS_ISP_ID}`);
+        console.log(`🏢 ISP_ID configurado: ${EVENTOS_ISP_ID}`);
 
-        // Primeiro, obter contagem total
+        // Primeiro, buscar SEM filtro para debug
+        console.log("🔍 Teste 1: Buscando SEM filtro de isp_id...");
+        const { data: testData, error: testError } = await externalSupabase
+          .from("eventos")
+          .select("*")
+          .limit(5);
+
+        if (testError) {
+          console.error("❌ Erro no teste sem filtro:", testError);
+        } else {
+          console.log(`✅ Teste sem filtro: ${testData?.length} registros`);
+          if (testData && testData.length > 0) {
+            console.log("📋 ISP_IDs disponíveis:", [...new Set(testData.map(e => e.isp_id))]);
+            console.log("📋 Exemplo de registro:", testData[0]);
+            console.log("📋 COLUNAS:", Object.keys(testData[0]));
+          }
+        }
+
+        // Agora buscar com filtro
+        console.log(`🔍 Teste 2: Buscando com isp_id = "${EVENTOS_ISP_ID}"...`);
+        
         const { count: totalCount, error: countError } = await externalSupabase
           .from("eventos")
           .select("*", { count: "exact", head: true })
           .eq("isp_id", EVENTOS_ISP_ID);
 
-        if (countError) throw countError;
+        if (countError) {
+          console.error("❌ Erro ao contar:", countError);
+          throw countError;
+        }
 
-        console.log(`📊 Total de eventos no banco (${EVENTOS_ISP_ID}): ${totalCount}`);
+        console.log(`📊 Total de eventos para ${EVENTOS_ISP_ID}: ${totalCount}`);
+
+        // Se não encontrou com filtro mas encontrou sem, o isp_id pode estar errado
+        if (totalCount === 0 && testData && testData.length > 0) {
+          console.warn("⚠️ Dados existem mas não para este isp_id!");
+          console.warn("⚠️ ISP_IDs encontrados:", [...new Set(testData.map(e => e.isp_id))]);
+          
+          // Usar dados sem filtro para debug
+          setColumns(Object.keys(testData[0]));
+          setEventos(testData as Evento[]);
+          setIsLoading(false);
+          return;
+        }
 
         // Buscar em batches de 1000
         const BATCH_SIZE = 1000;
@@ -44,7 +79,7 @@ export function useEventos() {
             .from("eventos")
             .select("*")
             .eq("isp_id", EVENTOS_ISP_ID)
-            .order("created_at", { ascending: false })
+            .order("event_datetime", { ascending: false })
             .range(start, end);
 
           if (error) throw error;
@@ -52,7 +87,6 @@ export function useEventos() {
           if (data && data.length > 0) {
             allData = [...allData, ...data];
             
-            // Salvar colunas do primeiro registro
             if (i === 0) {
               const cols = Object.keys(data[0]);
               setColumns(cols);
