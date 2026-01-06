@@ -8,6 +8,7 @@ import Index from "./pages/Index";
 import NPS from "./pages/NPS";
 import Auth from "./pages/Auth";
 import NotFound from "./pages/NotFound";
+import EventosDebug from "./pages/EventosDebug";
 
 const queryClient = new QueryClient();
 
@@ -19,6 +20,7 @@ const App = () => (
       <BrowserRouter>
         <Routes>
           <Route path="/auth" element={<Auth />} />
+          <Route path="/eventos-debug" element={<EventosDebug />} />
           <Route
             path="/"
             element={
