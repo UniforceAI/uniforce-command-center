@@ -9,6 +9,7 @@ import { useEventos } from "@/hooks/useEventos";
 import { GlobalFilters } from "@/components/shared/GlobalFilters";
 import { KPICardNew } from "@/components/shared/KPICardNew";
 import { DataTable, RiskBadge, Column } from "@/components/shared/DataTable";
+import { Evento } from "@/types/evento";
 import { 
   Users, 
   TrendingDown,
@@ -21,7 +22,10 @@ import {
   Zap,
   Shield,
   UserCheck,
-  RotateCcw
+  RotateCcw,
+  Clock,
+  Percent,
+  Target
 } from "lucide-react";
 import {
   BarChart,
@@ -34,6 +38,9 @@ import {
   Tooltip,
   Legend,
   ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
 } from "recharts";
 import {
   Dialog,
@@ -44,17 +51,19 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 
+const COLORS = ["#22c55e", "#eab308", "#f97316", "#ef4444"];
+
 const ChurnRetencao = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [user, setUser] = useState<User | null>(null);
-  const { eventos, isLoading, error, columns } = useEventos();
+  const { eventos, isLoading, error } = useEventos();
 
   // Filtros
   const [periodo, setPeriodo] = useState("30");
   const [uf, setUf] = useState("todos");
   const [plano, setPlano] = useState("todos");
-  const [driver, setDriver] = useState("todos");
+  const [riscoBucket, setRiscoBucket] = useState("todos");
 
   // Verificar autenticação
   useEffect(() => {
@@ -80,11 +89,9 @@ const ChurnRetencao = () => {
     const ufs = new Set<string>();
     const planos = new Set<string>();
 
-    eventos.forEach((e) => {
-      if (e.uf) ufs.add(e.uf);
-      if (e.estado) ufs.add(e.estado);
-      if (e.plano) planos.add(e.plano);
-      if (e.plano_atual) planos.add(e.plano_atual);
+    eventos.forEach((e: Evento) => {
+      if (e.cliente_uf) ufs.add(e.cliente_uf);
+      if (e.plano_nome) planos.add(e.plano_nome);
     });
 
     return {
@@ -95,7 +102,7 @@ const ChurnRetencao = () => {
 
   // Filtrar eventos
   const filteredEventos = useMemo(() => {
-    let filtered = [...eventos];
+    let filtered = [...eventos] as Evento[];
 
     if (periodo !== "todos") {
       const diasAtras = parseInt(periodo);
@@ -103,199 +110,181 @@ const ChurnRetencao = () => {
       dataLimite.setDate(dataLimite.getDate() - diasAtras);
 
       filtered = filtered.filter((e) => {
-        const dataEvento = e.data_evento || e.created_at || e.data;
-        if (!dataEvento) return true;
-        return new Date(dataEvento) >= dataLimite;
+        if (!e.event_datetime) return true;
+        return new Date(e.event_datetime) >= dataLimite;
       });
     }
 
     if (uf !== "todos") {
-      filtered = filtered.filter((e) => (e.uf || e.estado) === uf);
+      filtered = filtered.filter((e) => e.cliente_uf === uf);
     }
 
     if (plano !== "todos") {
-      filtered = filtered.filter((e) => (e.plano || e.plano_atual) === plano);
+      filtered = filtered.filter((e) => e.plano_nome === plano);
     }
 
     return filtered;
   }, [eventos, periodo, uf, plano]);
 
-  // Classificar eventos por driver de churn
-  const classificarDriver = (evento: any): string => {
-    const tipo = (evento.tipo_evento || evento.tipo || evento.categoria || "").toLowerCase();
-    const motivo = (evento.motivo || evento.descricao || "").toLowerCase();
-
-    if (tipo.includes("financ") || tipo.includes("pagamento") || tipo.includes("cobranca") || 
-        motivo.includes("inadimpl") || motivo.includes("pagamento")) {
-      return "Financeiro";
-    }
-    if (tipo.includes("rede") || tipo.includes("instabilidade") || tipo.includes("conexao") ||
-        tipo.includes("sinal") || motivo.includes("lento") || motivo.includes("queda")) {
-      return "Rede/Instabilidade";
-    }
-    if (tipo.includes("nps") || tipo.includes("detrator") || motivo.includes("insatisf")) {
-      return "NPS Detrator";
-    }
-    return "Outro";
-  };
-
-  // Agrupar por cliente e calcular score de risco
-  const clientesComRisco = useMemo(() => {
-    const porCliente: Record<string, {
-      eventos: typeof filteredEventos;
-      drivers: Record<string, number>;
-      ultimoEvento: any;
-    }> = {};
-
+  // Agrupar por cliente - pegar último registro de cada um
+  const clientesUnicos = useMemo(() => {
+    const clientesMap: Record<number, Evento> = {};
+    
     filteredEventos.forEach(e => {
-      const clienteId = String(e.cliente_id || e.id_cliente || "unknown");
-      if (!porCliente[clienteId]) {
-        porCliente[clienteId] = { eventos: [], drivers: {}, ultimoEvento: e };
-      }
-      porCliente[clienteId].eventos.push(e);
-      
-      const driver = classificarDriver(e);
-      porCliente[clienteId].drivers[driver] = (porCliente[clienteId].drivers[driver] || 0) + 1;
-
-      // Atualizar último evento
-      const dataAtual = new Date(porCliente[clienteId].ultimoEvento.data_evento || porCliente[clienteId].ultimoEvento.created_at || 0);
-      const dataNovo = new Date(e.data_evento || e.created_at || 0);
-      if (dataNovo > dataAtual) {
-        porCliente[clienteId].ultimoEvento = e;
+      if (!clientesMap[e.cliente_id] || 
+          new Date(e.event_datetime) > new Date(clientesMap[e.cliente_id].event_datetime)) {
+        clientesMap[e.cliente_id] = e;
       }
     });
 
-    return Object.entries(porCliente).map(([clienteId, data]) => {
-      const qtdEventos = data.eventos.length;
-      const driverPrincipal = Object.entries(data.drivers)
-        .sort((a, b) => b[1] - a[1])[0]?.[0] || "Outro";
-      
-      // Score baseado em quantidade de eventos e drivers
-      const scoreBase = Math.min(qtdEventos * 15, 60);
-      const scoreDriver = driverPrincipal === "Financeiro" ? 20 : 
-                          driverPrincipal === "Rede/Instabilidade" ? 15 : 
-                          driverPrincipal === "NPS Detrator" ? 25 : 10;
-      const scoreReincidencia = Object.keys(data.drivers).length > 1 ? 15 : 0;
-      
-      const score = Math.min(scoreBase + scoreDriver + scoreReincidencia, 100);
-      
-      return {
-        cliente_id: clienteId,
-        cliente_nome: data.ultimoEvento.cliente_nome || data.ultimoEvento.nome_cliente || `Cliente ${clienteId}`,
-        plano: data.ultimoEvento.plano || data.ultimoEvento.plano_atual || "N/A",
-        cidade: data.ultimoEvento.cidade || data.ultimoEvento.uf || "N/A",
-        qtd_eventos: qtdEventos,
-        driver_principal: driverPrincipal,
-        drivers: data.drivers,
-        score,
-        nivel: score >= 80 ? "Crítico" : score >= 60 ? "Alto" : score >= 40 ? "Médio" : "Baixo",
-        valor_plano: data.ultimoEvento.valor_plano || data.ultimoEvento.valor || null,
-      };
-    });
+    return Object.values(clientesMap);
   }, [filteredEventos]);
 
-  // Filtrar por driver se selecionado
+  // Clientes filtrados por bucket de risco
   const clientesFiltrados = useMemo(() => {
-    if (driver === "todos") return clientesComRisco;
-    return clientesComRisco.filter(c => c.driver_principal === driver);
-  }, [clientesComRisco, driver]);
+    if (riscoBucket === "todos") return clientesUnicos;
+    return clientesUnicos.filter(c => c.churn_risk_bucket === riscoBucket);
+  }, [clientesUnicos, riscoBucket]);
 
   // KPIs
   const kpis = useMemo(() => {
-    const totalClientes = new Set(eventos.map(e => e.cliente_id || e.id_cliente)).size;
-    const clientesEmRisco = clientesFiltrados.filter(c => c.score >= 40).length;
-    const clientesCriticos = clientesFiltrados.filter(c => c.nivel === "Crítico" || c.nivel === "Alto").length;
+    const totalClientes = clientesUnicos.length;
     
-    const temValorPlano = clientesFiltrados.some(c => c.valor_plano !== null);
-    const mrrEmRisco = temValorPlano
-      ? clientesFiltrados
-          .filter(c => c.score >= 40)
-          .reduce((acc, c) => acc + (Number(c.valor_plano) || 0), 0)
+    // Clientes por bucket de risco
+    const clientesBaixo = clientesUnicos.filter(c => c.churn_risk_bucket === "Baixo").length;
+    const clientesMedio = clientesUnicos.filter(c => c.churn_risk_bucket === "Médio").length;
+    const clientesAlto = clientesUnicos.filter(c => c.churn_risk_bucket === "Alto").length;
+    const clientesCritico = clientesUnicos.filter(c => c.churn_risk_bucket === "Crítico").length;
+    
+    const clientesEmRisco = clientesAlto + clientesCritico;
+    const percentualRisco = totalClientes > 0 ? ((clientesEmRisco / totalClientes) * 100).toFixed(1) : "0";
+
+    // MRR em risco (clientes alto + crítico)
+    const mrrEmRisco = clientesUnicos
+      .filter(c => c.churn_risk_bucket === "Alto" || c.churn_risk_bucket === "Crítico")
+      .reduce((acc, c) => acc + (c.valor_mensalidade || 0), 0);
+
+    // LTV em risco
+    const ltvEmRisco = clientesUnicos
+      .filter(c => c.churn_risk_bucket === "Alto" || c.churn_risk_bucket === "Crítico")
+      .reduce((acc, c) => acc + (c.ltv_reais_estimado || 0), 0);
+
+    // Score médio de churn
+    const scoresChurn = clientesUnicos
+      .filter(c => c.churn_risk_score !== undefined)
+      .map(c => c.churn_risk_score!);
+    const churnScoreMedio = scoresChurn.length > 0
+      ? (scoresChurn.reduce((a, b) => a + b, 0) / scoresChurn.length).toFixed(1)
       : null;
 
-    // Verificar se existe evento de cancelamento
-    const temCancelamento = eventos.some(e => {
-      const tipo = (e.tipo_evento || e.tipo || "").toLowerCase();
-      return tipo.includes("cancel") || tipo.includes("rescis") || tipo.includes("churn");
-    });
+    // Inadimplência associada
+    const clientesInadimplentes = clientesUnicos.filter(c => c.dias_atraso > 0).length;
+    const valorInadimplente = clientesUnicos
+      .filter(c => c.dias_atraso > 0)
+      .reduce((acc, c) => acc + (c.valor_cobranca || c.valor_mensalidade || 0), 0);
 
-    const cancelamentos = temCancelamento
-      ? eventos.filter(e => {
-          const tipo = (e.tipo_evento || e.tipo || "").toLowerCase();
-          return tipo.includes("cancel") || tipo.includes("rescis") || tipo.includes("churn");
-        }).length
-      : null;
-
-    const churnRate = temCancelamento && totalClientes > 0
-      ? ((cancelamentos! / totalClientes) * 100).toFixed(2)
-      : null;
+    // Detratores NPS
+    const clientesDetratores = clientesUnicos.filter(c => c.nps_score !== undefined && c.nps_score < 7).length;
 
     return {
-      totalClientes: { valor: totalClientes, disponivel: true },
-      clientesEmRisco: { valor: clientesEmRisco, disponivel: true },
-      percentualRisco: { 
-        valor: totalClientes > 0 ? `${((clientesEmRisco / totalClientes) * 100).toFixed(1)}%` : "0%", 
-        disponivel: true 
-      },
-      churnRescisoes: { 
-        valor: cancelamentos ?? "Indisponível", 
-        disponivel: temCancelamento,
-        tooltip: "Não existe evento de cancelamento/rescisão identificado"
-      },
-      mrrEmRisco: {
-        valor: mrrEmRisco !== null ? `R$ ${mrrEmRisco.toLocaleString("pt-BR")}` : "Indisponível",
-        disponivel: mrrEmRisco !== null,
-        tooltip: "Campo 'valor_plano' não encontrado"
-      },
-      ltvEmRisco: {
-        valor: "Indisponível",
-        disponivel: false,
-        tooltip: "Necessário histórico de cliente e valor de plano"
-      },
-      churnRate: {
-        valor: churnRate !== null ? `${churnRate}%` : "Proxy: % em risco",
-        disponivel: churnRate !== null,
-        tooltip: temCancelamento ? undefined : "Usando % de clientes em risco como proxy (não existe evento de cancelamento)"
-      },
+      totalClientes,
+      clientesEmRisco,
+      percentualRisco,
+      clientesBaixo,
+      clientesMedio,
+      clientesAlto,
+      clientesCritico,
+      mrrEmRisco,
+      ltvEmRisco,
+      churnScoreMedio,
+      clientesInadimplentes,
+      valorInadimplente,
+      clientesDetratores,
     };
-  }, [eventos, clientesFiltrados]);
+  }, [clientesUnicos]);
 
-  // Drivers de Churn (gráfico de barras horizontais)
-  const driversData = useMemo(() => {
+  // Distribuição de Risco
+  const distribuicaoRisco = useMemo(() => {
+    return [
+      { name: "Baixo", value: kpis.clientesBaixo, color: "#22c55e" },
+      { name: "Médio", value: kpis.clientesMedio, color: "#eab308" },
+      { name: "Alto", value: kpis.clientesAlto, color: "#f97316" },
+      { name: "Crítico", value: kpis.clientesCritico, color: "#ef4444" },
+    ].filter(d => d.value > 0);
+  }, [kpis]);
+
+  // Top ações recomendadas
+  const topAcoes = useMemo(() => {
     const contagem: Record<string, number> = {};
     
     clientesFiltrados.forEach(c => {
-      Object.entries(c.drivers).forEach(([driver, count]) => {
-        contagem[driver] = (contagem[driver] || 0) + count;
-      });
+      if (c.acao_recomendada_1) contagem[c.acao_recomendada_1] = (contagem[c.acao_recomendada_1] || 0) + 1;
+      if (c.acao_recomendada_2) contagem[c.acao_recomendada_2] = (contagem[c.acao_recomendada_2] || 0) + 1;
+      if (c.acao_recomendada_3) contagem[c.acao_recomendada_3] = (contagem[c.acao_recomendada_3] || 0) + 1;
     });
 
     return Object.entries(contagem)
-      .map(([name, value]) => ({ name, value }))
-      .sort((a, b) => b.value - a.value);
-  }, [clientesFiltrados]);
-
-  // Top motivos de contato
-  const topMotivos = useMemo(() => {
-    const contagem: Record<string, number> = {};
-    
-    filteredEventos.forEach(e => {
-      const motivo = e.motivo || e.categoria || e.tipo_evento || e.tipo || "Outros";
-      contagem[motivo] = (contagem[motivo] || 0) + 1;
-    });
-
-    return Object.entries(contagem)
-      .map(([motivo, quantidade]) => ({ motivo, quantidade }))
+      .map(([acao, quantidade]) => ({ acao, quantidade }))
       .sort((a, b) => b.quantidade - a.quantidade)
       .slice(0, 10);
-  }, [filteredEventos]);
+  }, [clientesFiltrados]);
+
+  // Top alertas
+  const topAlertas = useMemo(() => {
+    const contagem: Record<string, number> = {};
+    
+    clientesFiltrados.forEach(c => {
+      if (c.alerta_tipo) contagem[c.alerta_tipo] = (contagem[c.alerta_tipo] || 0) + 1;
+    });
+
+    return Object.entries(contagem)
+      .map(([alerta, quantidade]) => ({ alerta, quantidade }))
+      .sort((a, b) => b.quantidade - a.quantidade)
+      .slice(0, 8);
+  }, [clientesFiltrados]);
+
+  // Evolução de score por UF
+  const scorePorUF = useMemo(() => {
+    const ufMap: Record<string, { total: number; soma: number }> = {};
+    
+    clientesUnicos.forEach(c => {
+      if (c.cliente_uf && c.churn_risk_score !== undefined) {
+        if (!ufMap[c.cliente_uf]) ufMap[c.cliente_uf] = { total: 0, soma: 0 };
+        ufMap[c.cliente_uf].total++;
+        ufMap[c.cliente_uf].soma += c.churn_risk_score;
+      }
+    });
+
+    return Object.entries(ufMap)
+      .map(([uf, data]) => ({
+        uf,
+        score_medio: Math.round(data.soma / data.total),
+        clientes: data.total,
+      }))
+      .sort((a, b) => b.score_medio - a.score_medio)
+      .slice(0, 10);
+  }, [clientesUnicos]);
 
   // Fila de risco
   const filaRisco = useMemo(() => {
     return clientesFiltrados
-      .filter(c => c.nivel === "Crítico" || c.nivel === "Alto")
-      .sort((a, b) => b.score - a.score)
-      .slice(0, 15);
+      .filter(c => c.churn_risk_score !== undefined && c.churn_risk_score >= 40)
+      .sort((a, b) => (b.churn_risk_score || 0) - (a.churn_risk_score || 0))
+      .slice(0, 20)
+      .map(c => ({
+        cliente_id: c.cliente_id,
+        cliente_nome: c.cliente_nome,
+        plano: c.plano_nome,
+        cidade: c.cliente_cidade,
+        uf: c.cliente_uf,
+        score: c.churn_risk_score || 0,
+        bucket: c.churn_risk_bucket || "N/A",
+        dias_atraso: c.dias_atraso || 0,
+        valor_mensalidade: c.valor_mensalidade,
+        ltv: c.ltv_reais_estimado,
+        alerta: c.alerta_tipo,
+        acao: c.acao_recomendada_1,
+      }));
   }, [clientesFiltrados]);
 
   const filaRiscoColumns: Column<typeof filaRisco[0]>[] = [
@@ -303,72 +292,53 @@ const ChurnRetencao = () => {
     { key: "plano", label: "Plano" },
     { key: "cidade", label: "Cidade" },
     { key: "score", label: "Score", render: (item) => `${item.score}%` },
-    { key: "nivel", label: "Risco", render: (item) => <RiskBadge level={item.nivel} /> },
-    { key: "driver_principal", label: "Driver Principal" },
-    { key: "qtd_eventos", label: "Eventos" },
+    { key: "bucket", label: "Risco", render: (item) => <RiskBadge level={item.bucket} /> },
+    { key: "dias_atraso", label: "Dias Atraso" },
+    { key: "valor_mensalidade", label: "MRR", render: (item) => `R$ ${(item.valor_mensalidade || 0).toFixed(2)}` },
+    { key: "ltv", label: "LTV", render: (item) => item.ltv ? `R$ ${item.ltv.toLocaleString()}` : "N/A" },
+    { key: "alerta", label: "Alerta" },
+    { key: "acao", label: "Ação Recomendada" },
   ];
 
-  // Playbooks
+  // Playbooks baseados nos dados
   const playbooks = [
     {
-      id: "rede",
-      title: "Playbook Rede",
-      icon: Wifi,
+      id: "critico",
+      title: "🔴 Risco Crítico",
       color: "text-red-500 bg-red-100",
-      descricao: "Ações para clientes com problemas de conexão/instabilidade",
-      criterios: ["Eventos de rede/instabilidade", "Reclamações de lentidão", "Quedas frequentes"],
-      acoes: [
-        "Abrir OS preventiva de manutenção",
-        "Monitorar conexão por 24h",
-        "Priorizar diagnóstico técnico",
-        "Oferecer visita técnica gratuita",
-      ],
-      clientes: clientesFiltrados.filter(c => c.driver_principal === "Rede/Instabilidade").length,
+      descricao: "Clientes com score ≥ 75% - Ação imediata necessária",
+      clientes: kpis.clientesCritico,
+      mrrEmRisco: clientesUnicos
+        .filter(c => c.churn_risk_bucket === "Crítico")
+        .reduce((acc, c) => acc + (c.valor_mensalidade || 0), 0),
     },
     {
-      id: "financeiro",
-      title: "Playbook Financeiro",
-      icon: DollarSign,
+      id: "alto",
+      title: "🟠 Risco Alto",
       color: "text-orange-500 bg-orange-100",
-      descricao: "Ações para clientes com pendências financeiras",
-      criterios: ["Atraso em pagamentos", "Múltiplas cobranças", "Negociações anteriores"],
-      acoes: [
-        "Oferecer PIX com desconto",
-        "Propor parcelamento",
-        "Avaliar bloqueio parcial",
-        "Contato proativo de cobrança",
-      ],
-      clientes: clientesFiltrados.filter(c => c.driver_principal === "Financeiro").length,
+      descricao: "Clientes com score 50-74% - Monitorar de perto",
+      clientes: kpis.clientesAlto,
+      mrrEmRisco: clientesUnicos
+        .filter(c => c.churn_risk_bucket === "Alto")
+        .reduce((acc, c) => acc + (c.valor_mensalidade || 0), 0),
     },
     {
-      id: "experiencia",
-      title: "Playbook Experiência",
-      icon: UserCheck,
-      color: "text-blue-500 bg-blue-100",
-      descricao: "Ações para detratores NPS e insatisfação geral",
-      criterios: ["NPS Detrator", "Reclamações múltiplas", "Feedback negativo"],
-      acoes: [
-        "Retorno imediato do supervisor",
-        "Oferecer desconto de fidelização",
-        "Priorizar próximo atendimento",
-        "Presente/brinde de recuperação",
-      ],
-      clientes: clientesFiltrados.filter(c => c.driver_principal === "NPS Detrator").length,
+      id: "inadimplente",
+      title: "💰 Inadimplentes",
+      color: "text-yellow-500 bg-yellow-100",
+      descricao: "Clientes com dias de atraso > 0",
+      clientes: kpis.clientesInadimplentes,
+      mrrEmRisco: kpis.valorInadimplente,
     },
     {
-      id: "reincidencia",
-      title: "Playbook Reincidência",
-      icon: RotateCcw,
+      id: "detrator",
+      title: "👎 Detratores NPS",
       color: "text-purple-500 bg-purple-100",
-      descricao: "Ações para clientes com múltiplos drivers",
-      criterios: ["Múltiplos tipos de eventos", "Histórico recorrente", "Cliente crônico"],
-      acoes: [
-        "Escalar para N2/Supervisão",
-        "Auditoria completa do contrato",
-        "Diagnóstico técnico + comercial",
-        "Proposta de upgrade/migração",
-      ],
-      clientes: clientesFiltrados.filter(c => Object.keys(c.drivers).length > 1).length,
+      descricao: "Clientes com NPS < 7",
+      clientes: kpis.clientesDetratores,
+      mrrEmRisco: clientesUnicos
+        .filter(c => c.nps_score !== undefined && c.nps_score < 7)
+        .reduce((acc, c) => acc + (c.valor_mensalidade || 0), 0),
     },
   ];
 
@@ -393,11 +363,10 @@ const ChurnRetencao = () => {
     },
     {
       id: "uf",
-      label: "UF/Região",
+      label: "UF",
       value: uf,
       onChange: setUf,
       disabled: filterOptions.ufs.length === 0,
-      tooltip: "Campo UF não encontrado nos dados",
       options: [
         { value: "todos", label: "Todas" },
         ...filterOptions.ufs.map(u => ({ value: u, label: u })),
@@ -409,23 +378,22 @@ const ChurnRetencao = () => {
       value: plano,
       onChange: setPlano,
       disabled: filterOptions.planos.length === 0,
-      tooltip: "Campo Plano não encontrado nos dados",
       options: [
         { value: "todos", label: "Todos" },
         ...filterOptions.planos.map(p => ({ value: p, label: p })),
       ],
     },
     {
-      id: "driver",
-      label: "Driver",
-      value: driver,
-      onChange: setDriver,
+      id: "risco",
+      label: "Nível de Risco",
+      value: riscoBucket,
+      onChange: setRiscoBucket,
       options: [
         { value: "todos", label: "Todos" },
-        { value: "Financeiro", label: "Financeiro" },
-        { value: "Rede/Instabilidade", label: "Rede/Instabilidade" },
-        { value: "NPS Detrator", label: "NPS Detrator" },
-        { value: "Outro", label: "Outro" },
+        { value: "Crítico", label: "Crítico" },
+        { value: "Alto", label: "Alto" },
+        { value: "Médio", label: "Médio" },
+        { value: "Baixo", label: "Baixo" },
       ],
     },
   ];
@@ -441,11 +409,11 @@ const ChurnRetencao = () => {
               <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent">
                 Churn & Retenção
               </h1>
-              <p className="text-muted-foreground mt-1">Identificação e Ação sobre Risco de Churn</p>
+              <p className="text-muted-foreground mt-1">Análise de Risco e Ações de Retenção</p>
             </div>
             <div className="flex items-center gap-4">
               <div className="text-sm text-muted-foreground">
-                {clientesFiltrados.length} clientes analisados
+                {clientesFiltrados.length.toLocaleString()} clientes analisados
               </div>
               <Button variant="outline" onClick={handleLogout}>
                 Sair
@@ -488,186 +456,216 @@ const ChurnRetencao = () => {
             {/* Filtros */}
             <GlobalFilters filters={filters} />
 
-            {/* KPIs */}
-            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
+            {/* KPIs Principais */}
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
               <KPICardNew
                 title="Total Clientes"
-                value={kpis.totalClientes.valor}
+                value={kpis.totalClientes.toLocaleString()}
                 icon={Users}
                 variant="default"
               />
               <KPICardNew
-                title="Clientes em Risco"
-                value={kpis.clientesEmRisco.valor}
-                subtitle={kpis.percentualRisco.valor}
+                title="Em Risco"
+                value={kpis.clientesEmRisco.toLocaleString()}
                 icon={AlertTriangle}
                 variant="danger"
               />
               <KPICardNew
-                title="Churn/Rescisões"
-                value={kpis.churnRescisoes.valor}
-                disponivel={kpis.churnRescisoes.disponivel}
-                tooltip={kpis.churnRescisoes.tooltip}
-                icon={TrendingDown}
-                variant="danger"
+                title="% em Risco"
+                value={`${kpis.percentualRisco}%`}
+                icon={Percent}
+                variant="warning"
+              />
+              <KPICardNew
+                title="Score Médio"
+                value={kpis.churnScoreMedio || "N/A"}
+                icon={Target}
+                variant="info"
               />
               <KPICardNew
                 title="MRR em Risco"
-                value={kpis.mrrEmRisco.valor}
-                disponivel={kpis.mrrEmRisco.disponivel}
-                tooltip={kpis.mrrEmRisco.tooltip}
+                value={`R$ ${kpis.mrrEmRisco.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`}
                 icon={DollarSign}
-                variant="warning"
+                variant="danger"
               />
               <KPICardNew
                 title="LTV em Risco"
-                value={kpis.ltvEmRisco.valor}
-                disponivel={kpis.ltvEmRisco.disponivel}
-                tooltip={kpis.ltvEmRisco.tooltip}
+                value={`R$ ${kpis.ltvEmRisco.toLocaleString("pt-BR", { minimumFractionDigits: 0 })}`}
                 icon={TrendingDown}
                 variant="warning"
               />
+            </div>
+
+            {/* KPIs de Buckets */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <KPICardNew
-                title="Churn Rate"
-                value={kpis.churnRate.valor}
-                disponivel={kpis.churnRate.disponivel}
-                tooltip={kpis.churnRate.tooltip}
-                icon={RefreshCcw}
+                title="🟢 Risco Baixo"
+                value={kpis.clientesBaixo.toLocaleString()}
+                icon={Shield}
+                variant="success"
+              />
+              <KPICardNew
+                title="🟡 Risco Médio"
+                value={kpis.clientesMedio.toLocaleString()}
+                icon={AlertCircle}
+                variant="warning"
+              />
+              <KPICardNew
+                title="🟠 Risco Alto"
+                value={kpis.clientesAlto.toLocaleString()}
+                icon={AlertTriangle}
+                variant="warning"
+              />
+              <KPICardNew
+                title="🔴 Risco Crítico"
+                value={kpis.clientesCritico.toLocaleString()}
+                icon={Zap}
                 variant="danger"
               />
+            </div>
+
+            {/* Playbooks */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              {playbooks.map((pb) => (
+                <Card key={pb.id} className="hover:shadow-lg transition-shadow">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-lg">{pb.title}</CardTitle>
+                    <CardDescription>{pb.descricao}</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-2">
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Clientes:</span>
+                        <span className="font-bold">{pb.clientes.toLocaleString()}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">MRR em Risco:</span>
+                        <span className="font-bold text-destructive">
+                          R$ {pb.mrrEmRisco.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                        </span>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
             </div>
 
             {/* Gráficos */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Drivers de Churn */}
+              {/* Distribuição de Risco */}
               <Card>
                 <CardHeader>
-                  <CardTitle>🎯 Drivers de Churn</CardTitle>
-                  <CardDescription>Principais causas de risco identificadas</CardDescription>
+                  <CardTitle>📊 Distribuição de Risco de Churn</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  {driversData.length > 0 ? (
-                    <ResponsiveContainer width="100%" height={250}>
-                      <BarChart data={driversData} layout="vertical">
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis type="number" fontSize={12} />
-                        <YAxis dataKey="name" type="category" fontSize={12} width={120} />
+                  {distribuicaoRisco.length > 0 ? (
+                    <ResponsiveContainer width="100%" height={300}>
+                      <PieChart>
+                        <Pie
+                          data={distribuicaoRisco}
+                          cx="50%"
+                          cy="50%"
+                          labelLine={false}
+                          label={({ name, value, percent }) => `${name}: ${value} (${(percent * 100).toFixed(0)}%)`}
+                          outerRadius={100}
+                          dataKey="value"
+                        >
+                          {distribuicaoRisco.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={entry.color} />
+                          ))}
+                        </Pie>
                         <Tooltip />
-                        <Bar dataKey="value" fill="#ef4444" name="Eventos" />
-                      </BarChart>
+                      </PieChart>
                     </ResponsiveContainer>
                   ) : (
-                    <p className="text-center text-muted-foreground py-8">
-                      Dados insuficientes para classificar drivers
-                    </p>
+                    <p className="text-center text-muted-foreground py-8">Dados de risco não disponíveis</p>
                   )}
                 </CardContent>
               </Card>
 
-              {/* Top Motivos */}
+              {/* Score por UF */}
               <Card>
                 <CardHeader>
-                  <CardTitle>📋 Top Motivos de Contato</CardTitle>
-                  <CardDescription>Principais categorias de eventos</CardDescription>
+                  <CardTitle>🗺️ Score Médio de Churn por UF</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  {topMotivos.length > 0 ? (
-                    <ResponsiveContainer width="100%" height={250}>
-                      <BarChart data={topMotivos} layout="vertical">
+                  {scorePorUF.length > 0 ? (
+                    <ResponsiveContainer width="100%" height={300}>
+                      <BarChart data={scorePorUF} layout="vertical">
                         <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis type="number" fontSize={12} />
-                        <YAxis dataKey="motivo" type="category" fontSize={12} width={120} />
-                        <Tooltip />
-                        <Bar dataKey="quantidade" fill="#3b82f6" name="Quantidade" />
+                        <XAxis type="number" domain={[0, 100]} fontSize={12} />
+                        <YAxis dataKey="uf" type="category" fontSize={12} width={50} />
+                        <Tooltip formatter={(value) => `${value}%`} />
+                        <Bar dataKey="score_medio" name="Score Médio" fill="#ef4444" radius={[0, 4, 4, 0]} />
                       </BarChart>
                     </ResponsiveContainer>
                   ) : (
-                    <p className="text-center text-muted-foreground py-8">
-                      Dados insuficientes
-                    </p>
+                    <p className="text-center text-muted-foreground py-8">Dados por UF não disponíveis</p>
                   )}
                 </CardContent>
               </Card>
-            </div>
 
-            {/* Playbooks */}
-            <div>
-              <h2 className="text-xl font-bold mb-4">📚 Playbooks de Ação</h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                {playbooks.map((playbook) => (
-                  <Dialog key={playbook.id}>
-                    <DialogTrigger asChild>
-                      <Card className="cursor-pointer hover:shadow-lg transition-shadow">
-                        <CardContent className="p-4">
-                          <div className="flex items-center gap-3 mb-3">
-                            <div className={`p-2 rounded-lg ${playbook.color}`}>
-                              <playbook.icon className="h-5 w-5" />
-                            </div>
-                            <div>
-                              <h3 className="font-semibold">{playbook.title}</h3>
-                              <p className="text-xs text-muted-foreground">{playbook.clientes} clientes</p>
-                            </div>
-                          </div>
-                          <p className="text-sm text-muted-foreground">{playbook.descricao}</p>
-                        </CardContent>
-                      </Card>
-                    </DialogTrigger>
-                    <DialogContent className="max-w-lg">
-                      <DialogHeader>
-                        <DialogTitle className="flex items-center gap-2">
-                          <playbook.icon className="h-5 w-5" />
-                          {playbook.title}
-                        </DialogTitle>
-                        <DialogDescription>{playbook.descricao}</DialogDescription>
-                      </DialogHeader>
-                      <div className="space-y-4">
-                        <div>
-                          <h4 className="font-medium mb-2">📋 Critérios de entrada:</h4>
-                          <ul className="list-disc list-inside text-sm text-muted-foreground space-y-1">
-                            {playbook.criterios.map((c, i) => (
-                              <li key={i}>{c}</li>
-                            ))}
-                          </ul>
-                        </div>
-                        <div>
-                          <h4 className="font-medium mb-2">✅ Ações recomendadas:</h4>
-                          <ul className="list-disc list-inside text-sm space-y-1">
-                            {playbook.acoes.map((a, i) => (
-                              <li key={i}>{a}</li>
-                            ))}
-                          </ul>
-                        </div>
-                        <div className="pt-2 border-t">
-                          <p className="text-sm font-medium">
-                            {playbook.clientes} clientes elegíveis para este playbook
-                          </p>
-                        </div>
-                      </div>
-                    </DialogContent>
-                  </Dialog>
-                ))}
-              </div>
+              {/* Top Ações Recomendadas */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>🎯 Top Ações Recomendadas</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {topAcoes.length > 0 ? (
+                    <ResponsiveContainer width="100%" height={300}>
+                      <BarChart data={topAcoes} layout="vertical">
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis type="number" fontSize={12} />
+                        <YAxis dataKey="acao" type="category" fontSize={10} width={150} />
+                        <Tooltip />
+                        <Bar dataKey="quantidade" name="Clientes" fill="#3b82f6" radius={[0, 4, 4, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  ) : (
+                    <p className="text-center text-muted-foreground py-8">Ações não disponíveis</p>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Top Alertas */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>⚠️ Top Tipos de Alerta</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {topAlertas.length > 0 ? (
+                    <ResponsiveContainer width="100%" height={300}>
+                      <BarChart data={topAlertas} layout="vertical">
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis type="number" fontSize={12} />
+                        <YAxis dataKey="alerta" type="category" fontSize={10} width={150} />
+                        <Tooltip />
+                        <Bar dataKey="quantidade" name="Clientes" fill="#f97316" radius={[0, 4, 4, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  ) : (
+                    <p className="text-center text-muted-foreground py-8">Alertas não disponíveis</p>
+                  )}
+                </CardContent>
+              </Card>
             </div>
 
             {/* Fila de Risco */}
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <AlertTriangle className="h-5 w-5 text-red-500" />
-                  Fila de Risco (Alto/Crítico)
-                </CardTitle>
+                <CardTitle>🚨 Fila de Ação - Clientes em Risco</CardTitle>
+                <CardDescription>
+                  Clientes ordenados por score de churn - priorize ações de retenção
+                </CardDescription>
               </CardHeader>
               <CardContent>
-                <DataTable
-                  data={filaRisco}
-                  columns={filaRiscoColumns}
-                  emptyMessage="Nenhum cliente em risco alto/crítico"
-                  actions={[
-                    { label: "Ver detalhes", onClick: (item) => console.log("Detalhes:", item) },
-                    { label: "Aplicar playbook", onClick: (item) => console.log("Playbook:", item) },
-                    { label: "Abrir chamado", onClick: (item) => console.log("Chamado:", item) },
-                  ]}
-                />
+                {filaRisco.length > 0 ? (
+                  <DataTable columns={filaRiscoColumns} data={filaRisco} />
+                ) : (
+                  <p className="text-center text-muted-foreground py-8">
+                    Nenhum cliente em risco identificado com os filtros atuais
+                  </p>
+                )}
               </CardContent>
             </Card>
           </>
