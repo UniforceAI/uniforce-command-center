@@ -84,10 +84,8 @@ interface CohortTabsProps {
 const CohortTabs = ({ activeTab, onTabChange }: CohortTabsProps) => {
   const tabs = [
     { id: "churn", label: "Churn", icon: "%" },
-    { id: "contratos", label: "Contratos", icon: "📄" },
     { id: "financeiro", label: "Financeiro", icon: "$" },
     { id: "suporte", label: "Suporte", icon: "🎧" },
-    { id: "rede", label: "Rede", icon: "📶" },
     { id: "nps", label: "NPS", icon: "👍" },
     { id: "ltv", label: "LTV", icon: "💰" },
   ];
