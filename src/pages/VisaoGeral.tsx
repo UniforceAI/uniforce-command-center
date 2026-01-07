@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useEventos } from "@/hooks/useEventos";
 import { Evento } from "@/types/evento";
+import { AlertasMapa } from "@/components/map/AlertasMapa";
 import { 
   Users, 
   UserPlus,
@@ -887,23 +888,10 @@ const VisaoGeral = () => {
                     </div>
                   </CardHeader>
                   <CardContent>
-                    {/* Map Placeholder - would integrate Mapbox here */}
-                    <div className="relative h-[300px] bg-slate-800 rounded-lg overflow-hidden">
-                      <div className="absolute inset-0 flex items-center justify-center">
-                        <div className="text-center text-white/60">
-                          <MapPin className="h-12 w-12 mx-auto mb-2" />
-                          <p className="text-sm">Mapa com {mapData.length} clientes geolocalizados</p>
-                          <p className="text-xs mt-1">Configure o Mapbox para visualização completa</p>
-                        </div>
-                      </div>
-                      {/* Legend */}
-                      <div className="absolute bottom-3 left-3 flex gap-3 text-xs text-white/80">
-                        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500"></span> Crítico</span>
-                        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-orange-500"></span> Alto</span>
-                        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-yellow-500"></span> Médio</span>
-                        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-500"></span> Baixo</span>
-                      </div>
-                    </div>
+                    <AlertasMapa 
+                      data={mapData} 
+                      activeFilter={mapTab as "churn" | "vencido" | "sinal"} 
+                    />
                   </CardContent>
                 </Card>
               </div>
