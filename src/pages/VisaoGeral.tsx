@@ -660,36 +660,37 @@ const VisaoGeral = () => {
     }
   }, [filteredEventos]);
 
-  // Top 5 Data - USA MESMA DIMENSÃO DO GRÁFICO PRINCIPAL (cohortDimension)
+  // Top 5 Data - calculado com sua própria dimensão independente
   const top5Data = useMemo(() => {
-    return calculateCohortData(cohortDimension);
-  }, [filteredEventos, cohortDimension]);
+    return calculateCohortData(top5Dimension);
+  }, [filteredEventos, top5Dimension]);
 
-  // Top 5 por métrica selecionada - ORDENADO IGUAL AO GRÁFICO (por % interno)
+  // Top 5 por métrica selecionada - DISTRIBUIÇÃO dos TOP 5 (soma = 100%)
   const top5Risco = useMemo(() => {
     const pctKey = top5Filter === "churn" ? "churnPct" : "financeiroPct";
     const countKey = top5Filter === "churn" ? "cancelados" : "clientesVencidos";
     
-    // Total de todos os cancelados/vencidos para calcular distribuição
-    const totalCount = top5Data.reduce((sum, p) => sum + ((p as any)[countKey] || 0), 0);
+    // Ordenar e pegar os TOP 5
+    const top5Sorted = [...top5Data]
+      .sort((a, b) => ((b as any)[pctKey] || 0) - ((a as any)[pctKey] || 0))
+      .slice(0, 5);
     
-    if (totalCount === 0) {
-      return top5Data.slice(0, 5).map(p => ({
+    // Calcular total APENAS dos 5 selecionados para distribuição fechar 100%
+    const totalTop5 = top5Sorted.reduce((sum, p) => sum + ((p as any)[countKey] || 0), 0);
+    
+    if (totalTop5 === 0) {
+      return top5Sorted.map(p => ({
         key: p.key,
         label: p.label,
         pct: "0.0",
       }));
     }
     
-    // ORDENAR pelo mesmo critério do gráfico (% interno), mas mostrar distribuição
-    return [...top5Data]
-      .sort((a, b) => ((b as any)[pctKey] || 0) - ((a as any)[pctKey] || 0))
-      .slice(0, 5)
-      .map(p => ({
-        key: p.key,
-        label: p.label,
-        pct: (((p as any)[countKey] || 0) / totalCount * 100).toFixed(1),
-      }));
+    return top5Sorted.map(p => ({
+      key: p.key,
+      label: p.label,
+      pct: (((p as any)[countKey] || 0) / totalTop5 * 100).toFixed(1),
+    }));
   }, [top5Data, top5Filter]);
 
   // Fila de Risco - FIXED: use available fields (alerta_tipo, downtime, etc.)
@@ -1118,10 +1119,39 @@ const VisaoGeral = () => {
                         </button>
                       </div>
                     </div>
-                    {/* Dimensão segue o gráfico principal */}
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Por {cohortDimension === "plano" ? "Plano" : cohortDimension === "cidade" ? "Cidade" : "Bairro"}
-                    </p>
+                    {/* Filtros de dimensão independentes */}
+                    <div className="flex items-center gap-1 mt-2">
+                      <button
+                        onClick={() => setTop5Dimension("plano")}
+                        className={`px-2 py-0.5 text-xs rounded ${
+                          top5Dimension === "plano"
+                            ? "bg-secondary text-secondary-foreground"
+                            : "text-muted-foreground hover:bg-muted/50"
+                        }`}
+                      >
+                        Plano
+                      </button>
+                      <button
+                        onClick={() => setTop5Dimension("cidade")}
+                        className={`px-2 py-0.5 text-xs rounded ${
+                          top5Dimension === "cidade"
+                            ? "bg-secondary text-secondary-foreground"
+                            : "text-muted-foreground hover:bg-muted/50"
+                        }`}
+                      >
+                        Cidade
+                      </button>
+                      <button
+                        onClick={() => setTop5Dimension("bairro")}
+                        className={`px-2 py-0.5 text-xs rounded ${
+                          top5Dimension === "bairro"
+                            ? "bg-secondary text-secondary-foreground"
+                            : "text-muted-foreground hover:bg-muted/50"
+                        }`}
+                      >
+                        Bairro
+                      </button>
+                    </div>
                   </CardHeader>
                   <CardContent className="space-y-2">
                     {top5Risco.length > 0 ? top5Risco.map((item, i) => (
