@@ -125,7 +125,6 @@ const MapTabs = ({ activeTab, onTabChange, availableTabs }: MapTabsProps) => {
   const allTabs = [
     { id: "vencido", label: "Vencido" },
     { id: "sinal", label: "Sinal" },
-    { id: "churn", label: "Risco Churn" },
   ];
 
   const tabs = allTabs.filter(t => availableTabs.includes(t.id));
@@ -165,7 +164,7 @@ const VisaoGeral = () => {
   const [plano, setPlano] = useState("todos");
   const [status, setStatus] = useState("todos");
   const [cohortTab, setCohortTab] = useState("churn");
-  const [mapTab, setMapTab] = useState("churn");
+  const [mapTab, setMapTab] = useState("vencido");
   const [cohortFilter, setCohortFilter] = useState("plano");
   const [top5Filter, setTop5Filter] = useState<"churn" | "vencido">("churn");
 
@@ -640,11 +639,9 @@ const VisaoGeral = () => {
     return Array.from(clientesMap.values());
   }, [filteredEventos]);
 
-  // Calculate which map tabs have data - simplified: always show all tabs
+  // Calculate which map tabs have data - only vencido and sinal (churn removed)
   const availableMapTabs = useMemo(() => {
-    // Always show vencido and sinal since we have geo data
-    // The colors will reflect actual status
-    return ["vencido", "sinal", "churn"];
+    return ["vencido", "sinal"];
   }, []);
 
   // Auto-select first available tab if current is not available

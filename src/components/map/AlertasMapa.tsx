@@ -48,13 +48,7 @@ function FitBounds({ points }: { points: { lat: number; lng: number }[] }) {
 }
 
 const getColorByRisk = (point: MapPoint, filter: string): string => {
-  if (filter === "churn") {
-    const score = point.churn_risk_score ?? 0;
-    if (score >= 80) return "#ef4444"; // red
-    if (score >= 60) return "#f97316"; // orange
-    if (score >= 40) return "#eab308"; // yellow
-    return "#22c55e"; // green - low risk
-  }
+  // Churn filter removed - only vencido and sinal available
   
   if (filter === "vencido") {
     const dias = point.dias_atraso ?? 0;
@@ -74,13 +68,7 @@ const getColorByRisk = (point: MapPoint, filter: string): string => {
 };
 
 const getRadiusByRisk = (point: MapPoint, filter: string): number => {
-  if (filter === "churn") {
-    const score = point.churn_risk_score ?? 0;
-    if (score >= 80) return 10;
-    if (score >= 60) return 8;
-    if (score >= 40) return 6;
-    return 5;
-  }
+  // Churn filter removed
   
   if (filter === "vencido") {
     const dias = point.dias_atraso ?? 0;
@@ -125,11 +113,7 @@ export function AlertasMapa({ data, activeFilter }: AlertasMapaProps) {
         return p.alerta_tipo || (p.downtime_min_24h && p.downtime_min_24h > 0);
       }
       
-      if (activeFilter === "churn") {
-        // Only show clients with churn risk > 0
-        return p.churn_risk_score !== undefined && p.churn_risk_score > 0;
-      }
-
+      // Churn filter removed - only vencido and sinal available
       return true;
     });
   }, [data, activeFilter]);
@@ -205,14 +189,7 @@ export function AlertasMapa({ data, activeFilter }: AlertasMapaProps) {
       
       {/* Contextual Legend */}
       <div className="absolute bottom-3 left-3 flex gap-3 text-xs bg-background/80 backdrop-blur-sm px-2 py-1 rounded z-[1000]">
-        {activeFilter === "churn" && (
-          <>
-            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500"></span> Crítico (≥80%)</span>
-            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-orange-500"></span> Alto (≥60%)</span>
-            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-yellow-500"></span> Médio (≥40%)</span>
-            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-500"></span> Baixo (&lt;40%)</span>
-          </>
-        )}
+        {/* Churn legend removed */}
         {activeFilter === "vencido" && (
           <>
             <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500"></span> +60 dias</span>
