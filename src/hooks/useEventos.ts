@@ -16,20 +16,45 @@ export function useEventos() {
         setIsLoading(true);
         setError(null);
 
-        // Buscar todos os eventos do isp_id configurado (sem limite)
-        // Range de 0-9999 para pegar até 10000 registros
-        const { data, error: fetchError } = await externalSupabase
+        // Buscar TODOS os eventos vencidos primeiro (prioridade)
+        const { data: vencidosData, error: vencidosError } = await externalSupabase
           .from("eventos")
           .select("*")
           .eq("isp_id", EVENTOS_ISP_ID)
+          .eq("vencido", true)
+          .order("dias_atraso", { ascending: false });
+
+        if (vencidosError) throw vencidosError;
+
+        // Buscar eventos não-vencidos (limite maior para ter contexto)
+        const { data: outrosData, error: outrosError } = await externalSupabase
+          .from("eventos")
+          .select("*")
+          .eq("isp_id", EVENTOS_ISP_ID)
+          .or("vencido.is.null,vencido.eq.false")
           .order("event_datetime", { ascending: false })
-          .range(0, 9999);
+          .range(0, 4999);
 
-        if (fetchError) throw fetchError;
+        if (outrosError) throw outrosError;
 
-        if (data && data.length > 0) {
-          setColumns(Object.keys(data[0]));
-          setEventos(data as Evento[]);
+        // Combinar: vencidos primeiro + outros
+        const allData = [...(vencidosData || []), ...(outrosData || [])];
+        
+        // Remover duplicatas por ID
+        const uniqueData = Array.from(
+          new Map(allData.map(item => [item.id, item])).values()
+        );
+
+        console.log("📊 EVENTOS CARREGADOS:", {
+          vencidos: vencidosData?.length || 0,
+          outros: outrosData?.length || 0,
+          total: uniqueData.length,
+          clientesVencidos: new Set(vencidosData?.map(e => e.cliente_id) || []).size
+        });
+
+        if (uniqueData.length > 0) {
+          setColumns(Object.keys(uniqueData[0]));
+          setEventos(uniqueData as Evento[]);
         } else {
           setEventos([]);
         }
