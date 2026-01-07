@@ -835,9 +835,9 @@ const VisaoGeral = () => {
 
   // Estatísticas de clientes vencidos para debug
   const vencidosStats = useMemo(() => {
-    // Clientes únicos com dias_atraso > 0
+    // Clientes únicos com vencido=true OU dias_atraso > 0
     const clientesVencidosMap = new Map<number, any>();
-    filteredEventos.filter(e => e.dias_atraso && e.dias_atraso > 0).forEach(e => {
+    filteredEventos.filter(e => e.vencido === true || (e.dias_atraso && e.dias_atraso > 0)).forEach(e => {
       if (!clientesVencidosMap.has(e.cliente_id)) {
         clientesVencidosMap.set(e.cliente_id, e);
       }
