@@ -354,57 +354,112 @@ const VisaoGeral = () => {
     };
   }, [filteredEventos, periodo]);
 
-  // Cohort data by plan - FIXED to use available data
+  // Cohort data by plan - calculates ALL metrics for each tab
   const cohortData = useMemo(() => {
     const planoStats: Record<string, { 
       plano: string; 
-      risco: number; // Clientes com alerta/risco
       total: number; 
+      // Churn/Risco
+      risco: number;
+      cancelados: number;
+      // Contratos
+      ativos: number;
+      bloqueados: number;
+      // Financeiro
       vencido: number;
+      valorVencido: number;
+      // Suporte
       chamados: number;
+      reincidentes: number;
+      // Rede
+      comDowntime: number;
+      comAlerta: number;
+      // NPS
+      npsTotal: number;
+      npsCount: number;
+      detratores: number;
+      // LTV
       ltvTotal: number;
       mrrTotal: number;
     }> = {};
 
     // Get unique clients per plan
     const clientesPorPlano = new Map<string, Set<number>>();
-    filteredEventos.forEach(e => {
-      if (!e.plano_nome) return;
-      if (!clientesPorPlano.has(e.plano_nome)) {
-        clientesPorPlano.set(e.plano_nome, new Set());
-      }
-      clientesPorPlano.get(e.plano_nome)!.add(e.cliente_id);
-    });
-
-    // Calculate stats per plan
     const clienteContado = new Map<string, Set<number>>();
+    
     filteredEventos.forEach(e => {
       if (!e.plano_nome) return;
       const key = e.plano_nome;
+      
+      if (!clientesPorPlano.has(key)) {
+        clientesPorPlano.set(key, new Set());
+      }
+      clientesPorPlano.get(key)!.add(e.cliente_id);
+      
       if (!planoStats[key]) {
-        planoStats[key] = { plano: key, risco: 0, total: 0, vencido: 0, chamados: 0, ltvTotal: 0, mrrTotal: 0 };
+        planoStats[key] = { 
+          plano: key, total: 0, risco: 0, cancelados: 0, ativos: 0, bloqueados: 0,
+          vencido: 0, valorVencido: 0, chamados: 0, reincidentes: 0, 
+          comDowntime: 0, comAlerta: 0, npsTotal: 0, npsCount: 0, detratores: 0,
+          ltvTotal: 0, mrrTotal: 0
+        };
         clienteContado.set(key, new Set());
       }
 
-      // Contar cliente uma vez por plano
       const contados = clienteContado.get(key)!;
+      
+      // Contar cliente uma vez por plano
       if (!contados.has(e.cliente_id)) {
         contados.add(e.cliente_id);
-        // MRR
+        
+        // MRR e LTV
         planoStats[key].mrrTotal += e.valor_mensalidade || 0;
-        // LTV estimado (usar valor * 24 meses se não tiver ltv_reais_estimado)
         planoStats[key].ltvTotal += e.ltv_reais_estimado || (e.valor_mensalidade || 0) * 24;
-        // Risco
+        
+        // Contratos
+        if (e.status_contrato === "C" || e.servico_status === "C") {
+          planoStats[key].cancelados++;
+        } else if (e.servico_status === "B" || e.status_contrato === "B") {
+          planoStats[key].bloqueados++;
+        } else {
+          planoStats[key].ativos++;
+        }
+        
+        // Risco (alertas ou downtime)
         if (e.alerta_tipo || (e.downtime_min_24h && e.downtime_min_24h > 60) || (e.churn_risk_score && e.churn_risk_score >= 50)) {
           planoStats[key].risco++;
         }
+        
+        // Rede
+        if (e.downtime_min_24h && e.downtime_min_24h > 60) {
+          planoStats[key].comDowntime++;
+        }
+        if (e.alerta_tipo) {
+          planoStats[key].comAlerta++;
+        }
+        
+        // NPS
+        if (e.nps_score !== null && e.nps_score !== undefined) {
+          planoStats[key].npsTotal += e.nps_score;
+          planoStats[key].npsCount++;
+          if (e.nps_score < 7) {
+            planoStats[key].detratores++;
+          }
+        }
       }
-
+      
+      // Financeiro (pode ter múltiplas cobranças por cliente)
       if (e.vencido === true || (e.dias_atraso !== null && e.dias_atraso > 0)) {
         planoStats[key].vencido++;
+        planoStats[key].valorVencido += e.valor_cobranca || 0;
       }
+      
+      // Suporte
       if (e.event_type === "ATENDIMENTO") {
         planoStats[key].chamados++;
+        if (e.reincidente_30d) {
+          planoStats[key].reincidentes++;
+        }
       }
     });
 
@@ -415,17 +470,59 @@ const VisaoGeral = () => {
       }
     });
 
-    // Calculate percentages and sort by risk/vencido
+    // Calculate all percentages
     return Object.values(planoStats)
       .map(p => ({
         ...p,
-        churnPct: p.total > 0 ? (p.risco / p.total * 100) : 0,
-        vencidoPct: p.total > 0 ? (p.vencido / p.total * 100) : 0,
-        label: p.plano.length > 50 ? p.plano.substring(0, 50) + "..." : p.plano,
-      }))
-      .sort((a, b) => b.vencidoPct - a.vencidoPct) // Ordenar por vencido pois temos esses dados
-      .slice(0, 10);
+        // Churn - % de clientes em risco ou cancelados
+        churnPct: p.total > 0 ? ((p.risco + p.cancelados) / p.total * 100) : 0,
+        // Contratos - % de bloqueados
+        contratosPct: p.total > 0 ? (p.bloqueados / p.total * 100) : 0,
+        // Financeiro - % de cobranças vencidas
+        financeiroPct: p.total > 0 ? (p.vencido / p.total * 100) : 0,
+        // Suporte - média de chamados por cliente
+        suportePct: p.total > 0 ? (p.chamados / p.total * 100) : 0,
+        // Rede - % com problemas de rede
+        redePct: p.total > 0 ? ((p.comDowntime + p.comAlerta) / p.total * 100) : 0,
+        // NPS - % detratores
+        npsPct: p.npsCount > 0 ? (p.detratores / p.npsCount * 100) : 0,
+        npsMedia: p.npsCount > 0 ? (p.npsTotal / p.npsCount) : 0,
+        // LTV - valor médio
+        ltvMedio: p.total > 0 ? (p.ltvTotal / p.total) : 0,
+        label: p.plano.length > 45 ? p.plano.substring(0, 45) + "..." : p.plano,
+      }));
   }, [filteredEventos]);
+
+  // Sorted cohort data based on selected tab
+  const sortedCohortData = useMemo(() => {
+    const sortKey = {
+      churn: "churnPct",
+      contratos: "contratosPct", 
+      financeiro: "financeiroPct",
+      suporte: "suportePct",
+      rede: "redePct",
+      nps: "npsPct",
+      ltv: "ltvMedio",
+    }[cohortTab] || "churnPct";
+
+    return [...cohortData]
+      .sort((a, b) => (b as any)[sortKey] - (a as any)[sortKey])
+      .slice(0, 12);
+  }, [cohortData, cohortTab]);
+
+  // Metric info for current tab
+  const cohortMetricInfo = useMemo(() => {
+    const info: Record<string, { dataKey: string; label: string; format: (v: number) => string }> = {
+      churn: { dataKey: "churnPct", label: "% Risco/Churn", format: (v) => `${v.toFixed(1)}%` },
+      contratos: { dataKey: "contratosPct", label: "% Bloqueados", format: (v) => `${v.toFixed(1)}%` },
+      financeiro: { dataKey: "financeiroPct", label: "% Vencido", format: (v) => `${v.toFixed(1)}%` },
+      suporte: { dataKey: "suportePct", label: "Chamados/Cliente", format: (v) => `${v.toFixed(1)}%` },
+      rede: { dataKey: "redePct", label: "% Problemas Rede", format: (v) => `${v.toFixed(1)}%` },
+      nps: { dataKey: "npsPct", label: "% Detratores", format: (v) => `${v.toFixed(1)}%` },
+      ltv: { dataKey: "ltvMedio", label: "LTV Médio", format: (v) => `R$ ${(v/1000).toFixed(1)}k` },
+    };
+    return info[cohortTab] || info.churn;
+  }, [cohortTab]);
 
   // Driver Principal - calcular qual é o maior problema
   const driverPrincipal = useMemo(() => {
@@ -451,13 +548,13 @@ const VisaoGeral = () => {
     }
   }, [filteredEventos]);
 
-  // Top 5 por vencido (dados disponíveis)
+  // Top 5 por métrica atual
   const top5Risco = useMemo(() => {
-    return cohortData.slice(0, 5).map(p => ({
+    return sortedCohortData.slice(0, 5).map(p => ({
       plano: p.plano,
-      pct: p.vencidoPct.toFixed(1),
+      pct: p.financeiroPct.toFixed(1),
     }));
-  }, [cohortData]);
+  }, [sortedCohortData]);
 
   // Fila de Risco - FIXED: use available fields (alerta_tipo, downtime, etc.)
   const filaRisco = useMemo(() => {
@@ -709,40 +806,57 @@ const VisaoGeral = () => {
                   </div>
                 </div>
 
-                {/* Cohort Horizontal Bar Chart */}
+                {/* Cohort Horizontal Bar Chart - DYNAMIC based on tab */}
                 <Card>
                   <CardContent className="pt-4">
-                    {cohortData.length > 0 ? (
-                      <ResponsiveContainer width="100%" height={300}>
-                        <BarChart data={cohortData} layout="vertical" margin={{ left: 10, right: 30 }}>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm font-medium text-muted-foreground">
+                        {cohortMetricInfo.label} por Plano
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        {sortedCohortData.length} planos
+                      </span>
+                    </div>
+                    {sortedCohortData.length > 0 ? (
+                      <ResponsiveContainer width="100%" height={350}>
+                        <BarChart data={sortedCohortData} layout="vertical" margin={{ left: 10, right: 40 }}>
                           <CartesianGrid strokeDasharray="3 3" horizontal={false} />
                           <XAxis 
                             type="number" 
                             domain={[0, 'auto']}
-                            tickFormatter={(v) => `${v.toFixed(0)}%`}
+                            tickFormatter={(v) => cohortTab === "ltv" ? `R$${(v/1000).toFixed(0)}k` : `${v.toFixed(0)}%`}
                             fontSize={11}
                           />
                           <YAxis 
                             dataKey="label" 
                             type="category" 
-                            width={140} 
-                            fontSize={10}
+                            width={160} 
+                            fontSize={9}
                             tick={{ fill: 'hsl(var(--muted-foreground))' }}
                           />
                           <Tooltip 
-                            formatter={(value: number) => [`${value.toFixed(2)}%`, cohortTab === "churn" ? "Churn" : "Valor"]}
+                            formatter={(value: number) => [cohortMetricInfo.format(value), cohortMetricInfo.label]}
                             labelFormatter={(label) => label}
                           />
                           <Bar 
-                            dataKey={cohortTab === "churn" ? "churnPct" : cohortTab === "financeiro" ? "vencidoPct" : "churnPct"} 
+                            dataKey={cohortMetricInfo.dataKey} 
                             radius={[0, 4, 4, 0]}
                           >
-                            {cohortData.map((entry, index) => (
-                              <Cell 
-                                key={`cell-${index}`} 
-                                fill={entry.churnPct > 3 ? "hsl(var(--destructive))" : entry.churnPct > 1 ? "hsl(var(--warning))" : "hsl(var(--success))"} 
-                              />
-                            ))}
+                            {sortedCohortData.map((entry, index) => {
+                              const value = (entry as any)[cohortMetricInfo.dataKey] || 0;
+                              let color = "hsl(var(--success))";
+                              if (cohortTab === "ltv") {
+                                color = value > 5000 ? "hsl(var(--success))" : value > 2000 ? "hsl(var(--warning))" : "hsl(var(--destructive))";
+                              } else {
+                                color = value > 30 ? "hsl(var(--destructive))" : value > 10 ? "hsl(var(--warning))" : "hsl(var(--success))";
+                              }
+                              return (
+                                <Cell 
+                                  key={`cell-${index}`} 
+                                  fill={color} 
+                                />
+                              );
+                            })}
                           </Bar>
                         </BarChart>
                       </ResponsiveContainer>
