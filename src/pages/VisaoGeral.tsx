@@ -770,6 +770,45 @@ const VisaoGeral = () => {
     return ["vencido", "sinal"];
   }, []);
 
+  // Estatísticas de clientes vencidos para debug
+  const vencidosStats = useMemo(() => {
+    // Clientes únicos com dias_atraso > 0
+    const clientesVencidosMap = new Map<number, any>();
+    filteredEventos.filter(e => e.dias_atraso && e.dias_atraso > 0).forEach(e => {
+      if (!clientesVencidosMap.has(e.cliente_id)) {
+        clientesVencidosMap.set(e.cliente_id, e);
+      }
+    });
+    
+    const totalVencidos = clientesVencidosMap.size;
+    
+    // Quantos têm coordenadas (geo_lat/geo_lng ou bairro mapeado)
+    let comCoordenadas = 0;
+    let comGeoExata = 0;
+    let comBairroFallback = 0;
+    
+    clientesVencidosMap.forEach(e => {
+      const temGeo = e.geo_lat && e.geo_lng && e.geo_lat !== 0 && e.geo_lng !== 0;
+      const temBairro = e.cliente_bairro && bairroCoords[e.cliente_bairro];
+      
+      if (temGeo) {
+        comGeoExata++;
+        comCoordenadas++;
+      } else if (temBairro) {
+        comBairroFallback++;
+        comCoordenadas++;
+      }
+    });
+    
+    return {
+      totalVencidos,
+      comCoordenadas,
+      comGeoExata,
+      comBairroFallback,
+      semCoordenadas: totalVencidos - comCoordenadas,
+    };
+  }, [filteredEventos, bairroCoords]);
+
   // Auto-select first available tab if current is not available
   useEffect(() => {
     if (availableMapTabs.length > 0 && !availableMapTabs.includes(mapTab)) {
@@ -1062,7 +1101,18 @@ const VisaoGeral = () => {
                           <MapPin className="h-4 w-4" />
                           Mapa de Alertas
                         </CardTitle>
-                        <p className="text-xs text-muted-foreground">{mapData.length} clientes em {new Set(mapData.map(e => e.cliente_cidade)).size} cidades</p>
+                        <p className="text-xs text-muted-foreground">
+                          {mapTab === "vencido" ? (
+                            <>
+                              <span className="font-medium text-foreground">{vencidosStats.totalVencidos}</span> vencidos total | 
+                              <span className="font-medium text-green-500 ml-1">{vencidosStats.comCoordenadas}</span> no mapa 
+                              <span className="text-muted-foreground ml-1">({vencidosStats.comGeoExata} geo + {vencidosStats.comBairroFallback} bairro)</span> | 
+                              <span className="font-medium text-orange-500 ml-1">{vencidosStats.semCoordenadas}</span> sem localização
+                            </>
+                          ) : (
+                            <>{mapData.length} clientes em {new Set(mapData.map(e => e.cliente_cidade)).size} cidades</>
+                          )}
+                        </p>
                       </div>
                       {availableMapTabs.length > 0 && (
                         <MapTabs activeTab={mapTab} onTabChange={setMapTab} availableTabs={availableMapTabs} />
