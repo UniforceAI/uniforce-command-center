@@ -12,6 +12,8 @@ interface MapPoint {
   alerta_tipo?: string;
   dias_atraso?: number;
   churn_risk_score?: number;
+  vencido?: boolean;
+  downtime_min_24h?: number;
 }
 
 interface AlertasMapaProps {
@@ -92,18 +94,40 @@ const getRadiusByRisk = (point: MapPoint, filter: string): number => {
 };
 
 export function AlertasMapa({ data, activeFilter }: AlertasMapaProps) {
-  // Filter points with valid coordinates
+  // Filter points with valid coordinates AND matching the active filter
   const validPoints = useMemo(() => {
-    return data.filter(
-      (p) =>
-        p.geo_lat !== undefined &&
-        p.geo_lng !== undefined &&
-        !isNaN(p.geo_lat) &&
-        !isNaN(p.geo_lng) &&
-        p.geo_lat !== 0 &&
-        p.geo_lng !== 0
-    );
-  }, [data]);
+    return data.filter((p) => {
+      // Must have valid coordinates
+      if (
+        p.geo_lat === undefined ||
+        p.geo_lng === undefined ||
+        isNaN(p.geo_lat) ||
+        isNaN(p.geo_lng) ||
+        p.geo_lat === 0 ||
+        p.geo_lng === 0
+      ) {
+        return false;
+      }
+
+      // Apply filter based on activeFilter
+      if (activeFilter === "churn") {
+        // Show all clients with churn_risk_score > 0 OR just show all for churn view
+        return (p.churn_risk_score && p.churn_risk_score > 0) || true;
+      }
+      
+      if (activeFilter === "vencido") {
+        // Only show clients with overdue payments
+        return p.vencido === true || (p.dias_atraso !== undefined && p.dias_atraso > 0);
+      }
+      
+      if (activeFilter === "sinal") {
+        // Only show clients with alerts or downtime
+        return p.alerta_tipo || (p.downtime_min_24h && p.downtime_min_24h > 0);
+      }
+
+      return true;
+    });
+  }, [data, activeFilter]);
 
   // Brazil center as default
   const defaultCenter: [number, number] = [-15.77972, -47.92972];
@@ -139,8 +163,8 @@ export function AlertasMapa({ data, activeFilter }: AlertasMapaProps) {
         scrollWheelZoom={true}
       >
         <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          attribution='&copy; <a href="https://carto.com/">CARTO</a>'
+          url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
         />
         <FitBounds points={boundsPoints} />
         
