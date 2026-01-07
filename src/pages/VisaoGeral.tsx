@@ -683,29 +683,85 @@ const VisaoGeral = () => {
       .slice(0, 8);
   }, [filteredEventos]);
 
-  // Map data (clients with geo coordinates) - include all relevant fields for filtering
+  // Mapeamento de bairros para coordenadas aproximadas (região de Blumenau/Gaspar/Ilhota/Itajaí)
+  const bairroCoords: Record<string, { lat: number; lng: number }> = {
+    // Gaspar
+    "Centro": { lat: -26.9316, lng: -48.9586 },
+    "Gaspar Grande": { lat: -26.9180, lng: -48.9750 },
+    "Gasparinho": { lat: -26.9450, lng: -48.9700 },
+    "Bela Vista": { lat: -26.9250, lng: -48.9500 },
+    "Coloninha": { lat: -26.9400, lng: -48.9400 },
+    "Margem Esquerda": { lat: -26.9350, lng: -48.9650 },
+    "Sete De Setembro": { lat: -26.9280, lng: -48.9480 },
+    "Santa Terezinha": { lat: -26.9200, lng: -48.9350 },
+    "Figueira": { lat: -26.9100, lng: -48.9600 },
+    "Alto Gasparinho": { lat: -26.9500, lng: -48.9800 },
+    "Poço Grande": { lat: -26.9000, lng: -48.9700 },
+    "Baixas": { lat: -26.8900, lng: -48.9500 },
+    "Barracão": { lat: -26.9600, lng: -48.9300 },
+    "Belchior": { lat: -26.8800, lng: -48.9400 },
+    "Belchior Alto": { lat: -26.8700, lng: -48.9350 },
+    "Belchior Baixo": { lat: -26.8850, lng: -48.9450 },
+    "Bateias": { lat: -26.9700, lng: -48.9200 },
+    "Baú Baixo": { lat: -26.8950, lng: -48.9550 },
+    "Baú Central": { lat: -26.8900, lng: -48.9600 },
+    "Arraial": { lat: -26.9150, lng: -48.9450 },
+    "Vila Nova": { lat: -26.9380, lng: -48.9520 },
+    "Barra Luiz Alves": { lat: -26.8600, lng: -48.9300 },
+    "Barra De Luiz Alves": { lat: -26.8600, lng: -48.9300 },
+    // Ilhota
+    "Ilhotinha": { lat: -26.9050, lng: -48.8300 },
+    "Ilhota Centro": { lat: -26.9000, lng: -48.8250 },
+    // Blumenau - alguns bairros
+    "Velha": { lat: -26.9200, lng: -49.0800 },
+    "Garcia": { lat: -26.9100, lng: -49.0600 },
+    "Itoupava Norte": { lat: -26.8700, lng: -49.0500 },
+    // Itajaí - alguns bairros
+    "São João": { lat: -26.9100, lng: -48.6700 },
+    "Fazenda": { lat: -26.9200, lng: -48.6600 },
+  };
+
+  // Map data - COM FALLBACK para bairro quando não tem geo_lat/geo_lng
   const mapData = useMemo(() => {
     const clientesMap = new Map<number, any>();
-    filteredEventos
-      .filter(e => e.geo_lat && e.geo_lng)
-      .forEach(e => {
-        const existing = clientesMap.get(e.cliente_id);
-        // Keep the record with more risk data, or add if not exists
-        if (!existing || (e.dias_atraso && e.dias_atraso > (existing.dias_atraso || 0))) {
-          clientesMap.set(e.cliente_id, {
-            cliente_id: e.cliente_id,
-            cliente_nome: e.cliente_nome,
-            cliente_cidade: e.cliente_cidade,
-            geo_lat: e.geo_lat,
-            geo_lng: e.geo_lng,
-            churn_risk_score: e.churn_risk_score,
-            dias_atraso: e.dias_atraso,
-            vencido: e.vencido,
-            alerta_tipo: e.alerta_tipo,
-            downtime_min_24h: e.downtime_min_24h,
-          });
+    
+    filteredEventos.forEach(e => {
+      // Determinar coordenadas: usar geo_lat/geo_lng se existir, senão usar bairro
+      let lat = e.geo_lat;
+      let lng = e.geo_lng;
+      
+      // Se não tem coordenadas exatas, tentar usar o bairro
+      if ((!lat || !lng || lat === 0 || lng === 0) && e.cliente_bairro) {
+        const bairroKey = e.cliente_bairro;
+        const coords = bairroCoords[bairroKey];
+        if (coords) {
+          // Adicionar pequena variação para não empilhar pontos
+          lat = coords.lat + (Math.random() - 0.5) * 0.01;
+          lng = coords.lng + (Math.random() - 0.5) * 0.01;
         }
-      });
+      }
+      
+      // Só incluir se tiver coordenadas válidas
+      if (!lat || !lng || isNaN(lat) || isNaN(lng)) return;
+      
+      const existing = clientesMap.get(e.cliente_id);
+      // Keep the record with more risk data, or add if not exists
+      if (!existing || (e.dias_atraso && e.dias_atraso > (existing.dias_atraso || 0))) {
+        clientesMap.set(e.cliente_id, {
+          cliente_id: e.cliente_id,
+          cliente_nome: e.cliente_nome,
+          cliente_cidade: e.cliente_cidade,
+          cliente_bairro: e.cliente_bairro,
+          geo_lat: lat,
+          geo_lng: lng,
+          churn_risk_score: e.churn_risk_score,
+          dias_atraso: e.dias_atraso,
+          vencido: e.vencido,
+          alerta_tipo: e.alerta_tipo,
+          downtime_min_24h: e.downtime_min_24h,
+        });
+      }
+    });
     return Array.from(clientesMap.values());
   }, [filteredEventos]);
 
