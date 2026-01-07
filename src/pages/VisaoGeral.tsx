@@ -163,6 +163,7 @@ const VisaoGeral = () => {
   const [cohortTab, setCohortTab] = useState("churn");
   const [mapTab, setMapTab] = useState("churn");
   const [cohortFilter, setCohortFilter] = useState("plano");
+  const [top5Filter, setTop5Filter] = useState<"churn" | "vencido">("churn");
 
   // Auth
   useEffect(() => {
@@ -548,13 +549,18 @@ const VisaoGeral = () => {
     }
   }, [filteredEventos]);
 
-  // Top 5 por métrica atual
+  // Top 5 por métrica selecionada (Churn ou Vencido)
   const top5Risco = useMemo(() => {
-    return sortedCohortData.slice(0, 5).map(p => ({
-      plano: p.plano,
-      pct: p.financeiroPct.toFixed(1),
-    }));
-  }, [sortedCohortData]);
+    const dataKey = top5Filter === "churn" ? "churnPct" : "financeiroPct";
+    
+    return [...cohortData]
+      .sort((a, b) => (b as any)[dataKey] - (a as any)[dataKey])
+      .slice(0, 5)
+      .map(p => ({
+        plano: p.plano,
+        pct: ((p as any)[dataKey] || 0).toFixed(1),
+      }));
+  }, [cohortData, top5Filter]);
 
   // Fila de Risco - FIXED: use available fields (alerta_tipo, downtime, etc.)
   const filaRisco = useMemo(() => {
@@ -913,21 +919,51 @@ const VisaoGeral = () => {
                   </CardContent>
                 </Card>
 
-                {/* Top 5 Risco */}
+                {/* Top 5 Risco com Filtro Churn/Vencido */}
                 <Card>
                   <CardHeader className="pb-2">
-                    <CardTitle className="text-sm">Top 5 Risco</CardTitle>
-                    <p className="text-xs text-muted-foreground">% Vencido por Plano</p>
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-sm">Top 5 Risco</CardTitle>
+                      <div className="flex gap-1">
+                        <button
+                          onClick={() => setTop5Filter("churn")}
+                          className={`px-2 py-0.5 text-xs rounded ${
+                            top5Filter === "churn"
+                              ? "bg-primary text-primary-foreground"
+                              : "bg-muted text-muted-foreground hover:bg-muted/80"
+                          }`}
+                        >
+                          Churn
+                        </button>
+                        <button
+                          onClick={() => setTop5Filter("vencido")}
+                          className={`px-2 py-0.5 text-xs rounded ${
+                            top5Filter === "vencido"
+                              ? "bg-primary text-primary-foreground"
+                              : "bg-muted text-muted-foreground hover:bg-muted/80"
+                          }`}
+                        >
+                          Vencido
+                        </button>
+                      </div>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      % {top5Filter === "churn" ? "Churn (Cancelados)" : "Vencido"} por Plano
+                    </p>
                   </CardHeader>
                   <CardContent className="space-y-2">
-                    {top5Risco.map((item, i) => (
+                    {top5Risco.length > 0 ? top5Risco.map((item, i) => (
                       <div key={i} className="flex justify-between items-center text-sm">
                         <span className="text-muted-foreground truncate max-w-[180px]" title={item.plano}>
-                          {item.plano.substring(0, 40)}...
+                          {item.plano.length > 40 ? item.plano.substring(0, 40) + "..." : item.plano}
                         </span>
-                        <span className="text-destructive font-medium">{item.pct}%</span>
+                        <span className={`font-medium ${parseFloat(item.pct) > 0 ? "text-destructive" : "text-muted-foreground"}`}>
+                          {item.pct}%
+                        </span>
                       </div>
-                    ))}
+                    )) : (
+                      <p className="text-center text-muted-foreground text-xs py-2">Sem dados</p>
+                    )}
                   </CardContent>
                 </Card>
 
