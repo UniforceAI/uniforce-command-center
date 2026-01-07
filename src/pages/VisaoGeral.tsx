@@ -835,6 +835,30 @@ const VisaoGeral = () => {
 
   // Estatísticas de clientes vencidos para debug
   const vencidosStats = useMemo(() => {
+    // DEBUG: Contar registros por critério
+    const comVencidoTrue = eventos.filter(e => e.vencido === true);
+    const comDiasAtrasoPositivo = eventos.filter(e => e.dias_atraso && e.dias_atraso > 0);
+    
+    console.log("🔍 DEBUG VENCIDOS:", {
+      totalEventos: eventos.length,
+      comVencidoTrue: comVencidoTrue.length,
+      clientesComVencidoTrue: new Set(comVencidoTrue.map(e => e.cliente_id)).size,
+      comDiasAtrasoPositivo: comDiasAtrasoPositivo.length,
+      clientesComDiasAtraso: new Set(comDiasAtrasoPositivo.map(e => e.cliente_id)).size,
+      amostraVencidoTrue: comVencidoTrue.slice(0, 3).map(e => ({
+        cliente_id: e.cliente_id,
+        vencido: e.vencido,
+        dias_atraso: e.dias_atraso,
+        data_vencimento: e.data_vencimento
+      })),
+      amostraDiasAtraso: comDiasAtrasoPositivo.slice(0, 3).map(e => ({
+        cliente_id: e.cliente_id,
+        vencido: e.vencido,
+        dias_atraso: e.dias_atraso,
+        data_vencimento: e.data_vencimento
+      }))
+    });
+    
     // Clientes únicos com vencido=true OU dias_atraso > 0
     const clientesVencidosMap = new Map<number, any>();
     filteredEventos.filter(e => e.vencido === true || (e.dias_atraso && e.dias_atraso > 0)).forEach(e => {
@@ -870,7 +894,7 @@ const VisaoGeral = () => {
       comBairroFallback,
       semCoordenadas: totalVencidos - comCoordenadas,
     };
-  }, [filteredEventos, bairroCoords]);
+  }, [eventos, filteredEventos, bairroCoords]);
 
   // Auto-select first available tab if current is not available
   useEffect(() => {
