@@ -175,12 +175,12 @@ const VisaoGeral = () => {
     // Blumenau (4346) e Itajaí (4435) serão adicionados quando houver dados
   };
 
-  // Helper function para verificar se cliente está vencido - CONSISTENTE em todo código
   // Helper function para converter ID de cidade para nome
+  // IMPORTANTE: retorna NULL se não encontrar no mapa (para não exibir IDs)
   const getCidadeNome = (cidadeValue: any): string | null => {
     if (cidadeValue === null || cidadeValue === undefined) return null;
     const cidadeKey = String(cidadeValue);
-    return cidadeIdMap[cidadeKey] || cidadeKey;
+    return cidadeIdMap[cidadeKey] || null; // NÃO retorna ID, retorna null
   };
 
   // Helper function para verificar se cliente está vencido - CONSISTENTE em todo código
@@ -408,12 +408,21 @@ const VisaoGeral = () => {
       .map(e => e.ltv_reais_estimado || (e.valor_mensalidade || 0) * 24); // Estimativa: 24 meses
     const ltvMedio = ltvValues.length > 0 ? ltvValues.reduce((a, b) => a + b, 0) / ltvValues.length : 0;
     
+    // LTV em meses - usar apenas ltv_meses_estimado do banco
     const ltvMesesValues = clientesUnicos
-      .filter(e => e.ltv_meses_estimado)
+      .filter(e => e.ltv_meses_estimado !== null && e.ltv_meses_estimado !== undefined)
       .map(e => e.ltv_meses_estimado!);
     const ltvMeses = ltvMesesValues.length > 0 
       ? Math.round(ltvMesesValues.reduce((a, b) => a + b, 0) / ltvMesesValues.length) 
-      : 26; // Média padrão de 26 meses
+      : 0; // Se não tiver dados, mostrar 0
+    
+    // Debug LTV
+    console.log("📊 LTV Médio Análise:", {
+      clientesComLtvMeses: ltvMesesValues.length,
+      valoresLtvMeses: ltvMesesValues.slice(0, 10),
+      ltvMesesCalculado: ltvMeses,
+      ltvReaisCalculado: ltvMedio
+    });
 
     // Ticket Médio
     const ticketMedio = clientesAtivos > 0 ? mrrTotal / clientesAtivos : 0;
