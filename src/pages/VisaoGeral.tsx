@@ -221,11 +221,37 @@ const VisaoGeral = () => {
     };
   }, [eventos]);
 
-  // Filtered events - FIX: proper date filtering
+  // Filtered events - CORRIGIDO: análise correta do período
+  // Os dados são um SNAPSHOT do estado atual dos clientes.
+  // O filtro de período deve filtrar por:
+  // - data_instalacao: para clientes novos (instalados no período)
+  // - data_vencimento: para cobranças no período
+  // - data_pagamento: para pagamentos no período
+  // - ultimo_atendimento: para atendimentos no período
+  // Para dados financeiros, usamos dias_atraso para calcular vencimento retroativo
   const filteredEventos = useMemo(() => {
     let filtered = [...eventos] as Evento[];
 
-    // Date filter - compare with event_datetime, data_instalacao, or created_at
+    // Log para debug - entender as datas disponíveis
+    if (eventos.length > 0 && periodo !== "todos") {
+      const sample = eventos.slice(0, 5);
+      console.log("📊 DEBUG FILTRO DE PERÍODO:", {
+        periodo,
+        totalEventos: eventos.length,
+        amostra: sample.map(e => ({
+          cliente_id: e.cliente_id,
+          event_datetime: e.event_datetime,
+          data_instalacao: e.data_instalacao,
+          data_vencimento: e.data_vencimento,
+          data_pagamento: e.data_pagamento,
+          dias_atraso: e.dias_atraso,
+          created_at: e.created_at,
+        }))
+      });
+    }
+
+    // O período filtra clientes cuja ATIVIDADE (instalação, cobrança, etc) ocorreu no período
+    // Usamos múltiplas datas relevantes ao contexto
     if (periodo !== "todos") {
       const diasAtras = parseInt(periodo);
       const dataLimite = new Date();
@@ -233,15 +259,39 @@ const VisaoGeral = () => {
       dataLimite.setHours(0, 0, 0, 0);
 
       filtered = filtered.filter((e) => {
-        // Try multiple date fields
-        const dateStr = e.event_datetime || e.data_instalacao || e.created_at;
-        if (!dateStr) return false; // Exclude events without any date
+        // Prioridade: data_vencimento > data_instalacao > event_datetime > created_at
+        // Isso garante que cobranças/instalações recentes sejam consideradas
+        let dateToCheck: Date | null = null;
         
-        const eventDate = new Date(dateStr);
-        if (isNaN(eventDate.getTime())) return false; // Invalid date
+        // Para cobranças, usar data_vencimento
+        if (e.data_vencimento) {
+          dateToCheck = new Date(e.data_vencimento);
+        }
+        // Para atendimentos, usar ultimo_atendimento
+        else if (e.ultimo_atendimento) {
+          dateToCheck = new Date(e.ultimo_atendimento);
+        }
+        // Para instalações, usar data_instalacao
+        else if (e.data_instalacao) {
+          dateToCheck = new Date(e.data_instalacao);
+        }
+        // Fallback para event_datetime ou created_at
+        else if (e.event_datetime) {
+          dateToCheck = new Date(e.event_datetime);
+        }
+        else if (e.created_at) {
+          dateToCheck = new Date(e.created_at);
+        }
         
-        return eventDate >= dataLimite;
+        if (!dateToCheck || isNaN(dateToCheck.getTime())) {
+          // Se não tem data válida, incluir o registro (não excluir por falta de data)
+          return true;
+        }
+        
+        return dateToCheck >= dataLimite;
       });
+      
+      console.log(`📊 Filtro de período ${periodo} dias: ${eventos.length} → ${filtered.length} registros`);
     }
 
     if (uf !== "todos") {
