@@ -660,10 +660,10 @@ const VisaoGeral = () => {
     }
   }, [filteredEventos]);
 
-  // Top 5 Data - calculado com sua própria dimensão
+  // Top 5 Data - USA MESMA DIMENSÃO DO GRÁFICO PRINCIPAL (cohortDimension)
   const top5Data = useMemo(() => {
-    return calculateCohortData(top5Dimension);
-  }, [filteredEventos, top5Dimension]);
+    return calculateCohortData(cohortDimension);
+  }, [filteredEventos, cohortDimension]);
 
   // Top 5 por métrica selecionada - ORDENADO IGUAL AO GRÁFICO (por % interno)
   const top5Risco = useMemo(() => {
@@ -1118,39 +1118,10 @@ const VisaoGeral = () => {
                         </button>
                       </div>
                     </div>
-                    {/* Dimensão independente do cohort principal */}
-                    <div className="flex items-center gap-1 mt-2">
-                      <button
-                        onClick={() => setTop5Dimension("plano")}
-                        className={`px-2 py-0.5 text-xs rounded ${
-                          top5Dimension === "plano"
-                            ? "bg-secondary text-secondary-foreground"
-                            : "text-muted-foreground hover:bg-muted/50"
-                        }`}
-                      >
-                        Plano
-                      </button>
-                      <button
-                        onClick={() => setTop5Dimension("cidade")}
-                        className={`px-2 py-0.5 text-xs rounded ${
-                          top5Dimension === "cidade"
-                            ? "bg-secondary text-secondary-foreground"
-                            : "text-muted-foreground hover:bg-muted/50"
-                        }`}
-                      >
-                        Cidade
-                      </button>
-                      <button
-                        onClick={() => setTop5Dimension("bairro")}
-                        className={`px-2 py-0.5 text-xs rounded ${
-                          top5Dimension === "bairro"
-                            ? "bg-secondary text-secondary-foreground"
-                            : "text-muted-foreground hover:bg-muted/50"
-                        }`}
-                      >
-                        Bairro
-                      </button>
-                    </div>
+                    {/* Dimensão segue o gráfico principal */}
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Por {cohortDimension === "plano" ? "Plano" : cohortDimension === "cidade" ? "Cidade" : "Bairro"}
+                    </p>
                   </CardHeader>
                   <CardContent className="space-y-2">
                     {top5Risco.length > 0 ? top5Risco.map((item, i) => (
