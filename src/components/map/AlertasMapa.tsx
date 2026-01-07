@@ -48,9 +48,6 @@ function FitBounds({ points }: { points: { lat: number; lng: number }[] }) {
 }
 
 const getColorByRisk = (point: MapPoint, filter: string): string => {
-  // Debug log
-  console.log('getColorByRisk called with filter:', filter, 'point dias_atraso:', point.dias_atraso, 'vencido:', point.vencido);
-  
   if (filter === "churn") {
     const score = point.churn_risk_score ?? 0;
     if (score >= 80) return "#ef4444"; // red
@@ -61,21 +58,19 @@ const getColorByRisk = (point: MapPoint, filter: string): string => {
   
   if (filter === "vencido") {
     const dias = point.dias_atraso ?? 0;
-    console.log('Vencido filter - dias:', dias);
-    // If client is in vencido filter, they have some overdue status
+    // Positive dias_atraso = overdue, negative = paid early
     if (dias > 60) return "#ef4444"; // red - critical
     if (dias > 30) return "#f97316"; // orange - high
-    // If showing in vencido filter, minimum is yellow (not green)
-    return "#eab308"; // yellow - overdue
+    if (dias > 0) return "#eab308"; // yellow - overdue
+    return "#22c55e"; // green - in day or paid early
   }
   
   if (filter === "sinal") {
     if (point.alerta_tipo) return "#ef4444"; // red - has alert
     if (point.downtime_min_24h && point.downtime_min_24h > 0) return "#f97316"; // orange - downtime
-    return "#eab308"; // yellow - some issue
+    return "#22c55e"; // green - no issues
   }
   
-  console.log('Falling through to default green for filter:', filter);
   return "#22c55e"; // default green
 };
 
@@ -105,40 +100,20 @@ const getRadiusByRisk = (point: MapPoint, filter: string): number => {
 };
 
 export function AlertasMapa({ data, activeFilter }: AlertasMapaProps) {
-  // Filter points with valid coordinates AND matching the active filter
+  // Filter points with valid coordinates - show ALL clients, color by filter
   const validPoints = useMemo(() => {
     return data.filter((p) => {
       // Must have valid coordinates
-      if (
-        p.geo_lat === undefined ||
-        p.geo_lng === undefined ||
-        isNaN(p.geo_lat) ||
-        isNaN(p.geo_lng) ||
-        p.geo_lat === 0 ||
-        p.geo_lng === 0
-      ) {
-        return false;
-      }
-
-      // Apply filter based on activeFilter
-      if (activeFilter === "churn") {
-        // Show all clients with churn_risk_score > 0 OR just show all for churn view
-        return (p.churn_risk_score && p.churn_risk_score > 0) || true;
-      }
-      
-      if (activeFilter === "vencido") {
-        // Only show clients with overdue payments
-        return p.vencido === true || (p.dias_atraso !== undefined && p.dias_atraso > 0);
-      }
-      
-      if (activeFilter === "sinal") {
-        // Only show clients with alerts or downtime
-        return p.alerta_tipo || (p.downtime_min_24h && p.downtime_min_24h > 0);
-      }
-
-      return true;
+      return (
+        p.geo_lat !== undefined &&
+        p.geo_lng !== undefined &&
+        !isNaN(p.geo_lat) &&
+        !isNaN(p.geo_lng) &&
+        p.geo_lat !== 0 &&
+        p.geo_lng !== 0
+      );
     });
-  }, [data, activeFilter]);
+  }, [data]);
 
   // Brazil center as default
   const defaultCenter: [number, number] = [-15.77972, -47.92972];
@@ -216,7 +191,7 @@ export function AlertasMapa({ data, activeFilter }: AlertasMapaProps) {
             <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500"></span> Crítico (≥80%)</span>
             <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-orange-500"></span> Alto (≥60%)</span>
             <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-yellow-500"></span> Médio (≥40%)</span>
-            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-500"></span> Baixo</span>
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-500"></span> Baixo (&lt;40%)</span>
           </>
         )}
         {activeFilter === "vencido" && (
@@ -224,12 +199,14 @@ export function AlertasMapa({ data, activeFilter }: AlertasMapaProps) {
             <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500"></span> +60 dias</span>
             <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-orange-500"></span> +30 dias</span>
             <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-yellow-500"></span> 1-30 dias</span>
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-500"></span> Em dia</span>
           </>
         )}
         {activeFilter === "sinal" && (
           <>
             <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500"></span> Alerta ativo</span>
-            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-yellow-500"></span> Downtime</span>
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-orange-500"></span> Downtime</span>
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-500"></span> OK</span>
           </>
         )}
       </div>

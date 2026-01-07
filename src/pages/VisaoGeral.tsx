@@ -640,20 +640,12 @@ const VisaoGeral = () => {
     return Array.from(clientesMap.values());
   }, [filteredEventos]);
 
-  // Calculate which map tabs have data
+  // Calculate which map tabs have data - simplified: always show all tabs
   const availableMapTabs = useMemo(() => {
-    const tabs: string[] = [];
-    
-    const hasVencido = mapData.some(p => p.vencido === true || (p.dias_atraso && p.dias_atraso > 0));
-    const hasSinal = mapData.some(p => p.alerta_tipo || (p.downtime_min_24h && p.downtime_min_24h > 0));
-    const hasChurn = mapData.some(p => p.churn_risk_score && p.churn_risk_score > 0);
-    
-    if (hasVencido) tabs.push("vencido");
-    if (hasSinal) tabs.push("sinal");
-    if (hasChurn) tabs.push("churn");
-    
-    return tabs;
-  }, [mapData]);
+    // Always show vencido and sinal since we have geo data
+    // The colors will reflect actual status
+    return ["vencido", "sinal", "churn"];
+  }, []);
 
   // Auto-select first available tab if current is not available
   useEffect(() => {
