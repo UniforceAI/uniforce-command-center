@@ -660,17 +660,30 @@ const VisaoGeral = () => {
     return calculateCohortData(top5Dimension);
   }, [filteredEventos, top5Dimension]);
 
-  // Top 5 por métrica selecionada (Churn ou Vencido) - usa dimensão independente
+  // Top 5 por métrica selecionada (Churn ou Vencido) - DISTRIBUIÇÃO entre categorias
   const top5Risco = useMemo(() => {
-    const dataKey = top5Filter === "churn" ? "churnPct" : "financeiroPct";
+    // Calcular TOTAIS para distribuição
+    const countKey = top5Filter === "churn" ? "cancelados" : "clientesVencidos";
     
+    // Total de todos os cancelados/vencidos
+    const totalCount = top5Data.reduce((sum, p) => sum + ((p as any)[countKey] || 0), 0);
+    
+    if (totalCount === 0) {
+      return top5Data.slice(0, 5).map(p => ({
+        key: p.key,
+        label: p.label,
+        pct: "0.0",
+      }));
+    }
+    
+    // Ordenar por quantidade e calcular % de distribuição
     return [...top5Data]
-      .sort((a, b) => (b as any)[dataKey] - (a as any)[dataKey])
+      .sort((a, b) => ((b as any)[countKey] || 0) - ((a as any)[countKey] || 0))
       .slice(0, 5)
       .map(p => ({
         key: p.key,
         label: p.label,
-        pct: ((p as any)[dataKey] || 0).toFixed(1),
+        pct: (((p as any)[countKey] || 0) / totalCount * 100).toFixed(1),
       }));
   }, [top5Data, top5Filter]);
 
