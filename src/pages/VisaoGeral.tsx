@@ -399,19 +399,32 @@ const VisaoGeral = () => {
       ? ((detratores / npsScores.length) * 100).toFixed(1)
       : "N/A";
 
-    // LTV Médio - usar ltv_reais_estimado ou calcular estimativa
-    const ltvValues = clientesUnicos
-      .filter(e => e.ltv_reais_estimado || e.valor_mensalidade)
-      .map(e => e.ltv_reais_estimado || (e.valor_mensalidade || 0) * 24); // Estimativa: 24 meses
-    const ltvMedio = ltvValues.length > 0 ? ltvValues.reduce((a, b) => a + b, 0) / ltvValues.length : 0;
+    // LTV Médio GLOBAL - usar TODOS os eventos, não filtrados
+    // Isso garante que o LTV médio seja fixo independente dos filtros
+    const allClientesMap = new Map<number, Evento>();
+    eventos.forEach(e => {
+      if (!allClientesMap.has(e.cliente_id) || 
+          new Date(e.event_datetime) > new Date(allClientesMap.get(e.cliente_id)!.event_datetime)) {
+        allClientesMap.set(e.cliente_id, e);
+      }
+    });
+    const allClientesUnicos = Array.from(allClientesMap.values());
     
-    // LTV em meses - usar apenas ltv_meses_estimado do banco
-    const ltvMesesValues = clientesUnicos
-      .filter(e => e.ltv_meses_estimado !== null && e.ltv_meses_estimado !== undefined)
+    // LTV em reais - usar ltv_reais_estimado do banco
+    const ltvReaisValues = allClientesUnicos
+      .filter(e => e.ltv_reais_estimado && e.ltv_reais_estimado > 0)
+      .map(e => e.ltv_reais_estimado!);
+    const ltvMedio = ltvReaisValues.length > 0 
+      ? ltvReaisValues.reduce((a, b) => a + b, 0) / ltvReaisValues.length 
+      : 0;
+    
+    // LTV em meses - usar APENAS ltv_meses_estimado do banco (dados reais)
+    const ltvMesesValues = allClientesUnicos
+      .filter(e => e.ltv_meses_estimado !== null && e.ltv_meses_estimado !== undefined && e.ltv_meses_estimado > 0)
       .map(e => e.ltv_meses_estimado!);
     const ltvMeses = ltvMesesValues.length > 0 
       ? Math.round(ltvMesesValues.reduce((a, b) => a + b, 0) / ltvMesesValues.length) 
-      : 0; // Se não tiver dados, mostrar 0
+      : 0;
     
 
     // Ticket Médio
