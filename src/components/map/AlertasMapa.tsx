@@ -53,24 +53,27 @@ const getColorByRisk = (point: MapPoint, filter: string): string => {
     if (score >= 80) return "#ef4444"; // red
     if (score >= 60) return "#f97316"; // orange
     if (score >= 40) return "#eab308"; // yellow
-    return "#22c55e"; // green
+    return "#22c55e"; // green - low risk
   }
   
   if (filter === "vencido") {
     const dias = point.dias_atraso ?? 0;
-    if (dias > 60) return "#ef4444"; // red
-    if (dias > 30) return "#f97316"; // orange
-    if (dias > 0) return "#eab308"; // yellow
-    return "#22c55e"; // green
+    // If client is in vencido filter, they have some overdue status
+    // If dias_atraso is 0 but vencido=true, treat as 1-30 days (yellow)
+    if (dias > 60) return "#ef4444"; // red - critical
+    if (dias > 30) return "#f97316"; // orange - high
+    // If showing in vencido filter, minimum is yellow (not green)
+    return "#eab308"; // yellow - overdue
   }
   
-  // sinal - based on alerta_tipo
-  if (point.alerta_tipo) {
-    if (point.alerta_tipo.toLowerCase().includes("crítico")) return "#ef4444";
-    if (point.alerta_tipo.toLowerCase().includes("alto")) return "#f97316";
-    if (point.alerta_tipo.toLowerCase().includes("médio")) return "#eab308";
+  // sinal - based on alerta_tipo or downtime
+  if (filter === "sinal") {
+    if (point.alerta_tipo) return "#ef4444"; // red - has alert
+    if (point.downtime_min_24h && point.downtime_min_24h > 0) return "#f97316"; // orange - downtime
+    return "#eab308"; // yellow - some issue
   }
-  return "#22c55e";
+  
+  return "#22c55e"; // default green
 };
 
 const getRadiusByRisk = (point: MapPoint, filter: string): number => {
@@ -79,18 +82,23 @@ const getRadiusByRisk = (point: MapPoint, filter: string): number => {
     if (score >= 80) return 10;
     if (score >= 60) return 8;
     if (score >= 40) return 6;
-    return 4;
+    return 5;
   }
   
   if (filter === "vencido") {
     const dias = point.dias_atraso ?? 0;
     if (dias > 60) return 10;
     if (dias > 30) return 8;
-    if (dias > 0) return 6;
-    return 4;
+    return 6; // default for vencido
   }
   
-  return point.alerta_tipo ? 8 : 4;
+  if (filter === "sinal") {
+    if (point.alerta_tipo) return 10;
+    if (point.downtime_min_24h && point.downtime_min_24h > 60) return 8;
+    return 6;
+  }
+  
+  return 5;
 };
 
 export function AlertasMapa({ data, activeFilter }: AlertasMapaProps) {
