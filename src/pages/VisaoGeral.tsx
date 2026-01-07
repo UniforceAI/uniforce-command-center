@@ -407,7 +407,18 @@ const VisaoGeral = () => {
     const getKey = (e: Evento): string | null => {
       switch (dimension) {
         case "plano": return e.plano_nome || null;
-        case "cidade": return e.cliente_cidade || null;
+        case "cidade": {
+          // Converter ID de cidade para nome usando o mapeamento
+          const cidadeValue = e.cliente_cidade;
+          if (!cidadeValue) return null;
+          // Se for número ou string numérica, converter usando o mapa
+          const cidadeId = typeof cidadeValue === 'number' ? cidadeValue : parseInt(cidadeValue);
+          if (!isNaN(cidadeId) && cidadeIdMap[cidadeId]) {
+            return cidadeIdMap[cidadeId];
+          }
+          // Se já for nome, retornar direto
+          return String(cidadeValue);
+        }
         case "bairro": return e.cliente_bairro || null;
         default: return null;
       }
