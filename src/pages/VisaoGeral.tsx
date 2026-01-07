@@ -665,17 +665,16 @@ const VisaoGeral = () => {
     return calculateCohortData(top5Dimension);
   }, [filteredEventos, top5Dimension]);
 
-  // Top 5 por métrica selecionada - DISTRIBUIÇÃO dos TOP 5 (soma = 100%)
+  // Top 5 por métrica selecionada - DISTRIBUIÇÃO ordenada por quantidade (maior % primeiro)
   const top5Risco = useMemo(() => {
-    const pctKey = top5Filter === "churn" ? "churnPct" : "financeiroPct";
     const countKey = top5Filter === "churn" ? "cancelados" : "clientesVencidos";
     
-    // Ordenar e pegar os TOP 5
+    // Ordenar por QUANTIDADE ABSOLUTA (maior primeiro) e pegar TOP 5
     const top5Sorted = [...top5Data]
-      .sort((a, b) => ((b as any)[pctKey] || 0) - ((a as any)[pctKey] || 0))
+      .sort((a, b) => ((b as any)[countKey] || 0) - ((a as any)[countKey] || 0))
       .slice(0, 5);
     
-    // Calcular total APENAS dos 5 selecionados para distribuição fechar 100%
+    // Calcular total dos 5 para distribuição fechar 100%
     const totalTop5 = top5Sorted.reduce((sum, p) => sum + ((p as any)[countKey] || 0), 0);
     
     if (totalTop5 === 0) {
