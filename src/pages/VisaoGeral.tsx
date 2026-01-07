@@ -188,57 +188,6 @@ const VisaoGeral = () => {
            (e.dias_atraso !== null && e.dias_atraso !== undefined && Number(e.dias_atraso) > 0);
   };
 
-  // Debug: análise completa de dados por cidade (clientes únicos)
-  useEffect(() => {
-    if (eventos.length > 0) {
-      const clientesPorCidade: Record<string, Set<number>> = {};
-      const clientesVencidosPorCidade: Record<string, Set<number>> = {};
-      const ltvPorCidade: Record<string, number[]> = {};
-      
-      eventos.forEach(e => {
-        const cidadeNome = getCidadeNome(e.cliente_cidade);
-        if (!cidadeNome) return;
-        
-        if (!clientesPorCidade[cidadeNome]) {
-          clientesPorCidade[cidadeNome] = new Set();
-          clientesVencidosPorCidade[cidadeNome] = new Set();
-          ltvPorCidade[cidadeNome] = [];
-        }
-        
-        // Contar cliente único
-        if (!clientesPorCidade[cidadeNome].has(e.cliente_id)) {
-          clientesPorCidade[cidadeNome].add(e.cliente_id);
-          if (e.ltv_reais_estimado) {
-            ltvPorCidade[cidadeNome].push(e.ltv_reais_estimado);
-          }
-        }
-        
-        // Verificar se cliente está vencido - usar função helper
-        if (isClienteVencido(e) && !clientesVencidosPorCidade[cidadeNome].has(e.cliente_id)) {
-          clientesVencidosPorCidade[cidadeNome].add(e.cliente_id);
-        }
-      });
-      
-      // Resumo por cidade
-      const resumo: Record<string, { clientes: number; vencidos: number; pctVencido: string; ltvMedio: string }> = {};
-      Object.keys(clientesPorCidade).forEach(cidade => {
-        const total = clientesPorCidade[cidade].size;
-        const vencidos = clientesVencidosPorCidade[cidade].size;
-        const ltv = ltvPorCidade[cidade];
-        const ltvMedio = ltv.length > 0 ? ltv.reduce((a, b) => a + b, 0) / ltv.length : 0;
-        resumo[cidade] = {
-          clientes: total,
-          vencidos: vencidos,
-          pctVencido: (total > 0 ? (vencidos / total * 100).toFixed(1) : "0") + "%",
-          ltvMedio: "R$ " + ltvMedio.toFixed(0)
-        };
-      });
-      
-      console.log("=== ANÁLISE POR CIDADE (4 cidades mapeadas) ===");
-      console.table(resumo);
-    }
-  }, [eventos]);
-
   // Auth
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
@@ -414,20 +363,6 @@ const VisaoGeral = () => {
       ? Math.round(ltvMesesValues.reduce((a, b) => a + b, 0) / ltvMesesValues.length) 
       : 0; // Se não tiver dados, mostrar 0
     
-    // Debug LTV COMPLETO
-    console.log("📊 LTV ANÁLISE COMPLETA:", {
-      totalClientesUnicos: clientesUnicos.length,
-      clientesComLtvMeses: ltvMesesValues.length,
-      valoresLtvMeses: ltvMesesValues,
-      soma: ltvMesesValues.reduce((a, b) => a + b, 0),
-      ltvMesesCalculado: ltvMeses,
-      ltvReaisCalculado: ltvMedio,
-      primeirosCom: clientesUnicos.filter(e => e.ltv_meses_estimado).slice(0, 5).map(e => ({
-        cliente: e.cliente_id,
-        ltv_meses: e.ltv_meses_estimado,
-        ltv_reais: e.ltv_reais_estimado
-      }))
-    });
 
     // Ticket Médio
     const ticketMedio = clientesAtivos > 0 ? mrrTotal / clientesAtivos : 0;
@@ -604,7 +539,7 @@ const VisaoGeral = () => {
     return calculateCohortData(cohortDimension);
   }, [filteredEventos, cohortDimension]);
 
-  // Sorted cohort data based on selected tab
+  // Sorted cohort data based on selected tab - FILTRAR planos com mínimo de clientes
   const sortedCohortData = useMemo(() => {
     const sortKey = {
       churn: "churnPct",
@@ -616,7 +551,11 @@ const VisaoGeral = () => {
       ltv: "ltvMedio",
     }[cohortTab] || "churnPct";
 
-    return [...cohortData]
+    // Filtrar itens com pelo menos 3 clientes para evitar distorções estatísticas
+    const minClientes = 3;
+    const filtered = cohortData.filter(item => item.total >= minClientes);
+
+    return [...filtered]
       .sort((a, b) => (b as any)[sortKey] - (a as any)[sortKey])
       .slice(0, 12);
   }, [cohortData, cohortTab]);
@@ -665,12 +604,16 @@ const VisaoGeral = () => {
     return calculateCohortData(top5Dimension);
   }, [filteredEventos, top5Dimension]);
 
-  // Top 5 por métrica selecionada - DISTRIBUIÇÃO ordenada por quantidade (maior % primeiro)
+  // Top 5 por métrica selecionada - FILTRAR mínimo de clientes
   const top5Risco = useMemo(() => {
     const countKey = top5Filter === "churn" ? "cancelados" : "clientesVencidos";
     
+    // Filtrar itens com pelo menos 3 clientes
+    const minClientes = 3;
+    const filtered = top5Data.filter(item => item.total >= minClientes);
+    
     // Ordenar por QUANTIDADE ABSOLUTA (maior primeiro) e pegar TOP 5
-    const top5Sorted = [...top5Data]
+    const top5Sorted = [...filtered]
       .sort((a, b) => ((b as any)[countKey] || 0) - ((a as any)[countKey] || 0))
       .slice(0, 5);
     
@@ -999,10 +942,10 @@ const VisaoGeral = () => {
                   <CardContent className="pt-4">
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-sm font-medium text-muted-foreground">
-                        {cohortMetricInfo.label} por Plano
+                        {cohortMetricInfo.label}
                       </span>
                       <span className="text-xs text-muted-foreground">
-                        {sortedCohortData.length} planos
+                        {sortedCohortData.length} {cohortDimension === "plano" ? "planos" : cohortDimension === "cidade" ? "cidades" : "bairros"} (mín. 3 clientes)
                       </span>
                     </div>
                     {sortedCohortData.length > 0 ? (
