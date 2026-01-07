@@ -176,16 +176,36 @@ const VisaoGeral = () => {
     4435: "Itajaí"
   };
 
-  // Debug: log valores de cliente_cidade para investigar
+  // Debug: log valores de cliente_cidade e análise de vencidos por cidade
   useEffect(() => {
     if (eventos.length > 0) {
       const cidadesUnicas = new Set<any>();
+      const vencidosPorCidade: Record<string, { total: number; vencidos: number }> = {};
+      
       eventos.forEach(e => {
         if (e.cliente_cidade !== null && e.cliente_cidade !== undefined) {
           cidadesUnicas.add(e.cliente_cidade);
+          
+          // Converter ID para nome
+          const cidadeValue = e.cliente_cidade;
+          const cidadeId = typeof cidadeValue === 'number' ? cidadeValue : parseInt(String(cidadeValue));
+          const cidadeNome = (!isNaN(cidadeId) && cidadeIdMap[cidadeId]) ? cidadeIdMap[cidadeId] : String(cidadeValue);
+          
+          if (!vencidosPorCidade[cidadeNome]) {
+            vencidosPorCidade[cidadeNome] = { total: 0, vencidos: 0 };
+          }
+          vencidosPorCidade[cidadeNome].total++;
+          
+          if (e.vencido === true || (e.dias_atraso !== null && e.dias_atraso > 0)) {
+            vencidosPorCidade[cidadeNome].vencidos++;
+          }
         }
       });
-      console.log("Valores únicos de cliente_cidade:", Array.from(cidadesUnicas));
+      
+      console.log("=== DEBUG CIDADES ===");
+      console.log("Valores únicos de cliente_cidade (raw):", Array.from(cidadesUnicas));
+      console.log("Análise de eventos por cidade:", vencidosPorCidade);
+      console.log("Mapeamento de IDs:", cidadeIdMap);
     }
   }, [eventos]);
 
@@ -397,8 +417,8 @@ const VisaoGeral = () => {
       // Contratos
       ativos: number;
       bloqueados: number;
-      // Financeiro
-      vencido: number;
+      // Financeiro - agora conta CLIENTES únicos vencidos
+      clientesVencidos: number;
       valorVencido: number;
       // Suporte (placeholder - aguardando dados)
       chamados: number;
@@ -417,6 +437,7 @@ const VisaoGeral = () => {
 
     const clientesPorKey = new Map<string, Set<number>>();
     const clienteContado = new Map<string, Set<number>>();
+    const clientesVencidosPorKey = new Map<string, Set<number>>(); // Track clientes vencidos separadamente
     
     const getKey = (e: Evento): string | null => {
       switch (dimension) {
@@ -426,7 +447,7 @@ const VisaoGeral = () => {
           const cidadeValue = e.cliente_cidade;
           if (!cidadeValue) return null;
           // Se for número ou string numérica, converter usando o mapa
-          const cidadeId = typeof cidadeValue === 'number' ? cidadeValue : parseInt(cidadeValue);
+          const cidadeId = typeof cidadeValue === 'number' ? cidadeValue : parseInt(String(cidadeValue));
           if (!isNaN(cidadeId) && cidadeIdMap[cidadeId]) {
             return cidadeIdMap[cidadeId];
           }
@@ -451,6 +472,7 @@ const VisaoGeral = () => {
       
       if (!clientesPorKey.has(key)) {
         clientesPorKey.set(key, new Set());
+        clientesVencidosPorKey.set(key, new Set());
       }
       clientesPorKey.get(key)!.add(e.cliente_id);
       
@@ -459,7 +481,7 @@ const VisaoGeral = () => {
           key, 
           label: getLabel(key, dimension),
           total: 0, risco: 0, cancelados: 0, ativos: 0, bloqueados: 0,
-          vencido: 0, valorVencido: 0, chamados: 0, reincidentes: 0,
+          clientesVencidos: 0, valorVencido: 0, chamados: 0, reincidentes: 0,
           comDowntime: 0, comAlerta: 0, npsTotal: 0, npsCount: 0, detratores: 0,
           ltvTotal: 0, mrrTotal: 0
         };
@@ -508,28 +530,32 @@ const VisaoGeral = () => {
         }
       }
       
-      // Financeiro (pode ter múltiplas cobranças por cliente)
+      // Financeiro - contar CLIENTE ÚNICO vencido (não eventos)
       if (e.vencido === true || (e.dias_atraso !== null && e.dias_atraso > 0)) {
-        stats[key].vencido++;
+        const vencidosSet = clientesVencidosPorKey.get(key)!;
+        if (!vencidosSet.has(e.cliente_id)) {
+          vencidosSet.add(e.cliente_id);
+        }
         stats[key].valorVencido += e.valor_cobranca || 0;
       }
     });
 
-    // Add total count
+    // Add total count e clientes vencidos
     clientesPorKey.forEach((clientes, key) => {
       if (stats[key]) {
         stats[key].total = clientes.size;
+        stats[key].clientesVencidos = clientesVencidosPorKey.get(key)?.size || 0;
       }
     });
 
-    // Calculate all percentages
+    // Calculate all percentages - CORRIGIDO: usar clientesVencidos (únicos)
     return Object.values(stats)
       .map(p => ({
         ...p,
         plano: p.key, // For backward compatibility
         churnPct: p.total > 0 ? (p.cancelados / p.total * 100) : 0,
         contratosPct: p.total > 0 ? (p.bloqueados / p.total * 100) : 0,
-        financeiroPct: p.total > 0 ? (p.vencido / p.total * 100) : 0,
+        financeiroPct: p.total > 0 ? (p.clientesVencidos / p.total * 100) : 0, // CORRIGIDO
         suportePct: p.total > 0 ? (p.chamados / p.total * 100) : 0,
         redePct: p.total > 0 ? ((p.comDowntime + p.comAlerta) / p.total * 100) : 0,
         npsPct: p.npsCount > 0 ? (p.detratores / p.npsCount * 100) : 0,
