@@ -16,12 +16,14 @@ export function useEventos() {
         setIsLoading(true);
         setError(null);
 
-        // Buscar todos os eventos do isp_id configurado
+        // Buscar todos os eventos do isp_id configurado (sem limite)
+        // Range de 0-9999 para pegar até 10000 registros
         const { data, error: fetchError } = await externalSupabase
           .from("eventos")
           .select("*")
           .eq("isp_id", EVENTOS_ISP_ID)
-          .order("event_datetime", { ascending: false });
+          .order("event_datetime", { ascending: false })
+          .range(0, 9999);
 
         if (fetchError) throw fetchError;
 
