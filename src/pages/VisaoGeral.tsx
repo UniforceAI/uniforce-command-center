@@ -156,6 +156,8 @@ const VisaoGeral = () => {
   // Filtros
   const [periodo, setPeriodo] = useState("365");
   const [uf, setUf] = useState("todos");
+  const [cidade, setCidade] = useState("todos");
+  const [bairro, setBairro] = useState("todos");
   const [plano, setPlano] = useState("todos");
   const [status, setStatus] = useState("todos");
   const [cohortTab, setCohortTab] = useState("churn");
@@ -178,13 +180,19 @@ const VisaoGeral = () => {
   // Filter options
   const filterOptions = useMemo(() => {
     const ufs = new Set<string>();
+    const cidades = new Set<string>();
+    const bairros = new Set<string>();
     const planos = new Set<string>();
     eventos.forEach((e: Evento) => {
       if (e.cliente_uf) ufs.add(e.cliente_uf);
+      if (e.cliente_cidade) cidades.add(e.cliente_cidade);
+      if (e.cliente_bairro) bairros.add(e.cliente_bairro);
       if (e.plano_nome) planos.add(e.plano_nome);
     });
     return {
       ufs: Array.from(ufs).sort(),
+      cidades: Array.from(cidades).sort(),
+      bairros: Array.from(bairros).sort(),
       planos: Array.from(planos).sort(),
     };
   }, [eventos]);
@@ -210,19 +218,25 @@ const VisaoGeral = () => {
     if (uf !== "todos") {
       filtered = filtered.filter((e) => e.cliente_uf === uf);
     }
+    if (cidade !== "todos") {
+      filtered = filtered.filter((e) => e.cliente_cidade === cidade);
+    }
+    if (bairro !== "todos") {
+      filtered = filtered.filter((e) => e.cliente_bairro === bairro);
+    }
     if (plano !== "todos") {
       filtered = filtered.filter((e) => e.plano_nome === plano);
     }
     if (status !== "todos") {
-      filtered = filtered.filter((e) => e.servico_status === status);
+      filtered = filtered.filter((e) => e.servico_status === status || e.status_contrato === status);
     }
 
     return filtered;
-  }, [eventos, periodo, uf, plano, status]);
+  }, [eventos, periodo, uf, cidade, bairro, plano, status]);
 
-  // KPIs calculation
+  // KPIs calculation - FIXED: use actual data fields correctly
   const kpis = useMemo(() => {
-    // Get unique clients
+    // Get unique clients (last event per client)
     const clientesMap = new Map<number, Evento>();
     filteredEventos.forEach(e => {
       if (!clientesMap.has(e.cliente_id) || 
@@ -231,7 +245,14 @@ const VisaoGeral = () => {
       }
     });
     const clientesUnicos = Array.from(clientesMap.values());
-    const clientesAtivos = clientesUnicos.filter(e => e.servico_status === "A" || e.status_contrato === "Ativo").length;
+    
+    // Clientes ativos: status_contrato diferente de C (cancelado) ou servico_status diferente de C
+    const clientesAtivos = clientesUnicos.filter(e => 
+      e.status_contrato !== "C" && e.servico_status !== "C"
+    ).length;
+    
+    // Total de clientes únicos
+    const totalClientes = clientesUnicos.length;
     
     // Novos clientes (instalados no período)
     const hoje = new Date();
@@ -239,43 +260,56 @@ const VisaoGeral = () => {
     const dataLimite = new Date();
     dataLimite.setDate(hoje.getDate() - diasPeriodo);
     const novosClientes = clientesUnicos.filter(e => {
-      const dataInstalacao = e.data_instalacao ? new Date(e.data_instalacao) : null;
+      const dataInstalacao = e.data_instalacao ? new Date(e.data_instalacao) : 
+                             e.created_at ? new Date(e.created_at) : null;
       return dataInstalacao && dataInstalacao >= dataLimite;
     }).length;
 
     // Churn (cancelados)
     const churned = filteredEventos.filter(e => 
-      e.event_type === "CANCELAMENTO" || e.servico_status === "C"
+      e.event_type === "CANCELAMENTO" || e.servico_status === "C" || e.status_contrato === "C"
     );
     const churnCount = new Set(churned.map(e => e.cliente_id)).size;
 
-    // MRR
+    // MRR Total - somar valor_mensalidade de todos clientes não cancelados
     const mrrTotal = clientesUnicos
-      .filter(e => e.servico_status === "A" || e.status_contrato === "Ativo")
+      .filter(e => e.status_contrato !== "C" && e.servico_status !== "C")
       .reduce((acc, e) => acc + (e.valor_mensalidade || 0), 0);
 
-    // Faturamento realizado (pagos)
+    // Faturamento realizado (cobranças pagas)
     const faturamentoRealizado = filteredEventos
       .filter(e => e.event_type === "COBRANCA" && (e.cobranca_status === "Pago" || e.valor_pago))
       .reduce((acc, e) => acc + (e.valor_pago || e.valor_cobranca || 0), 0);
 
-    // MRR em Risco (clientes com churn_risk_score alto)
-    const clientesEmRisco = clientesUnicos.filter(e => e.churn_risk_score && e.churn_risk_score >= 50);
+    // MRR em Risco - clientes com alerta ou risco
+    const clientesEmRisco = clientesUnicos.filter(e => 
+      e.churn_risk_score && e.churn_risk_score >= 50 ||
+      e.alerta_tipo ||
+      e.downtime_min_24h > 60
+    );
     const mrrEmRisco = clientesEmRisco.reduce((acc, e) => acc + (e.valor_mensalidade || 0), 0);
 
     // LTV em Risco
-    const ltvEmRisco = clientesEmRisco.reduce((acc, e) => acc + (e.ltv_reais_estimado || 0), 0);
+    const ltvEmRisco = clientesEmRisco.reduce((acc, e) => acc + (e.ltv_reais_estimado || e.valor_mensalidade * 12 || 0), 0);
 
     // RR Vencido (receita recorrente vencida)
     const cobrancasVencidas = filteredEventos.filter(e => 
-      e.event_type === "COBRANCA" && (e.vencido === true || e.dias_atraso > 0)
+      e.event_type === "COBRANCA" && (e.vencido === true || (e.dias_atraso !== null && e.dias_atraso > 0))
     );
     const rrVencido = cobrancasVencidas.reduce((acc, e) => acc + (e.valor_cobranca || 0), 0);
 
+    // Clientes vencidos únicos
+    const clientesVencidosUnicos = new Set(cobrancasVencidas.map(e => e.cliente_id)).size;
+
+    // % Inadimplência = clientes com cobrança vencida / total de clientes
+    const pctInadimplencia = totalClientes > 0 
+      ? ((clientesVencidosUnicos / totalClientes) * 100).toFixed(1)
+      : "0.0";
+
     // % Inadimplência Crítica (vencido > 30 dias)
-    const inadCritica = cobrancasVencidas.filter(e => e.dias_atraso > 30);
-    const pctInadCritica = clientesUnicos.length > 0 
-      ? (new Set(inadCritica.map(e => e.cliente_id)).size / clientesUnicos.length * 100).toFixed(1)
+    const inadCritica = cobrancasVencidas.filter(e => e.dias_atraso && e.dias_atraso > 30);
+    const pctInadCritica = totalClientes > 0 
+      ? (new Set(inadCritica.map(e => e.cliente_id)).size / totalClientes * 100).toFixed(1)
       : "0.0";
 
     // % Detratores (NPS < 7)
@@ -283,19 +317,27 @@ const VisaoGeral = () => {
     const detratores = npsScores.filter(e => e.nps_score! < 7).length;
     const pctDetratores = npsScores.length > 0 
       ? ((detratores / npsScores.length) * 100).toFixed(1)
-      : "0.0";
+      : "N/A";
 
-    // LTV Médio
-    const ltvValues = clientesUnicos.filter(e => e.ltv_reais_estimado).map(e => e.ltv_reais_estimado!);
+    // LTV Médio - usar ltv_reais_estimado ou calcular estimativa
+    const ltvValues = clientesUnicos
+      .filter(e => e.ltv_reais_estimado || e.valor_mensalidade)
+      .map(e => e.ltv_reais_estimado || (e.valor_mensalidade || 0) * 24); // Estimativa: 24 meses
     const ltvMedio = ltvValues.length > 0 ? ltvValues.reduce((a, b) => a + b, 0) / ltvValues.length : 0;
-    const ltvMesesValues = clientesUnicos.filter(e => e.ltv_meses_estimado).map(e => e.ltv_meses_estimado!);
-    const ltvMeses = ltvMesesValues.length > 0 ? Math.round(ltvMesesValues.reduce((a, b) => a + b, 0) / ltvMesesValues.length) : 0;
+    
+    const ltvMesesValues = clientesUnicos
+      .filter(e => e.ltv_meses_estimado)
+      .map(e => e.ltv_meses_estimado!);
+    const ltvMeses = ltvMesesValues.length > 0 
+      ? Math.round(ltvMesesValues.reduce((a, b) => a + b, 0) / ltvMesesValues.length) 
+      : 26; // Média padrão de 26 meses
 
     // Ticket Médio
     const ticketMedio = clientesAtivos > 0 ? mrrTotal / clientesAtivos : 0;
 
     return {
       clientesAtivos,
+      totalClientes,
       novosClientes,
       churnCount,
       mrrTotal,
@@ -303,6 +345,7 @@ const VisaoGeral = () => {
       mrrEmRisco,
       ltvEmRisco,
       rrVencido,
+      pctInadimplencia,
       pctInadCritica,
       pctDetratores,
       ltvMedio,
@@ -311,15 +354,16 @@ const VisaoGeral = () => {
     };
   }, [filteredEventos, periodo]);
 
-  // Cohort data by plan
+  // Cohort data by plan - FIXED to use available data
   const cohortData = useMemo(() => {
     const planoStats: Record<string, { 
       plano: string; 
-      churn: number; 
+      risco: number; // Clientes com alerta/risco
       total: number; 
       vencido: number;
       chamados: number;
       ltvTotal: number;
+      mrrTotal: number;
     }> = {};
 
     // Get unique clients per plan
@@ -333,24 +377,34 @@ const VisaoGeral = () => {
     });
 
     // Calculate stats per plan
+    const clienteContado = new Map<string, Set<number>>();
     filteredEventos.forEach(e => {
       if (!e.plano_nome) return;
       const key = e.plano_nome;
       if (!planoStats[key]) {
-        planoStats[key] = { plano: key, churn: 0, total: 0, vencido: 0, chamados: 0, ltvTotal: 0 };
+        planoStats[key] = { plano: key, risco: 0, total: 0, vencido: 0, chamados: 0, ltvTotal: 0, mrrTotal: 0 };
+        clienteContado.set(key, new Set());
       }
 
-      if (e.churn_risk_score && e.churn_risk_score >= 50) {
-        planoStats[key].churn++;
+      // Contar cliente uma vez por plano
+      const contados = clienteContado.get(key)!;
+      if (!contados.has(e.cliente_id)) {
+        contados.add(e.cliente_id);
+        // MRR
+        planoStats[key].mrrTotal += e.valor_mensalidade || 0;
+        // LTV estimado (usar valor * 24 meses se não tiver ltv_reais_estimado)
+        planoStats[key].ltvTotal += e.ltv_reais_estimado || (e.valor_mensalidade || 0) * 24;
+        // Risco
+        if (e.alerta_tipo || (e.downtime_min_24h && e.downtime_min_24h > 60) || (e.churn_risk_score && e.churn_risk_score >= 50)) {
+          planoStats[key].risco++;
+        }
       }
-      if (e.vencido === true || e.dias_atraso > 0) {
+
+      if (e.vencido === true || (e.dias_atraso !== null && e.dias_atraso > 0)) {
         planoStats[key].vencido++;
       }
       if (e.event_type === "ATENDIMENTO") {
         planoStats[key].chamados++;
-      }
-      if (e.ltv_reais_estimado) {
-        planoStats[key].ltvTotal += e.ltv_reais_estimado;
       }
     });
 
@@ -361,31 +415,60 @@ const VisaoGeral = () => {
       }
     });
 
-    // Calculate percentages and sort
+    // Calculate percentages and sort by risk/vencido
     return Object.values(planoStats)
       .map(p => ({
         ...p,
-        churnPct: p.total > 0 ? (p.churn / p.total * 100) : 0,
+        churnPct: p.total > 0 ? (p.risco / p.total * 100) : 0,
         vencidoPct: p.total > 0 ? (p.vencido / p.total * 100) : 0,
-        label: p.plano.length > 60 ? p.plano.substring(0, 60) + "..." : p.plano,
+        label: p.plano.length > 50 ? p.plano.substring(0, 50) + "..." : p.plano,
       }))
-      .sort((a, b) => b.churnPct - a.churnPct)
+      .sort((a, b) => b.vencidoPct - a.vencidoPct) // Ordenar por vencido pois temos esses dados
       .slice(0, 10);
   }, [filteredEventos]);
 
-  // Top 5 Churn by plan
-  const top5Churn = useMemo(() => {
+  // Driver Principal - calcular qual é o maior problema
+  const driverPrincipal = useMemo(() => {
+    const vencidos = filteredEventos.filter(e => e.vencido === true || (e.dias_atraso && e.dias_atraso > 0));
+    const comAlerta = filteredEventos.filter(e => e.alerta_tipo);
+    const comDowntime = filteredEventos.filter(e => e.downtime_min_24h && e.downtime_min_24h > 60);
+    
+    const clientesUnicos = new Set(filteredEventos.map(e => e.cliente_id)).size;
+    const clientesVencidos = new Set(vencidos.map(e => e.cliente_id)).size;
+    const clientesAlerta = new Set(comAlerta.map(e => e.cliente_id)).size;
+    const clientesDowntime = new Set(comDowntime.map(e => e.cliente_id)).size;
+
+    const pctVencido = clientesUnicos > 0 ? (clientesVencidos / clientesUnicos * 100) : 0;
+    const pctAlerta = clientesUnicos > 0 ? (clientesAlerta / clientesUnicos * 100) : 0;
+    const pctDowntime = clientesUnicos > 0 ? (clientesDowntime / clientesUnicos * 100) : 0;
+
+    if (pctVencido >= pctAlerta && pctVencido >= pctDowntime) {
+      return { tipo: "Financeiro", pct: pctVencido.toFixed(0), desc: "clientes em atraso" };
+    } else if (pctAlerta >= pctDowntime) {
+      return { tipo: "Alerta Técnico", pct: pctAlerta.toFixed(0), desc: "clientes com alertas" };
+    } else {
+      return { tipo: "Rede/Downtime", pct: pctDowntime.toFixed(0), desc: "clientes com downtime" };
+    }
+  }, [filteredEventos]);
+
+  // Top 5 por vencido (dados disponíveis)
+  const top5Risco = useMemo(() => {
     return cohortData.slice(0, 5).map(p => ({
       plano: p.plano,
-      pct: p.churnPct.toFixed(1),
+      pct: p.vencidoPct.toFixed(1),
     }));
   }, [cohortData]);
 
-  // Fila de Risco
+  // Fila de Risco - FIXED: use available fields (alerta_tipo, downtime, etc.)
   const filaRisco = useMemo(() => {
     const clientesMap = new Map<number, Evento>();
     filteredEventos
-      .filter(e => e.churn_risk_score && e.churn_risk_score >= 60)
+      .filter(e => 
+        e.alerta_tipo || // Tem alerta
+        (e.downtime_min_24h && e.downtime_min_24h > 60) || // Downtime alto
+        (e.churn_risk_score && e.churn_risk_score >= 60) || // Score alto
+        (e.dias_atraso && e.dias_atraso > 30) // Muito atrasado
+      )
       .forEach(e => {
         if (!clientesMap.has(e.cliente_id)) {
           clientesMap.set(e.cliente_id, e);
@@ -397,9 +480,12 @@ const VisaoGeral = () => {
         id: e.cliente_id,
         nome: e.cliente_nome || `Cliente ${e.cliente_id}`,
         plano: e.plano_nome || "-",
-        local: `${e.cliente_cidade || ""}, ${e.cliente_uf || ""}`.trim() || "-",
-        score: e.churn_risk_score || 0,
-        driver: e.alerta_tipo || "Risco",
+        local: e.cliente_bairro 
+          ? `${e.cliente_bairro}, ${e.cliente_cidade || ""}` 
+          : e.cliente_cidade || "-",
+        score: e.churn_risk_score || (e.downtime_min_24h ? Math.min(100, 50 + e.downtime_min_24h / 2) : 70),
+        driver: e.alerta_tipo || (e.dias_atraso && e.dias_atraso > 0 ? "Atraso financeiro" : "Risco técnico"),
+        celular: e.cliente_celular,
       }))
       .sort((a, b) => b.score - a.score)
       .slice(0, 8);
@@ -472,13 +558,37 @@ const VisaoGeral = () => {
             </Select>
 
             <Select value={uf} onValueChange={setUf}>
-              <SelectTrigger className="w-[130px] h-9">
+              <SelectTrigger className="w-[120px] h-9">
                 <SelectValue placeholder="Todas UFs" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="todos">Todas UFs</SelectItem>
                 {filterOptions.ufs.map(u => (
                   <SelectItem key={u} value={u}>{u}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Select value={cidade} onValueChange={setCidade}>
+              <SelectTrigger className="w-[140px] h-9">
+                <SelectValue placeholder="Todas Cidades" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todos">Todas Cidades</SelectItem>
+                {filterOptions.cidades.map(c => (
+                  <SelectItem key={c} value={c}>{c}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Select value={bairro} onValueChange={setBairro}>
+              <SelectTrigger className="w-[140px] h-9">
+                <SelectValue placeholder="Todos Bairros" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todos">Todos Bairros</SelectItem>
+                {filterOptions.bairros.map(b => (
+                  <SelectItem key={b} value={b}>{b}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -502,6 +612,7 @@ const VisaoGeral = () => {
               <SelectContent>
                 <SelectItem value="todos">Todos Status</SelectItem>
                 <SelectItem value="A">Ativo</SelectItem>
+                <SelectItem value="D">Desativado</SelectItem>
                 <SelectItem value="B">Bloqueado</SelectItem>
                 <SelectItem value="C">Cancelado</SelectItem>
               </SelectContent>
@@ -679,26 +790,26 @@ const VisaoGeral = () => {
 
               {/* Right Sidebar */}
               <div className="space-y-4">
-                {/* Driver Principal */}
+                {/* Driver Principal - com dados reais */}
                 <Card className="border-l-4 border-l-warning">
                   <CardContent className="py-4">
                     <p className="text-xs text-muted-foreground">Driver Principal</p>
-                    <p className="text-lg font-bold text-warning">Financeiro</p>
-                    <p className="text-xs text-muted-foreground">28% de clientes em atraso</p>
+                    <p className="text-lg font-bold text-warning">{driverPrincipal.tipo}</p>
+                    <p className="text-xs text-muted-foreground">{driverPrincipal.pct}% de {driverPrincipal.desc}</p>
                   </CardContent>
                 </Card>
 
-                {/* Top 5 Churn */}
+                {/* Top 5 Risco */}
                 <Card>
                   <CardHeader className="pb-2">
-                    <CardTitle className="text-sm">Top 5 Churn</CardTitle>
-                    <p className="text-xs text-muted-foreground">Por Plano</p>
+                    <CardTitle className="text-sm">Top 5 Risco</CardTitle>
+                    <p className="text-xs text-muted-foreground">% Vencido por Plano</p>
                   </CardHeader>
                   <CardContent className="space-y-2">
-                    {top5Churn.map((item, i) => (
+                    {top5Risco.map((item, i) => (
                       <div key={i} className="flex justify-between items-center text-sm">
                         <span className="text-muted-foreground truncate max-w-[180px]" title={item.plano}>
-                          {item.plano.substring(0, 45)}...
+                          {item.plano.substring(0, 40)}...
                         </span>
                         <span className="text-destructive font-medium">{item.pct}%</span>
                       </div>
