@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useEventos } from "@/hooks/useEventos";
+import { useChamados } from "@/hooks/useChamados";
 import { Evento } from "@/types/evento";
 import { AlertasMapa } from "@/components/map/AlertasMapa";
 import { 
@@ -155,6 +156,7 @@ const VisaoGeral = () => {
   const { toast } = useToast();
   const [user, setUser] = useState<User | null>(null);
   const { eventos, isLoading, error } = useEventos();
+  const { chamados, getChamadosPorCliente, isLoading: chamadosLoading } = useChamados();
 
   // Filtros
   const [periodo, setPeriodo] = useState("365");
@@ -201,11 +203,11 @@ const VisaoGeral = () => {
     };
   }, [eventos]);
 
-  // Filtered events - FIX: use proper date comparison
+  // Filtered events - FIX: proper date filtering
   const filteredEventos = useMemo(() => {
     let filtered = [...eventos] as Evento[];
 
-    // Date filter - compare with event_datetime or created_at
+    // Date filter - compare with event_datetime, data_instalacao, or created_at
     if (periodo !== "todos") {
       const diasAtras = parseInt(periodo);
       const dataLimite = new Date();
@@ -213,8 +215,13 @@ const VisaoGeral = () => {
       dataLimite.setHours(0, 0, 0, 0);
 
       filtered = filtered.filter((e) => {
-        const eventDate = e.event_datetime ? new Date(e.event_datetime) : null;
-        if (!eventDate) return true; // Keep events without date
+        // Try multiple date fields
+        const dateStr = e.event_datetime || e.data_instalacao || e.created_at;
+        if (!dateStr) return false; // Exclude events without any date
+        
+        const eventDate = new Date(dateStr);
+        if (isNaN(eventDate.getTime())) return false; // Invalid date
+        
         return eventDate >= dataLimite;
       });
     }
@@ -237,6 +244,23 @@ const VisaoGeral = () => {
 
     return filtered;
   }, [eventos, periodo, uf, cidade, bairro, plano, status]);
+
+  // Map cliente_id -> plano_nome for chamados integration
+  const clientePlanoMap = useMemo(() => {
+    const map = new Map<number, string>();
+    eventos.forEach(e => {
+      if (e.plano_nome && !map.has(e.cliente_id)) {
+        map.set(e.cliente_id, e.plano_nome);
+      }
+    });
+    return map;
+  }, [eventos]);
+
+  // Chamados data filtered by period
+  const chamadosPorCliente = useMemo(() => {
+    const diasPeriodo = periodo === "todos" ? undefined : parseInt(periodo);
+    return getChamadosPorCliente(diasPeriodo);
+  }, [getChamadosPorCliente, periodo, chamados]);
 
   // KPIs calculation - FIXED: use actual data fields correctly
   const kpis = useMemo(() => {
@@ -458,10 +482,11 @@ const VisaoGeral = () => {
         planoStats[key].valorVencido += e.valor_cobranca || 0;
       }
       
-      // Suporte
-      if (e.event_type === "ATENDIMENTO") {
-        planoStats[key].chamados++;
-        if (e.reincidente_30d) {
+      // Suporte - usar dados de chamados reais
+      const chamadosDoCliente = chamadosPorCliente.get(e.cliente_id);
+      if (chamadosDoCliente) {
+        planoStats[key].chamados += chamadosDoCliente.chamados_periodo;
+        if (chamadosDoCliente.reincidente) {
           planoStats[key].reincidentes++;
         }
       }
@@ -495,7 +520,7 @@ const VisaoGeral = () => {
         ltvMedio: p.total > 0 ? (p.ltvTotal / p.total) : 0,
         label: p.plano.length > 45 ? p.plano.substring(0, 45) + "..." : p.plano,
       }));
-  }, [filteredEventos]);
+  }, [filteredEventos, chamadosPorCliente]);
 
   // Sorted cohort data based on selected tab
   const sortedCohortData = useMemo(() => {
@@ -759,7 +784,7 @@ const VisaoGeral = () => {
           <p className="text-muted-foreground text-sm">Visão executiva em tempo real</p>
         </div>
 
-        {isLoading ? (
+        {(isLoading || chamadosLoading) ? (
           <div className="flex items-center justify-center py-12">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
           </div>
