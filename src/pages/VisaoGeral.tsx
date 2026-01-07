@@ -168,12 +168,11 @@ const VisaoGeral = () => {
   const [top5Dimension, setTop5Dimension] = useState<"plano" | "cidade" | "bairro">("cidade");
   const [top5Filter, setTop5Filter] = useState<"churn" | "vencido">("vencido");
 
-  // Mapeamento de IDs de cidade para nomes - CORRIGIDO: usar STRING como chave
+  // Mapeamento de IDs de cidade para nomes - apenas cidades COM DADOS
   const cidadeIdMap: Record<string, string> = {
     "4405": "Gaspar",
-    "4346": "Blumenau", 
     "4419": "Ilhota",
-    "4435": "Itajaí"
+    // Blumenau (4346) e Itajaí (4435) serão adicionados quando houver dados
   };
 
   // Helper function para verificar se cliente está vencido - CONSISTENTE em todo código
