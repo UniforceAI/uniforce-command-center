@@ -18,7 +18,6 @@ import {
   TrendingDown,
   CreditCard,
   Percent,
-  TrendingUp,
   AlertCircle,
   Clock,
   Phone,
@@ -26,8 +25,6 @@ import {
   Settings,
   Plus,
   Filter,
-  ChevronLeft,
-  ChevronRight,
   MapPin
 } from "lucide-react";
 import {
@@ -165,10 +162,18 @@ const VisaoGeral = () => {
   const [bairro, setBairro] = useState("todos");
   const [plano, setPlano] = useState("todos");
   const [status, setStatus] = useState("todos");
-  const [cohortTab, setCohortTab] = useState("churn");
+  const [cohortTab, setCohortTab] = useState("financeiro");
   const [mapTab, setMapTab] = useState("vencido");
-  const [cohortFilter, setCohortFilter] = useState("plano");
-  const [top5Filter, setTop5Filter] = useState<"churn" | "vencido">("churn");
+  const [cohortDimension, setCohortDimension] = useState<"plano" | "cidade" | "bairro">("plano");
+  const [top5Filter, setTop5Filter] = useState<"churn" | "vencido">("vencido");
+
+  // Mapeamento de IDs de cidade para nomes
+  const cidadeIdMap: Record<number, string> = {
+    4405: "Gaspar",
+    4346: "Blumenau", 
+    4419: "Ilhota",
+    4435: "Itajaí"
+  };
 
   // Auth
   useEffect(() => {
@@ -366,10 +371,11 @@ const VisaoGeral = () => {
     };
   }, [filteredEventos, periodo]);
 
-  // Cohort data by plan - calculates ALL metrics for each tab
-  const cohortData = useMemo(() => {
-    const planoStats: Record<string, { 
-      plano: string; 
+  // Generic function to calculate cohort data for any dimension
+  const calculateCohortData = (dimension: "plano" | "cidade" | "bairro") => {
+    const stats: Record<string, { 
+      key: string; 
+      label: string;
       total: number; 
       // Churn/Risco
       risco: number;
@@ -395,23 +401,40 @@ const VisaoGeral = () => {
       mrrTotal: number;
     }> = {};
 
-    // Get unique clients per plan
-    const clientesPorPlano = new Map<string, Set<number>>();
+    const clientesPorKey = new Map<string, Set<number>>();
     const clienteContado = new Map<string, Set<number>>();
     
-    filteredEventos.forEach(e => {
-      if (!e.plano_nome) return;
-      const key = e.plano_nome;
-      
-      if (!clientesPorPlano.has(key)) {
-        clientesPorPlano.set(key, new Set());
+    const getKey = (e: Evento): string | null => {
+      switch (dimension) {
+        case "plano": return e.plano_nome || null;
+        case "cidade": return e.cliente_cidade || null;
+        case "bairro": return e.cliente_bairro || null;
+        default: return null;
       }
-      clientesPorPlano.get(key)!.add(e.cliente_id);
+    };
+
+    const getLabel = (key: string, dimension: string): string => {
+      if (dimension === "plano") {
+        return key.length > 45 ? key.substring(0, 45) + "..." : key;
+      }
+      return key;
+    };
+    
+    filteredEventos.forEach(e => {
+      const key = getKey(e);
+      if (!key) return;
       
-      if (!planoStats[key]) {
-        planoStats[key] = { 
-          plano: key, total: 0, risco: 0, cancelados: 0, ativos: 0, bloqueados: 0,
-          vencido: 0, valorVencido: 0, chamados: 0, reincidentes: 0,  // Suporte zerado - aguardando dados
+      if (!clientesPorKey.has(key)) {
+        clientesPorKey.set(key, new Set());
+      }
+      clientesPorKey.get(key)!.add(e.cliente_id);
+      
+      if (!stats[key]) {
+        stats[key] = { 
+          key, 
+          label: getLabel(key, dimension),
+          total: 0, risco: 0, cancelados: 0, ativos: 0, bloqueados: 0,
+          vencido: 0, valorVencido: 0, chamados: 0, reincidentes: 0,
           comDowntime: 0, comAlerta: 0, npsTotal: 0, npsCount: 0, detratores: 0,
           ltvTotal: 0, mrrTotal: 0
         };
@@ -420,85 +443,80 @@ const VisaoGeral = () => {
 
       const contados = clienteContado.get(key)!;
       
-      // Contar cliente uma vez por plano
+      // Contar cliente uma vez por dimensão
       if (!contados.has(e.cliente_id)) {
         contados.add(e.cliente_id);
         
         // MRR e LTV
-        planoStats[key].mrrTotal += e.valor_mensalidade || 0;
-        planoStats[key].ltvTotal += e.ltv_reais_estimado || (e.valor_mensalidade || 0) * 24;
+        stats[key].mrrTotal += e.valor_mensalidade || 0;
+        stats[key].ltvTotal += e.ltv_reais_estimado || (e.valor_mensalidade || 0) * 24;
         
         // Contratos
         if (e.status_contrato === "C" || e.servico_status === "C") {
-          planoStats[key].cancelados++;
+          stats[key].cancelados++;
         } else if (e.servico_status === "B" || e.status_contrato === "B") {
-          planoStats[key].bloqueados++;
+          stats[key].bloqueados++;
         } else {
-          planoStats[key].ativos++;
+          stats[key].ativos++;
         }
         
-        // Risco (alertas ou downtime)
+        // Risco
         if (e.alerta_tipo || (e.downtime_min_24h && e.downtime_min_24h > 60) || (e.churn_risk_score && e.churn_risk_score >= 50)) {
-          planoStats[key].risco++;
+          stats[key].risco++;
         }
         
         // Rede
         if (e.downtime_min_24h && e.downtime_min_24h > 60) {
-          planoStats[key].comDowntime++;
+          stats[key].comDowntime++;
         }
         if (e.alerta_tipo) {
-          planoStats[key].comAlerta++;
+          stats[key].comAlerta++;
         }
         
         // NPS
         if (e.nps_score !== null && e.nps_score !== undefined) {
-          planoStats[key].npsTotal += e.nps_score;
-          planoStats[key].npsCount++;
+          stats[key].npsTotal += e.nps_score;
+          stats[key].npsCount++;
           if (e.nps_score < 7) {
-            planoStats[key].detratores++;
+            stats[key].detratores++;
           }
         }
       }
       
       // Financeiro (pode ter múltiplas cobranças por cliente)
       if (e.vencido === true || (e.dias_atraso !== null && e.dias_atraso > 0)) {
-        planoStats[key].vencido++;
-        planoStats[key].valorVencido += e.valor_cobranca || 0;
+        stats[key].vencido++;
+        stats[key].valorVencido += e.valor_cobranca || 0;
       }
-      
-      // Suporte - aguardando dados corretos do ISP
-      // Dados serão preenchidos quando disponíveis
     });
 
     // Add total count
-    clientesPorPlano.forEach((clientes, plano) => {
-      if (planoStats[plano]) {
-        planoStats[plano].total = clientes.size;
+    clientesPorKey.forEach((clientes, key) => {
+      if (stats[key]) {
+        stats[key].total = clientes.size;
       }
     });
 
     // Calculate all percentages
-    return Object.values(planoStats)
+    return Object.values(stats)
       .map(p => ({
         ...p,
-        // Churn REAL - SOMENTE % de clientes cancelados (status_contrato ou servico_status = "C")
+        plano: p.key, // For backward compatibility
         churnPct: p.total > 0 ? (p.cancelados / p.total * 100) : 0,
-        // Contratos - % de bloqueados
         contratosPct: p.total > 0 ? (p.bloqueados / p.total * 100) : 0,
-        // Financeiro - % de clientes com cobrança vencida
         financeiroPct: p.total > 0 ? (p.vencido / p.total * 100) : 0,
-        // Suporte - média de chamados por cliente
         suportePct: p.total > 0 ? (p.chamados / p.total * 100) : 0,
-        // Rede - % com problemas de rede
         redePct: p.total > 0 ? ((p.comDowntime + p.comAlerta) / p.total * 100) : 0,
-        // NPS - % detratores
         npsPct: p.npsCount > 0 ? (p.detratores / p.npsCount * 100) : 0,
         npsMedia: p.npsCount > 0 ? (p.npsTotal / p.npsCount) : 0,
-        // LTV - valor médio
         ltvMedio: p.total > 0 ? (p.ltvTotal / p.total) : 0,
-        label: p.plano.length > 45 ? p.plano.substring(0, 45) + "..." : p.plano,
       }));
-  }, [filteredEventos]);
+  };
+
+  // Cohort data based on selected dimension
+  const cohortData = useMemo(() => {
+    return calculateCohortData(cohortDimension);
+  }, [filteredEventos, cohortDimension]);
 
   // Sorted cohort data based on selected tab
   const sortedCohortData = useMemo(() => {
@@ -519,17 +537,18 @@ const VisaoGeral = () => {
 
   // Metric info for current tab
   const cohortMetricInfo = useMemo(() => {
+    const dimensionLabel = cohortDimension === "plano" ? "Plano" : cohortDimension === "cidade" ? "Cidade" : "Bairro";
     const info: Record<string, { dataKey: string; label: string; format: (v: number) => string }> = {
-      churn: { dataKey: "churnPct", label: "% Churn (Cancelados)", format: (v) => `${v.toFixed(1)}%` },
-      contratos: { dataKey: "contratosPct", label: "% Bloqueados", format: (v) => `${v.toFixed(1)}%` },
-      financeiro: { dataKey: "financeiroPct", label: "% Vencido", format: (v) => `${v.toFixed(1)}%` },
-      suporte: { dataKey: "suportePct", label: "Chamados/Cliente", format: (v) => `${v.toFixed(1)}%` },
-      rede: { dataKey: "redePct", label: "% Problemas Rede", format: (v) => `${v.toFixed(1)}%` },
-      nps: { dataKey: "npsPct", label: "% Detratores", format: (v) => `${v.toFixed(1)}%` },
-      ltv: { dataKey: "ltvMedio", label: "LTV Médio", format: (v) => `R$ ${(v/1000).toFixed(1)}k` },
+      churn: { dataKey: "churnPct", label: `% Churn por ${dimensionLabel}`, format: (v) => `${v.toFixed(1)}%` },
+      contratos: { dataKey: "contratosPct", label: `% Bloqueados por ${dimensionLabel}`, format: (v) => `${v.toFixed(1)}%` },
+      financeiro: { dataKey: "financeiroPct", label: `% Vencido por ${dimensionLabel}`, format: (v) => `${v.toFixed(1)}%` },
+      suporte: { dataKey: "suportePct", label: `Chamados por ${dimensionLabel}`, format: (v) => `${v.toFixed(1)}%` },
+      rede: { dataKey: "redePct", label: `% Rede por ${dimensionLabel}`, format: (v) => `${v.toFixed(1)}%` },
+      nps: { dataKey: "npsPct", label: `% Detratores por ${dimensionLabel}`, format: (v) => `${v.toFixed(1)}%` },
+      ltv: { dataKey: "ltvMedio", label: `LTV Médio por ${dimensionLabel}`, format: (v) => `R$ ${(v/1000).toFixed(1)}k` },
     };
-    return info[cohortTab] || info.churn;
-  }, [cohortTab]);
+    return info[cohortTab] || info.financeiro;
+  }, [cohortTab, cohortDimension]);
 
   // Driver Principal - calcular qual é o maior problema
   const driverPrincipal = useMemo(() => {
@@ -555,7 +574,7 @@ const VisaoGeral = () => {
     }
   }, [filteredEventos]);
 
-  // Top 5 por métrica selecionada (Churn ou Vencido)
+  // Top 5 por métrica selecionada (Churn ou Vencido) - usa a mesma dimensão do cohort
   const top5Risco = useMemo(() => {
     const dataKey = top5Filter === "churn" ? "churnPct" : "financeiroPct";
     
@@ -563,7 +582,8 @@ const VisaoGeral = () => {
       .sort((a, b) => (b as any)[dataKey] - (a as any)[dataKey])
       .slice(0, 5)
       .map(p => ({
-        plano: p.plano,
+        key: p.key,
+        label: p.label,
         pct: ((p as any)[dataKey] || 0).toFixed(1),
       }));
   }, [cohortData, top5Filter]);
@@ -836,10 +856,37 @@ const VisaoGeral = () => {
                 {/* Cohort Tabs */}
                 <div className="flex items-center justify-between flex-wrap gap-4">
                   <CohortTabs activeTab={cohortTab} onTabChange={setCohortTab} />
-                  <div className="flex items-center gap-2">
-                    <button className="p-1 hover:bg-muted rounded"><ChevronLeft className="h-4 w-4" /></button>
-                    <span className="text-sm text-muted-foreground">Plano</span>
-                    <button className="p-1 hover:bg-muted rounded"><ChevronRight className="h-4 w-4" /></button>
+                  <div className="flex items-center gap-2 bg-muted rounded-lg p-1">
+                    <button 
+                      onClick={() => setCohortDimension("plano")}
+                      className={`px-3 py-1 text-sm rounded transition-colors ${
+                        cohortDimension === "plano" 
+                          ? "bg-background shadow text-foreground" 
+                          : "text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      Plano
+                    </button>
+                    <button 
+                      onClick={() => setCohortDimension("cidade")}
+                      className={`px-3 py-1 text-sm rounded transition-colors ${
+                        cohortDimension === "cidade" 
+                          ? "bg-background shadow text-foreground" 
+                          : "text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      Cidade
+                    </button>
+                    <button 
+                      onClick={() => setCohortDimension("bairro")}
+                      className={`px-3 py-1 text-sm rounded transition-colors ${
+                        cohortDimension === "bairro" 
+                          ? "bg-background shadow text-foreground" 
+                          : "text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      Bairro
+                    </button>
                   </div>
                 </div>
 
@@ -968,14 +1015,14 @@ const VisaoGeral = () => {
                       </div>
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      % {top5Filter === "churn" ? "Churn (Cancelados)" : "Vencido"} por Plano
+                      % {top5Filter === "churn" ? "Churn" : "Vencido"} por {cohortDimension === "plano" ? "Plano" : cohortDimension === "cidade" ? "Cidade" : "Bairro"}
                     </p>
                   </CardHeader>
                   <CardContent className="space-y-2">
                     {top5Risco.length > 0 ? top5Risco.map((item, i) => (
                       <div key={i} className="flex justify-between items-center text-sm">
-                        <span className="text-muted-foreground truncate max-w-[180px]" title={item.plano}>
-                          {item.plano.length > 40 ? item.plano.substring(0, 40) + "..." : item.plano}
+                        <span className="text-muted-foreground truncate max-w-[180px]" title={item.key}>
+                          {item.label.length > 35 ? item.label.substring(0, 35) + "..." : item.label}
                         </span>
                         <span className={`font-medium ${parseFloat(item.pct) > 0 ? "text-destructive" : "text-muted-foreground"}`}>
                           {item.pct}%
