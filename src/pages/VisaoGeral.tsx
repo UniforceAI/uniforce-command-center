@@ -168,50 +168,57 @@ const VisaoGeral = () => {
   const [top5Dimension, setTop5Dimension] = useState<"plano" | "cidade" | "bairro">("cidade");
   const [top5Filter, setTop5Filter] = useState<"churn" | "vencido">("vencido");
 
-  // Mapeamento de IDs de cidade para nomes
-  const cidadeIdMap: Record<number, string> = {
-    4405: "Gaspar",
-    4346: "Blumenau", 
-    4419: "Ilhota",
-    4435: "Itajaí"
+  // Mapeamento de IDs de cidade para nomes - CORRIGIDO: usar STRING como chave
+  const cidadeIdMap: Record<string, string> = {
+    "4405": "Gaspar",
+    "4346": "Blumenau", 
+    "4419": "Ilhota",
+    "4435": "Itajaí"
+  };
+
+  // Helper function para verificar se cliente está vencido - CONSISTENTE em todo código
+  // Helper function para converter ID de cidade para nome
+  const getCidadeNome = (cidadeValue: any): string | null => {
+    if (cidadeValue === null || cidadeValue === undefined) return null;
+    const cidadeKey = String(cidadeValue);
+    return cidadeIdMap[cidadeKey] || cidadeKey;
+  };
+
+  // Helper function para verificar se cliente está vencido - CONSISTENTE em todo código
+  const isClienteVencido = (e: Evento): boolean => {
+    return e.vencido === true || 
+           String(e.vencido).toLowerCase() === "true" || 
+           (e.dias_atraso !== null && e.dias_atraso !== undefined && Number(e.dias_atraso) > 0);
   };
 
   // Debug: análise completa de dados por cidade (clientes únicos)
   useEffect(() => {
     if (eventos.length > 0) {
-      const cidadesUnicas = new Set<any>();
       const clientesPorCidade: Record<string, Set<number>> = {};
       const clientesVencidosPorCidade: Record<string, Set<number>> = {};
       const ltvPorCidade: Record<string, number[]> = {};
       
       eventos.forEach(e => {
-        if (e.cliente_cidade !== null && e.cliente_cidade !== undefined) {
-          cidadesUnicas.add(e.cliente_cidade);
-          
-          // Converter ID para nome
-          const cidadeValue = e.cliente_cidade;
-          const cidadeId = typeof cidadeValue === 'number' ? cidadeValue : parseInt(String(cidadeValue));
-          const cidadeNome = (!isNaN(cidadeId) && cidadeIdMap[cidadeId]) ? cidadeIdMap[cidadeId] : String(cidadeValue);
-          
-          if (!clientesPorCidade[cidadeNome]) {
-            clientesPorCidade[cidadeNome] = new Set();
-            clientesVencidosPorCidade[cidadeNome] = new Set();
-            ltvPorCidade[cidadeNome] = [];
+        const cidadeNome = getCidadeNome(e.cliente_cidade);
+        if (!cidadeNome) return;
+        
+        if (!clientesPorCidade[cidadeNome]) {
+          clientesPorCidade[cidadeNome] = new Set();
+          clientesVencidosPorCidade[cidadeNome] = new Set();
+          ltvPorCidade[cidadeNome] = [];
+        }
+        
+        // Contar cliente único
+        if (!clientesPorCidade[cidadeNome].has(e.cliente_id)) {
+          clientesPorCidade[cidadeNome].add(e.cliente_id);
+          if (e.ltv_reais_estimado) {
+            ltvPorCidade[cidadeNome].push(e.ltv_reais_estimado);
           }
-          
-          // Contar cliente único
-          if (!clientesPorCidade[cidadeNome].has(e.cliente_id)) {
-            clientesPorCidade[cidadeNome].add(e.cliente_id);
-            if (e.ltv_reais_estimado) {
-              ltvPorCidade[cidadeNome].push(e.ltv_reais_estimado);
-            }
-          }
-          
-          // Verificar se cliente está vencido
-          const isVencido = e.vencido === true || String(e.vencido) === "true" || (e.dias_atraso !== null && e.dias_atraso > 0);
-          if (isVencido && !clientesVencidosPorCidade[cidadeNome].has(e.cliente_id)) {
-            clientesVencidosPorCidade[cidadeNome].add(e.cliente_id);
-          }
+        }
+        
+        // Verificar se cliente está vencido - usar função helper
+        if (isClienteVencido(e) && !clientesVencidosPorCidade[cidadeNome].has(e.cliente_id)) {
+          clientesVencidosPorCidade[cidadeNome].add(e.cliente_id);
         }
       });
       
@@ -230,8 +237,7 @@ const VisaoGeral = () => {
         };
       });
       
-      console.log("=== ANÁLISE COMPLETA POR CIDADE (clientes únicos) ===");
-      console.log("IDs brutos de cidade:", Array.from(cidadesUnicas));
+      console.log("=== ANÁLISE POR CIDADE (4 cidades mapeadas) ===");
       console.table(resumo);
     }
   }, [eventos]);
@@ -372,7 +378,7 @@ const VisaoGeral = () => {
 
     // RR Vencido (receita recorrente vencida)
     const cobrancasVencidas = filteredEventos.filter(e => 
-      e.event_type === "COBRANCA" && (e.vencido === true || String(e.vencido) === "true" || (e.dias_atraso !== null && e.dias_atraso > 0))
+      e.event_type === "COBRANCA" && isClienteVencido(e)
     );
     const rrVencido = cobrancasVencidas.reduce((acc, e) => acc + (e.valor_cobranca || 0), 0);
 
@@ -469,18 +475,7 @@ const VisaoGeral = () => {
     const getKey = (e: Evento): string | null => {
       switch (dimension) {
         case "plano": return e.plano_nome || null;
-        case "cidade": {
-          // Converter ID de cidade para nome usando o mapeamento
-          const cidadeValue = e.cliente_cidade;
-          if (!cidadeValue) return null;
-          // Se for número ou string numérica, converter usando o mapa
-          const cidadeId = typeof cidadeValue === 'number' ? cidadeValue : parseInt(String(cidadeValue));
-          if (!isNaN(cidadeId) && cidadeIdMap[cidadeId]) {
-            return cidadeIdMap[cidadeId];
-          }
-          // Se já for nome, retornar direto
-          return String(cidadeValue);
-        }
+        case "cidade": return getCidadeNome(e.cliente_cidade);
         case "bairro": return e.cliente_bairro || null;
         default: return null;
       }
@@ -558,9 +553,7 @@ const VisaoGeral = () => {
       }
       
       // Financeiro - contar CLIENTE ÚNICO vencido (não eventos)
-      // CORRIGIDO: vencido pode ser string "true" ou boolean true
-      const isVencido = e.vencido === true || String(e.vencido) === "true" || (e.dias_atraso !== null && e.dias_atraso > 0);
-      if (isVencido) {
+      if (isClienteVencido(e)) {
         const vencidosSet = clientesVencidosPorKey.get(key)!;
         if (!vencidosSet.has(e.cliente_id)) {
           vencidosSet.add(e.cliente_id);
@@ -632,7 +625,7 @@ const VisaoGeral = () => {
 
   // Driver Principal - calcular qual é o maior problema
   const driverPrincipal = useMemo(() => {
-    const vencidos = filteredEventos.filter(e => e.vencido === true || String(e.vencido) === "true" || (e.dias_atraso && e.dias_atraso > 0));
+    const vencidos = filteredEventos.filter(e => isClienteVencido(e));
     const comAlerta = filteredEventos.filter(e => e.alerta_tipo);
     const comDowntime = filteredEventos.filter(e => e.downtime_min_24h && e.downtime_min_24h > 60);
     
@@ -708,7 +701,7 @@ const VisaoGeral = () => {
   // Cobrança Inteligente
   const cobrancaInteligente = useMemo(() => {
     return filteredEventos
-      .filter(e => e.event_type === "COBRANCA" && (e.vencido === true || String(e.vencido) === "true" || e.dias_atraso > 0))
+      .filter(e => e.event_type === "COBRANCA" && isClienteVencido(e))
       .map(e => ({
         id: e.cliente_id,
         nome: e.cliente_nome || `Cliente ${e.cliente_id}`,
