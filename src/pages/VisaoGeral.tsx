@@ -474,11 +474,11 @@ const VisaoGeral = () => {
     return Object.values(planoStats)
       .map(p => ({
         ...p,
-        // Churn - % de clientes em risco ou cancelados
-        churnPct: p.total > 0 ? ((p.risco + p.cancelados) / p.total * 100) : 0,
+        // Churn REAL - SOMENTE % de clientes cancelados (status_contrato ou servico_status = "C")
+        churnPct: p.total > 0 ? (p.cancelados / p.total * 100) : 0,
         // Contratos - % de bloqueados
         contratosPct: p.total > 0 ? (p.bloqueados / p.total * 100) : 0,
-        // Financeiro - % de cobranças vencidas
+        // Financeiro - % de clientes com cobrança vencida
         financeiroPct: p.total > 0 ? (p.vencido / p.total * 100) : 0,
         // Suporte - média de chamados por cliente
         suportePct: p.total > 0 ? (p.chamados / p.total * 100) : 0,
@@ -513,7 +513,7 @@ const VisaoGeral = () => {
   // Metric info for current tab
   const cohortMetricInfo = useMemo(() => {
     const info: Record<string, { dataKey: string; label: string; format: (v: number) => string }> = {
-      churn: { dataKey: "churnPct", label: "% Risco/Churn", format: (v) => `${v.toFixed(1)}%` },
+      churn: { dataKey: "churnPct", label: "% Churn (Cancelados)", format: (v) => `${v.toFixed(1)}%` },
       contratos: { dataKey: "contratosPct", label: "% Bloqueados", format: (v) => `${v.toFixed(1)}%` },
       financeiro: { dataKey: "financeiroPct", label: "% Vencido", format: (v) => `${v.toFixed(1)}%` },
       suporte: { dataKey: "suportePct", label: "Chamados/Cliente", format: (v) => `${v.toFixed(1)}%` },
