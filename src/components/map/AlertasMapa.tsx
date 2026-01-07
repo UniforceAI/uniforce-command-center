@@ -102,8 +102,8 @@ export function AlertasMapa({ data, activeFilter }: AlertasMapaProps) {
 
       // Apply filter - only show relevant clients
       if (activeFilter === "vencido") {
-        // Only show clients with overdue payments (dias_atraso > 0)
-        return p.dias_atraso !== undefined && p.dias_atraso > 0;
+        // Show clients with vencido=true OR dias_atraso > 0
+        return p.vencido === true || (p.dias_atraso !== undefined && p.dias_atraso > 0);
       }
       
       if (activeFilter === "sinal") {
