@@ -414,12 +414,19 @@ const VisaoGeral = () => {
       ? Math.round(ltvMesesValues.reduce((a, b) => a + b, 0) / ltvMesesValues.length) 
       : 0; // Se não tiver dados, mostrar 0
     
-    // Debug LTV
-    console.log("📊 LTV Médio Análise:", {
+    // Debug LTV COMPLETO
+    console.log("📊 LTV ANÁLISE COMPLETA:", {
+      totalClientesUnicos: clientesUnicos.length,
       clientesComLtvMeses: ltvMesesValues.length,
-      valoresLtvMeses: ltvMesesValues.slice(0, 10),
+      valoresLtvMeses: ltvMesesValues,
+      soma: ltvMesesValues.reduce((a, b) => a + b, 0),
       ltvMesesCalculado: ltvMeses,
-      ltvReaisCalculado: ltvMedio
+      ltvReaisCalculado: ltvMedio,
+      primeirosCom: clientesUnicos.filter(e => e.ltv_meses_estimado).slice(0, 5).map(e => ({
+        cliente: e.cliente_id,
+        ltv_meses: e.ltv_meses_estimado,
+        ltv_reais: e.ltv_reais_estimado
+      }))
     });
 
     // Ticket Médio
@@ -658,11 +665,12 @@ const VisaoGeral = () => {
     return calculateCohortData(top5Dimension);
   }, [filteredEventos, top5Dimension]);
 
-  // Top 5 por métrica selecionada (Churn ou Vencido) - DISTRIBUIÇÃO (soma = 100%)
+  // Top 5 por métrica selecionada - ORDENADO IGUAL AO GRÁFICO (por % interno)
   const top5Risco = useMemo(() => {
+    const pctKey = top5Filter === "churn" ? "churnPct" : "financeiroPct";
     const countKey = top5Filter === "churn" ? "cancelados" : "clientesVencidos";
     
-    // Total de todos os cancelados/vencidos
+    // Total de todos os cancelados/vencidos para calcular distribuição
     const totalCount = top5Data.reduce((sum, p) => sum + ((p as any)[countKey] || 0), 0);
     
     if (totalCount === 0) {
@@ -673,9 +681,9 @@ const VisaoGeral = () => {
       }));
     }
     
-    // Ordenar por quantidade e calcular % de distribuição
+    // ORDENAR pelo mesmo critério do gráfico (% interno), mas mostrar distribuição
     return [...top5Data]
-      .sort((a, b) => ((b as any)[countKey] || 0) - ((a as any)[countKey] || 0))
+      .sort((a, b) => ((b as any)[pctKey] || 0) - ((a as any)[pctKey] || 0))
       .slice(0, 5)
       .map(p => ({
         key: p.key,
