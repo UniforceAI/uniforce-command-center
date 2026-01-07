@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useEventos } from "@/hooks/useEventos";
-import { useChamados } from "@/hooks/useChamados";
+
 import { Evento } from "@/types/evento";
 import { AlertasMapa } from "@/components/map/AlertasMapa";
 import { 
@@ -156,7 +156,7 @@ const VisaoGeral = () => {
   const { toast } = useToast();
   const [user, setUser] = useState<User | null>(null);
   const { eventos, isLoading, error } = useEventos();
-  const { chamados, getChamadosPorCliente, isLoading: chamadosLoading } = useChamados();
+  
 
   // Filtros
   const [periodo, setPeriodo] = useState("365");
@@ -245,22 +245,6 @@ const VisaoGeral = () => {
     return filtered;
   }, [eventos, periodo, uf, cidade, bairro, plano, status]);
 
-  // Map cliente_id -> plano_nome for chamados integration
-  const clientePlanoMap = useMemo(() => {
-    const map = new Map<number, string>();
-    eventos.forEach(e => {
-      if (e.plano_nome && !map.has(e.cliente_id)) {
-        map.set(e.cliente_id, e.plano_nome);
-      }
-    });
-    return map;
-  }, [eventos]);
-
-  // Chamados data filtered by period
-  const chamadosPorCliente = useMemo(() => {
-    const diasPeriodo = periodo === "todos" ? undefined : parseInt(periodo);
-    return getChamadosPorCliente(diasPeriodo);
-  }, [getChamadosPorCliente, periodo, chamados]);
 
   // KPIs calculation - FIXED: use actual data fields correctly
   const kpis = useMemo(() => {
@@ -396,7 +380,7 @@ const VisaoGeral = () => {
       // Financeiro
       vencido: number;
       valorVencido: number;
-      // Suporte
+      // Suporte (placeholder - aguardando dados)
       chamados: number;
       reincidentes: number;
       // Rede
@@ -427,7 +411,7 @@ const VisaoGeral = () => {
       if (!planoStats[key]) {
         planoStats[key] = { 
           plano: key, total: 0, risco: 0, cancelados: 0, ativos: 0, bloqueados: 0,
-          vencido: 0, valorVencido: 0, chamados: 0, reincidentes: 0, 
+          vencido: 0, valorVencido: 0, chamados: 0, reincidentes: 0,  // Suporte zerado - aguardando dados
           comDowntime: 0, comAlerta: 0, npsTotal: 0, npsCount: 0, detratores: 0,
           ltvTotal: 0, mrrTotal: 0
         };
@@ -482,14 +466,8 @@ const VisaoGeral = () => {
         planoStats[key].valorVencido += e.valor_cobranca || 0;
       }
       
-      // Suporte - usar dados de chamados reais
-      const chamadosDoCliente = chamadosPorCliente.get(e.cliente_id);
-      if (chamadosDoCliente) {
-        planoStats[key].chamados += chamadosDoCliente.chamados_periodo;
-        if (chamadosDoCliente.reincidente) {
-          planoStats[key].reincidentes++;
-        }
-      }
+      // Suporte - aguardando dados corretos do ISP
+      // Dados serão preenchidos quando disponíveis
     });
 
     // Add total count
@@ -520,7 +498,7 @@ const VisaoGeral = () => {
         ltvMedio: p.total > 0 ? (p.ltvTotal / p.total) : 0,
         label: p.plano.length > 45 ? p.plano.substring(0, 45) + "..." : p.plano,
       }));
-  }, [filteredEventos, chamadosPorCliente]);
+  }, [filteredEventos]);
 
   // Sorted cohort data based on selected tab
   const sortedCohortData = useMemo(() => {
@@ -784,7 +762,7 @@ const VisaoGeral = () => {
           <p className="text-muted-foreground text-sm">Visão executiva em tempo real</p>
         </div>
 
-        {(isLoading || chamadosLoading) ? (
+        {isLoading ? (
           <div className="flex items-center justify-center py-12">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
           </div>
