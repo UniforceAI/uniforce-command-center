@@ -50,10 +50,10 @@ function FitBounds({ points }: { points: { lat: number; lng: number }[] }) {
 const getColorByRisk = (point: MapPoint, filter: string): string => {
   if (filter === "vencido") {
     const dias = point.dias_atraso ?? 0;
-    // Faixas: 1-7 (verde), 7-14 (amarelo), 15-30 (laranja), +30 (vermelho)
-    if (dias > 30) return "#ef4444"; // vermelho - crítico
+    // Faixas: 1-7 (verde), 8-14 (amarelo), 15-24 (laranja), 25+ (vermelho)
+    if (dias >= 25) return "#ef4444"; // vermelho - crítico
     if (dias >= 15) return "#f97316"; // laranja - alto
-    if (dias >= 7) return "#eab308"; // amarelo - médio
+    if (dias >= 8) return "#eab308"; // amarelo - médio
     return "#22c55e"; // verde - baixo (1-7 dias)
   }
   
@@ -69,9 +69,9 @@ const getColorByRisk = (point: MapPoint, filter: string): string => {
 const getRadiusByRisk = (point: MapPoint, filter: string): number => {
   if (filter === "vencido") {
     const dias = point.dias_atraso ?? 0;
-    if (dias > 30) return 10; // +30 dias - maior
-    if (dias >= 15) return 8; // 15-30 dias
-    if (dias >= 7) return 7; // 7-14 dias
+    if (dias >= 25) return 10; // 25+ dias - maior
+    if (dias >= 15) return 8; // 15-24 dias
+    if (dias >= 8) return 7; // 8-14 dias
     return 6; // 1-7 dias
   }
   
@@ -191,9 +191,9 @@ export function AlertasMapa({ data, activeFilter }: AlertasMapaProps) {
         {activeFilter === "vencido" && (
           <>
             <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-500"></span> 1-7 dias</span>
-            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-yellow-500"></span> 7-14 dias</span>
-            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-orange-500"></span> 15-30 dias</span>
-            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500"></span> +30 dias</span>
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-yellow-500"></span> 8-14 dias</span>
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-orange-500"></span> 15-24 dias</span>
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500"></span> +25 dias</span>
           </>
         )}
         {activeFilter === "sinal" && (
