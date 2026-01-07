@@ -1133,9 +1133,11 @@ const VisaoGeral = () => {
                           >
                             {sortedCohortData.map((entry, index) => {
                               const value = (entry as any)[cohortMetricInfo.dataKey] || 0;
-                              let color = "hsl(var(--success))";
+                              let color = "hsl(var(--primary))";
                               if (cohortTab === "ltv") {
-                                color = value > 5000 ? "hsl(var(--success))" : value > 2000 ? "hsl(var(--warning))" : "hsl(var(--destructive))";
+                                // Para LTV, usar gradiente de cores baseado no valor relativo
+                                // Valores maiores = cores mais intensas (azul primary)
+                                color = "hsl(var(--primary))";
                               } else {
                                 color = value > 30 ? "hsl(var(--destructive))" : value > 10 ? "hsl(var(--warning))" : "hsl(var(--success))";
                               }
