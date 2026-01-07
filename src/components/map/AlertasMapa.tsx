@@ -48,6 +48,9 @@ function FitBounds({ points }: { points: { lat: number; lng: number }[] }) {
 }
 
 const getColorByRisk = (point: MapPoint, filter: string): string => {
+  // Debug log
+  console.log('getColorByRisk called with filter:', filter, 'point dias_atraso:', point.dias_atraso, 'vencido:', point.vencido);
+  
   if (filter === "churn") {
     const score = point.churn_risk_score ?? 0;
     if (score >= 80) return "#ef4444"; // red
@@ -58,21 +61,21 @@ const getColorByRisk = (point: MapPoint, filter: string): string => {
   
   if (filter === "vencido") {
     const dias = point.dias_atraso ?? 0;
+    console.log('Vencido filter - dias:', dias);
     // If client is in vencido filter, they have some overdue status
-    // If dias_atraso is 0 but vencido=true, treat as 1-30 days (yellow)
     if (dias > 60) return "#ef4444"; // red - critical
     if (dias > 30) return "#f97316"; // orange - high
     // If showing in vencido filter, minimum is yellow (not green)
     return "#eab308"; // yellow - overdue
   }
   
-  // sinal - based on alerta_tipo or downtime
   if (filter === "sinal") {
     if (point.alerta_tipo) return "#ef4444"; // red - has alert
     if (point.downtime_min_24h && point.downtime_min_24h > 0) return "#f97316"; // orange - downtime
     return "#eab308"; // yellow - some issue
   }
   
+  console.log('Falling through to default green for filter:', filter);
   return "#22c55e"; // default green
 };
 
