@@ -165,6 +165,7 @@ const VisaoGeral = () => {
   const [cohortTab, setCohortTab] = useState("financeiro");
   const [mapTab, setMapTab] = useState("vencido");
   const [cohortDimension, setCohortDimension] = useState<"plano" | "cidade" | "bairro">("plano");
+  const [top5Dimension, setTop5Dimension] = useState<"plano" | "cidade" | "bairro">("cidade");
   const [top5Filter, setTop5Filter] = useState<"churn" | "vencido">("vencido");
 
   // Mapeamento de IDs de cidade para nomes
@@ -174,6 +175,19 @@ const VisaoGeral = () => {
     4419: "Ilhota",
     4435: "Itajaí"
   };
+
+  // Debug: log valores de cliente_cidade para investigar
+  useEffect(() => {
+    if (eventos.length > 0) {
+      const cidadesUnicas = new Set<any>();
+      eventos.forEach(e => {
+        if (e.cliente_cidade !== null && e.cliente_cidade !== undefined) {
+          cidadesUnicas.add(e.cliente_cidade);
+        }
+      });
+      console.log("Valores únicos de cliente_cidade:", Array.from(cidadesUnicas));
+    }
+  }, [eventos]);
 
   // Auth
   useEffect(() => {
@@ -585,11 +599,16 @@ const VisaoGeral = () => {
     }
   }, [filteredEventos]);
 
-  // Top 5 por métrica selecionada (Churn ou Vencido) - usa a mesma dimensão do cohort
+  // Top 5 Data - calculado com sua própria dimensão
+  const top5Data = useMemo(() => {
+    return calculateCohortData(top5Dimension);
+  }, [filteredEventos, top5Dimension]);
+
+  // Top 5 por métrica selecionada (Churn ou Vencido) - usa dimensão independente
   const top5Risco = useMemo(() => {
     const dataKey = top5Filter === "churn" ? "churnPct" : "financeiroPct";
     
-    return [...cohortData]
+    return [...top5Data]
       .sort((a, b) => (b as any)[dataKey] - (a as any)[dataKey])
       .slice(0, 5)
       .map(p => ({
@@ -597,7 +616,7 @@ const VisaoGeral = () => {
         label: p.label,
         pct: ((p as any)[dataKey] || 0).toFixed(1),
       }));
-  }, [cohortData, top5Filter]);
+  }, [top5Data, top5Filter]);
 
   // Fila de Risco - FIXED: use available fields (alerta_tipo, downtime, etc.)
   const filaRisco = useMemo(() => {
@@ -997,7 +1016,7 @@ const VisaoGeral = () => {
                   </CardContent>
                 </Card>
 
-                {/* Top 5 Risco com Filtro Churn/Vencido */}
+                {/* Top 5 Risco com Filtros independentes */}
                 <Card>
                   <CardHeader className="pb-2">
                     <div className="flex items-center justify-between">
@@ -1025,9 +1044,39 @@ const VisaoGeral = () => {
                         </button>
                       </div>
                     </div>
-                    <p className="text-xs text-muted-foreground">
-                      % {top5Filter === "churn" ? "Churn" : "Vencido"} por {cohortDimension === "plano" ? "Plano" : cohortDimension === "cidade" ? "Cidade" : "Bairro"}
-                    </p>
+                    {/* Dimensão independente do cohort principal */}
+                    <div className="flex items-center gap-1 mt-2">
+                      <button
+                        onClick={() => setTop5Dimension("plano")}
+                        className={`px-2 py-0.5 text-xs rounded ${
+                          top5Dimension === "plano"
+                            ? "bg-secondary text-secondary-foreground"
+                            : "text-muted-foreground hover:bg-muted/50"
+                        }`}
+                      >
+                        Plano
+                      </button>
+                      <button
+                        onClick={() => setTop5Dimension("cidade")}
+                        className={`px-2 py-0.5 text-xs rounded ${
+                          top5Dimension === "cidade"
+                            ? "bg-secondary text-secondary-foreground"
+                            : "text-muted-foreground hover:bg-muted/50"
+                        }`}
+                      >
+                        Cidade
+                      </button>
+                      <button
+                        onClick={() => setTop5Dimension("bairro")}
+                        className={`px-2 py-0.5 text-xs rounded ${
+                          top5Dimension === "bairro"
+                            ? "bg-secondary text-secondary-foreground"
+                            : "text-muted-foreground hover:bg-muted/50"
+                        }`}
+                      >
+                        Bairro
+                      </button>
+                    </div>
                   </CardHeader>
                   <CardContent className="space-y-2">
                     {top5Risco.length > 0 ? top5Risco.map((item, i) => (
