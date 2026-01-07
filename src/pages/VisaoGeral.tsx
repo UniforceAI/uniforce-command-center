@@ -176,11 +176,13 @@ const VisaoGeral = () => {
     4435: "Itajaí"
   };
 
-  // Debug: log valores de cliente_cidade e análise de vencidos por cidade
+  // Debug: análise completa de dados por cidade (clientes únicos)
   useEffect(() => {
     if (eventos.length > 0) {
       const cidadesUnicas = new Set<any>();
-      const vencidosPorCidade: Record<string, { total: number; vencidos: number }> = {};
+      const clientesPorCidade: Record<string, Set<number>> = {};
+      const clientesVencidosPorCidade: Record<string, Set<number>> = {};
+      const ltvPorCidade: Record<string, number[]> = {};
       
       eventos.forEach(e => {
         if (e.cliente_cidade !== null && e.cliente_cidade !== undefined) {
@@ -191,21 +193,46 @@ const VisaoGeral = () => {
           const cidadeId = typeof cidadeValue === 'number' ? cidadeValue : parseInt(String(cidadeValue));
           const cidadeNome = (!isNaN(cidadeId) && cidadeIdMap[cidadeId]) ? cidadeIdMap[cidadeId] : String(cidadeValue);
           
-          if (!vencidosPorCidade[cidadeNome]) {
-            vencidosPorCidade[cidadeNome] = { total: 0, vencidos: 0 };
+          if (!clientesPorCidade[cidadeNome]) {
+            clientesPorCidade[cidadeNome] = new Set();
+            clientesVencidosPorCidade[cidadeNome] = new Set();
+            ltvPorCidade[cidadeNome] = [];
           }
-          vencidosPorCidade[cidadeNome].total++;
           
-          if (e.vencido === true || (e.dias_atraso !== null && e.dias_atraso > 0)) {
-            vencidosPorCidade[cidadeNome].vencidos++;
+          // Contar cliente único
+          if (!clientesPorCidade[cidadeNome].has(e.cliente_id)) {
+            clientesPorCidade[cidadeNome].add(e.cliente_id);
+            if (e.ltv_reais_estimado) {
+              ltvPorCidade[cidadeNome].push(e.ltv_reais_estimado);
+            }
+          }
+          
+          // Verificar se cliente está vencido
+          const isVencido = e.vencido === true || String(e.vencido) === "true" || (e.dias_atraso !== null && e.dias_atraso > 0);
+          if (isVencido && !clientesVencidosPorCidade[cidadeNome].has(e.cliente_id)) {
+            clientesVencidosPorCidade[cidadeNome].add(e.cliente_id);
           }
         }
       });
       
-      console.log("=== DEBUG CIDADES ===");
-      console.log("Valores únicos de cliente_cidade (raw):", Array.from(cidadesUnicas));
-      console.log("Análise de eventos por cidade:", vencidosPorCidade);
-      console.log("Mapeamento de IDs:", cidadeIdMap);
+      // Resumo por cidade
+      const resumo: Record<string, { clientes: number; vencidos: number; pctVencido: string; ltvMedio: string }> = {};
+      Object.keys(clientesPorCidade).forEach(cidade => {
+        const total = clientesPorCidade[cidade].size;
+        const vencidos = clientesVencidosPorCidade[cidade].size;
+        const ltv = ltvPorCidade[cidade];
+        const ltvMedio = ltv.length > 0 ? ltv.reduce((a, b) => a + b, 0) / ltv.length : 0;
+        resumo[cidade] = {
+          clientes: total,
+          vencidos: vencidos,
+          pctVencido: (total > 0 ? (vencidos / total * 100).toFixed(1) : "0") + "%",
+          ltvMedio: "R$ " + ltvMedio.toFixed(0)
+        };
+      });
+      
+      console.log("=== ANÁLISE COMPLETA POR CIDADE (clientes únicos) ===");
+      console.log("IDs brutos de cidade:", Array.from(cidadesUnicas));
+      console.table(resumo);
     }
   }, [eventos]);
 
@@ -345,7 +372,7 @@ const VisaoGeral = () => {
 
     // RR Vencido (receita recorrente vencida)
     const cobrancasVencidas = filteredEventos.filter(e => 
-      e.event_type === "COBRANCA" && (e.vencido === true || (e.dias_atraso !== null && e.dias_atraso > 0))
+      e.event_type === "COBRANCA" && (e.vencido === true || String(e.vencido) === "true" || (e.dias_atraso !== null && e.dias_atraso > 0))
     );
     const rrVencido = cobrancasVencidas.reduce((acc, e) => acc + (e.valor_cobranca || 0), 0);
 
@@ -531,7 +558,9 @@ const VisaoGeral = () => {
       }
       
       // Financeiro - contar CLIENTE ÚNICO vencido (não eventos)
-      if (e.vencido === true || (e.dias_atraso !== null && e.dias_atraso > 0)) {
+      // CORRIGIDO: vencido pode ser string "true" ou boolean true
+      const isVencido = e.vencido === true || String(e.vencido) === "true" || (e.dias_atraso !== null && e.dias_atraso > 0);
+      if (isVencido) {
         const vencidosSet = clientesVencidosPorKey.get(key)!;
         if (!vencidosSet.has(e.cliente_id)) {
           vencidosSet.add(e.cliente_id);
@@ -603,7 +632,7 @@ const VisaoGeral = () => {
 
   // Driver Principal - calcular qual é o maior problema
   const driverPrincipal = useMemo(() => {
-    const vencidos = filteredEventos.filter(e => e.vencido === true || (e.dias_atraso && e.dias_atraso > 0));
+    const vencidos = filteredEventos.filter(e => e.vencido === true || String(e.vencido) === "true" || (e.dias_atraso && e.dias_atraso > 0));
     const comAlerta = filteredEventos.filter(e => e.alerta_tipo);
     const comDowntime = filteredEventos.filter(e => e.downtime_min_24h && e.downtime_min_24h > 60);
     
@@ -679,7 +708,7 @@ const VisaoGeral = () => {
   // Cobrança Inteligente
   const cobrancaInteligente = useMemo(() => {
     return filteredEventos
-      .filter(e => e.event_type === "COBRANCA" && (e.vencido === true || e.dias_atraso > 0))
+      .filter(e => e.event_type === "COBRANCA" && (e.vencido === true || String(e.vencido) === "true" || e.dias_atraso > 0))
       .map(e => ({
         id: e.cliente_id,
         nome: e.cliente_nome || `Cliente ${e.cliente_id}`,
