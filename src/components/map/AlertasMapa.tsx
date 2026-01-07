@@ -48,14 +48,13 @@ function FitBounds({ points }: { points: { lat: number; lng: number }[] }) {
 }
 
 const getColorByRisk = (point: MapPoint, filter: string): string => {
-  // Churn filter removed - only vencido and sinal available
-  
   if (filter === "vencido") {
     const dias = point.dias_atraso ?? 0;
-    // Only overdue clients shown, so no green
-    if (dias > 60) return "#ef4444"; // red - critical
-    if (dias > 30) return "#f97316"; // orange - high
-    return "#eab308"; // yellow - 1-30 days overdue
+    // Faixas: 1-7 (verde), 7-14 (amarelo), 15-30 (laranja), +30 (vermelho)
+    if (dias > 30) return "#ef4444"; // vermelho - crítico
+    if (dias >= 15) return "#f97316"; // laranja - alto
+    if (dias >= 7) return "#eab308"; // amarelo - médio
+    return "#22c55e"; // verde - baixo (1-7 dias)
   }
   
   if (filter === "sinal") {
@@ -68,13 +67,12 @@ const getColorByRisk = (point: MapPoint, filter: string): string => {
 };
 
 const getRadiusByRisk = (point: MapPoint, filter: string): number => {
-  // Churn filter removed
-  
   if (filter === "vencido") {
     const dias = point.dias_atraso ?? 0;
-    if (dias > 60) return 10;
-    if (dias > 30) return 8;
-    return 6; // default for vencido
+    if (dias > 30) return 10; // +30 dias - maior
+    if (dias >= 15) return 8; // 15-30 dias
+    if (dias >= 7) return 7; // 7-14 dias
+    return 6; // 1-7 dias
   }
   
   if (filter === "sinal") {
@@ -192,9 +190,10 @@ export function AlertasMapa({ data, activeFilter }: AlertasMapaProps) {
         {/* Churn legend removed */}
         {activeFilter === "vencido" && (
           <>
-            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500"></span> +60 dias</span>
-            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-orange-500"></span> +30 dias</span>
-            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-yellow-500"></span> 1-30 dias</span>
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-500"></span> 1-7 dias</span>
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-yellow-500"></span> 7-14 dias</span>
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-orange-500"></span> 15-30 dias</span>
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500"></span> +30 dias</span>
           </>
         )}
         {activeFilter === "sinal" && (
