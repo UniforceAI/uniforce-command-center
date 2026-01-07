@@ -611,14 +611,27 @@ const VisaoGeral = () => {
       .slice(0, 8);
   }, [filteredEventos]);
 
-  // Map data (clients with geo coordinates)
+  // Map data (clients with geo coordinates) - include all relevant fields for filtering
   const mapData = useMemo(() => {
-    const clientesMap = new Map<number, Evento>();
+    const clientesMap = new Map<number, any>();
     filteredEventos
       .filter(e => e.geo_lat && e.geo_lng)
       .forEach(e => {
-        if (!clientesMap.has(e.cliente_id)) {
-          clientesMap.set(e.cliente_id, e);
+        const existing = clientesMap.get(e.cliente_id);
+        // Keep the record with more risk data, or add if not exists
+        if (!existing || (e.dias_atraso && e.dias_atraso > (existing.dias_atraso || 0))) {
+          clientesMap.set(e.cliente_id, {
+            cliente_id: e.cliente_id,
+            cliente_nome: e.cliente_nome,
+            cliente_cidade: e.cliente_cidade,
+            geo_lat: e.geo_lat,
+            geo_lng: e.geo_lng,
+            churn_risk_score: e.churn_risk_score,
+            dias_atraso: e.dias_atraso,
+            vencido: e.vencido,
+            alerta_tipo: e.alerta_tipo,
+            downtime_min_24h: e.downtime_min_24h,
+          });
         }
       });
     return Array.from(clientesMap.values());
