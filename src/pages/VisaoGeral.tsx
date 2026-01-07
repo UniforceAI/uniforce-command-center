@@ -114,20 +114,23 @@ const CohortTabs = ({ activeTab, onTabChange }: CohortTabsProps) => {
   );
 };
 
-// Map Filter Tabs
+// Map Filter Tabs - only shows tabs with available data
 interface MapTabsProps {
   activeTab: string;
   onTabChange: (tab: string) => void;
+  availableTabs: string[];
 }
 
-const MapTabs = ({ activeTab, onTabChange }: MapTabsProps) => {
-  const tabs = [
-    { id: "churn", label: "Churn" },
+const MapTabs = ({ activeTab, onTabChange, availableTabs }: MapTabsProps) => {
+  const allTabs = [
     { id: "vencido", label: "Vencido" },
     { id: "sinal", label: "Sinal" },
-    { id: "nps", label: "NPS" },
-    { id: "reinc", label: "Reinc." },
+    { id: "churn", label: "Risco Churn" },
   ];
+
+  const tabs = allTabs.filter(t => availableTabs.includes(t.id));
+
+  if (tabs.length === 0) return null;
 
   return (
     <div className="flex gap-2">
@@ -637,6 +640,28 @@ const VisaoGeral = () => {
     return Array.from(clientesMap.values());
   }, [filteredEventos]);
 
+  // Calculate which map tabs have data
+  const availableMapTabs = useMemo(() => {
+    const tabs: string[] = [];
+    
+    const hasVencido = mapData.some(p => p.vencido === true || (p.dias_atraso && p.dias_atraso > 0));
+    const hasSinal = mapData.some(p => p.alerta_tipo || (p.downtime_min_24h && p.downtime_min_24h > 0));
+    const hasChurn = mapData.some(p => p.churn_risk_score && p.churn_risk_score > 0);
+    
+    if (hasVencido) tabs.push("vencido");
+    if (hasSinal) tabs.push("sinal");
+    if (hasChurn) tabs.push("churn");
+    
+    return tabs;
+  }, [mapData]);
+
+  // Auto-select first available tab if current is not available
+  useEffect(() => {
+    if (availableMapTabs.length > 0 && !availableMapTabs.includes(mapTab)) {
+      setMapTab(availableMapTabs[0]);
+    }
+  }, [availableMapTabs, mapTab]);
+
   const handleLogout = async () => {
     await supabase.auth.signOut();
     navigate("/auth");
@@ -897,7 +922,9 @@ const VisaoGeral = () => {
                         </CardTitle>
                         <p className="text-xs text-muted-foreground">{mapData.length} clientes em {new Set(mapData.map(e => e.cliente_cidade)).size} cidades</p>
                       </div>
-                      <MapTabs activeTab={mapTab} onTabChange={setMapTab} />
+                      {availableMapTabs.length > 0 && (
+                        <MapTabs activeTab={mapTab} onTabChange={setMapTab} availableTabs={availableMapTabs} />
+                      )}
                     </div>
                   </CardHeader>
                   <CardContent>

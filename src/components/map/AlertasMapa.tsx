@@ -198,12 +198,29 @@ export function AlertasMapa({ data, activeFilter }: AlertasMapaProps) {
         ))}
       </MapContainer>
       
-      {/* Legend */}
+      {/* Contextual Legend */}
       <div className="absolute bottom-3 left-3 flex gap-3 text-xs bg-background/80 backdrop-blur-sm px-2 py-1 rounded z-[1000]">
-        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500"></span> Crítico</span>
-        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-orange-500"></span> Alto</span>
-        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-yellow-500"></span> Médio</span>
-        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-500"></span> Baixo</span>
+        {activeFilter === "churn" && (
+          <>
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500"></span> Crítico (≥80%)</span>
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-orange-500"></span> Alto (≥60%)</span>
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-yellow-500"></span> Médio (≥40%)</span>
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-500"></span> Baixo</span>
+          </>
+        )}
+        {activeFilter === "vencido" && (
+          <>
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500"></span> +60 dias</span>
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-orange-500"></span> +30 dias</span>
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-yellow-500"></span> 1-30 dias</span>
+          </>
+        )}
+        {activeFilter === "sinal" && (
+          <>
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500"></span> Alerta ativo</span>
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-yellow-500"></span> Downtime</span>
+          </>
+        )}
       </div>
     </div>
   );
