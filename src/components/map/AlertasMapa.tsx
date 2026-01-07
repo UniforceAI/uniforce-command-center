@@ -58,11 +58,10 @@ const getColorByRisk = (point: MapPoint, filter: string): string => {
   
   if (filter === "vencido") {
     const dias = point.dias_atraso ?? 0;
-    // Positive dias_atraso = overdue, negative = paid early
+    // Only overdue clients shown, so no green
     if (dias > 60) return "#ef4444"; // red - critical
     if (dias > 30) return "#f97316"; // orange - high
-    if (dias > 0) return "#eab308"; // yellow - overdue
-    return "#22c55e"; // green - in day or paid early
+    return "#eab308"; // yellow - 1-30 days overdue
   }
   
   if (filter === "sinal") {
@@ -100,20 +99,40 @@ const getRadiusByRisk = (point: MapPoint, filter: string): number => {
 };
 
 export function AlertasMapa({ data, activeFilter }: AlertasMapaProps) {
-  // Filter points with valid coordinates - show ALL clients, color by filter
+  // Filter points with valid coordinates AND apply filter
   const validPoints = useMemo(() => {
     return data.filter((p) => {
       // Must have valid coordinates
-      return (
-        p.geo_lat !== undefined &&
-        p.geo_lng !== undefined &&
-        !isNaN(p.geo_lat) &&
-        !isNaN(p.geo_lng) &&
-        p.geo_lat !== 0 &&
-        p.geo_lng !== 0
-      );
+      if (
+        p.geo_lat === undefined ||
+        p.geo_lng === undefined ||
+        isNaN(p.geo_lat) ||
+        isNaN(p.geo_lng) ||
+        p.geo_lat === 0 ||
+        p.geo_lng === 0
+      ) {
+        return false;
+      }
+
+      // Apply filter - only show relevant clients
+      if (activeFilter === "vencido") {
+        // Only show clients with overdue payments (dias_atraso > 0)
+        return p.dias_atraso !== undefined && p.dias_atraso > 0;
+      }
+      
+      if (activeFilter === "sinal") {
+        // Only show clients with alerts or downtime
+        return p.alerta_tipo || (p.downtime_min_24h && p.downtime_min_24h > 0);
+      }
+      
+      if (activeFilter === "churn") {
+        // Only show clients with churn risk > 0
+        return p.churn_risk_score !== undefined && p.churn_risk_score > 0;
+      }
+
+      return true;
     });
-  }, [data]);
+  }, [data, activeFilter]);
 
   // Brazil center as default
   const defaultCenter: [number, number] = [-15.77972, -47.92972];
@@ -199,7 +218,6 @@ export function AlertasMapa({ data, activeFilter }: AlertasMapaProps) {
             <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500"></span> +60 dias</span>
             <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-orange-500"></span> +30 dias</span>
             <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-yellow-500"></span> 1-30 dias</span>
-            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-500"></span> Em dia</span>
           </>
         )}
         {activeFilter === "sinal" && (
