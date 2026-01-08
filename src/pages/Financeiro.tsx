@@ -380,7 +380,7 @@ const Financeiro = () => {
             <GlobalFilters filters={filters} />
 
             {/* KPIs */}
-            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
               <KPICardNew
                 title="Total Cobranças"
                 value={kpis.totalCobrancas.toLocaleString()}
@@ -394,26 +394,14 @@ const Financeiro = () => {
                 variant="info"
               />
               <KPICardNew
-                title="A Vencer"
-                value={kpis.aVencer.toLocaleString()}
-                icon={Clock}
-                variant="warning"
-              />
-              <KPICardNew
                 title="Vencidos"
                 value={kpis.vencidos.toLocaleString()}
                 icon={Calendar}
                 variant="danger"
               />
               <KPICardNew
-                title="R$ A Vencer"
-                value={`R$ ${kpis.valorAVencer.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`}
-                icon={CreditCard}
-                variant="warning"
-              />
-              <KPICardNew
                 title="R$ Vencido"
-                value={`R$ ${kpis.valorVencido.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`}
+                value={`R$ ${kpis.valorVencido.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
                 icon={TrendingDown}
                 variant="danger"
               />
@@ -425,7 +413,7 @@ const Financeiro = () => {
               />
               <KPICardNew
                 title="Ticket Médio"
-                value={`R$ ${kpis.ticketMedio.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`}
+                value={`R$ ${kpis.ticketMedio.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
                 icon={TrendingUp}
                 variant="info"
               />
