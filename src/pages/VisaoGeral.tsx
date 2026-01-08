@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import type { User } from "@supabase/supabase-js";
@@ -10,6 +10,10 @@ import { useEventos } from "@/hooks/useEventos";
 
 import { Evento } from "@/types/evento";
 import { AlertasMapa } from "@/components/map/AlertasMapa";
+import { ExecutiveSummary } from "@/components/shared/ExecutiveSummary";
+import { RiskKPICard } from "@/components/shared/RiskKPICard";
+import { ActionMenu, QuickActions } from "@/components/shared/ActionMenu";
+import { EmptyState, NAValue } from "@/components/shared/EmptyState";
 import { 
   Users, 
   UserPlus,
@@ -17,15 +21,18 @@ import {
   AlertTriangle, 
   TrendingDown,
   CreditCard,
+  Clock,
   Percent,
   AlertCircle,
-  Clock,
   Phone,
   MessageSquare,
   Settings,
   Plus,
   Filter,
-  MapPin
+  MapPin,
+  Zap,
+  RefreshCcw,
+  Wifi
 } from "lucide-react";
 import {
   Select,
@@ -35,12 +42,17 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
   BarChart,
   Bar,
   XAxis,
   YAxis,
   CartesianGrid,
-  Tooltip,
+  Tooltip as RechartsTooltip,
   ResponsiveContainer,
   Cell,
 } from "recharts";
@@ -1031,59 +1043,87 @@ const VisaoGeral = () => {
           </div>
         ) : (
           <>
-            {/* KPIs Row */}
-            <div className="grid grid-cols-2 md:grid-cols-5 lg:grid-cols-10 gap-3">
-              <KPICard
+            {/* Resumo Executivo */}
+            <ExecutiveSummary
+              clientesEmRisco={filaRisco.length}
+              mrrEmRisco={kpis.mrrEmRisco}
+              projecaoPerda30d={kpis.mrrEmRisco * 0.3} // Estimativa conservadora
+              hasRiskScore={false} // Ainda não temos risk score real
+              hasNPS={kpis.pctDetratores !== "N/A"}
+              drivers={[
+                {
+                  id: "inadimplencia",
+                  label: "Inadimplência",
+                  count: vencidosStats.totalVencidos,
+                  severity: vencidosStats.totalVencidos > 50 ? "critical" : vencidosStats.totalVencidos > 20 ? "high" : "medium",
+                  icon: <DollarSign className="h-3 w-3 mr-1" />,
+                },
+                {
+                  id: "alerta_tecnico",
+                  label: "Alertas Técnicos",
+                  count: filaRisco.filter(r => r.driver.includes("técnico")).length,
+                  severity: "high",
+                  icon: <Wifi className="h-3 w-3 mr-1" />,
+                },
+                {
+                  id: "reincidencia",
+                  label: "Reincidência",
+                  count: 0, // Placeholder - aguardando dados
+                  severity: "medium",
+                  icon: <RefreshCcw className="h-3 w-3 mr-1" />,
+                },
+              ]}
+              onVerFilaRisco={() => {
+                const filaSection = document.getElementById("fila-risco");
+                filaSection?.scrollIntoView({ behavior: "smooth" });
+              }}
+              onVerCobranca={() => navigate("/financeiro")}
+            />
+
+            {/* KPIs de Risco */}
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+              <RiskKPICard
                 title="Clientes Ativos"
                 value={kpis.clientesAtivos.toLocaleString()}
-                variant="primary"
-                icon={<Users className="h-3.5 w-3.5" />}
+                icon={Users}
+                variant="info"
               />
-              <KPICard
-                title="Novos Clientes"
-                value={kpis.novosClientes.toLocaleString()}
-                icon={<UserPlus className="h-3.5 w-3.5" />}
+              <RiskKPICard
+                title="Clientes em Risco (30d)"
+                value={filaRisco.length}
+                icon={AlertTriangle}
+                variant="danger"
+                disponivel={false}
+                tooltip="Aguardando Risk Score"
+                source="tabela risk_score"
               />
-              <KPICard
-                title="Churn (Absoluto)"
-                value={kpis.churnCount.toLocaleString()}
-                icon={<TrendingDown className="h-3.5 w-3.5" />}
-              />
-              <KPICard
-                title="MRR Total"
-                value={formatCurrency(kpis.mrrTotal)}
-                icon={<DollarSign className="h-3.5 w-3.5" />}
-              />
-              <KPICard
-                title="Faturamento Realizado"
-                value={formatCurrency(kpis.faturamentoRealizado)}
-                icon={<CreditCard className="h-3.5 w-3.5" />}
-              />
-              <KPICard
-                title="MRR em Risco"
+              <RiskKPICard
+                title="MRR em Risco (30d)"
                 value={formatCurrency(kpis.mrrEmRisco)}
-                icon={<AlertTriangle className="h-3.5 w-3.5" />}
+                icon={DollarSign}
+                variant="danger"
+                subtitle="baseado em alertas"
               />
-              <KPICard
-                title="LTV em Risco"
-                value={formatCurrency(kpis.ltvEmRisco)}
-                icon={<AlertTriangle className="h-3.5 w-3.5" />}
-              />
-              <KPICard
-                title="RR Vencido"
+              <RiskKPICard
+                title="RR Vencido (mês)"
                 value={formatCurrency(kpis.rrVencido)}
+                icon={Clock}
                 variant="warning"
-                icon={<Clock className="h-3.5 w-3.5" />}
               />
-              <KPICard
-                title="% Inad Crítico"
-                value={`${kpis.pctInadCritica}%`}
-                icon={<Percent className="h-3.5 w-3.5" />}
+              <RiskKPICard
+                title="Reincidência (30d)"
+                value="N/A"
+                icon={RefreshCcw}
+                variant="default"
+                disponivel={false}
+                tooltip="Aguardando dados de atendimento"
+                source="tabela chamados"
               />
-              <KPICard
-                title="% Detratores"
-                value={`${kpis.pctDetratores}%`}
-                icon={<TrendingDown className="h-3.5 w-3.5" />}
+              <RiskKPICard
+                title="Alertas Técnicos"
+                value={filaRisco.filter(r => r.driver.includes("técnico")).length}
+                icon={Wifi}
+                variant="warning"
               />
             </div>
 
@@ -1156,7 +1196,7 @@ const VisaoGeral = () => {
                             fontSize={9}
                             tick={{ fill: 'hsl(var(--muted-foreground))' }}
                           />
-                          <Tooltip 
+                          <RechartsTooltip 
                             formatter={(value: number) => [cohortMetricInfo.format(value), cohortMetricInfo.label]}
                             labelFormatter={(label) => label}
                           />
@@ -1331,7 +1371,7 @@ const VisaoGeral = () => {
             {/* Bottom Tables */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               {/* Fila de Risco */}
-              <Card>
+              <Card id="fila-risco">
                 <CardHeader className="pb-2">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
@@ -1339,7 +1379,9 @@ const VisaoGeral = () => {
                       <CardTitle className="text-base">Fila de Risco (Hoje)</CardTitle>
                       <Badge variant="destructive" className="text-xs">{filaRisco.length}</Badge>
                     </div>
-                    <span className="text-xs text-muted-foreground">{filaRisco.length} resultados</span>
+                    <span className="text-xs text-muted-foreground">
+                      {filaRisco.length} resultados • Score em construção
+                    </span>
                   </div>
                 </CardHeader>
                 <CardContent>
@@ -1350,38 +1392,50 @@ const VisaoGeral = () => {
                           <tr className="border-b text-muted-foreground">
                             <th className="text-left py-2 font-medium">Cliente</th>
                             <th className="text-left py-2 font-medium">Plano</th>
-                            <th className="text-left py-2 font-medium">Local</th>
-                            <th className="text-left py-2 font-medium">Score</th>
-                            <th className="text-left py-2 font-medium">Driver</th>
+                            <th className="text-left py-2 font-medium">Sinais</th>
                             <th className="text-right py-2 font-medium">Ações</th>
                           </tr>
                         </thead>
                         <tbody>
                           {filaRisco.map((item) => (
-                            <tr key={item.id} className="border-b last:border-0">
-                              <td className="py-2 max-w-[120px] truncate">{item.nome}</td>
-                              <td className="py-2 max-w-[100px] truncate text-muted-foreground">{item.plano.substring(0, 20)}...</td>
-                              <td className="py-2 text-muted-foreground">{item.local}</td>
+                            <tr key={item.id} className="border-b last:border-0 hover:bg-muted/50">
                               <td className="py-2">
-                                <Badge variant={item.score >= 75 ? "destructive" : "secondary"}>
-                                  {item.score}%
-                                </Badge>
+                                <div className="max-w-[140px]">
+                                  <p className="font-medium truncate">{item.nome}</p>
+                                  <p className="text-xs text-muted-foreground truncate">{item.local}</p>
+                                </div>
                               </td>
-                              <td className="py-2 text-muted-foreground">{item.driver}</td>
+                              <td className="py-2 max-w-[100px] truncate text-muted-foreground text-xs">
+                                {item.plano.length > 25 ? item.plano.substring(0, 25) + "..." : item.plano}
+                              </td>
+                              <td className="py-2">
+                                <div className="flex flex-wrap gap-1">
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <Badge 
+                                        variant={item.driver.includes("financeiro") ? "destructive" : "secondary"} 
+                                        className="text-xs cursor-help"
+                                      >
+                                        {item.driver.length > 15 ? item.driver.substring(0, 15) + "..." : item.driver}
+                                      </Badge>
+                                    </TooltipTrigger>
+                                    <TooltipContent>{item.driver}</TooltipContent>
+                                  </Tooltip>
+                                </div>
+                              </td>
                               <td className="py-2 text-right">
-                                <div className="flex justify-end gap-1">
-                                  <button className="p-1 hover:bg-muted rounded" title="Ligar">
-                                    <Phone className="h-3.5 w-3.5" />
-                                  </button>
-                                  <button className="p-1 hover:bg-muted rounded" title="WhatsApp">
-                                    <MessageSquare className="h-3.5 w-3.5" />
-                                  </button>
-                                  <button className="p-1 hover:bg-muted rounded" title="Configurar">
-                                    <Settings className="h-3.5 w-3.5" />
-                                  </button>
-                                  <button className="p-1 hover:bg-muted rounded" title="Adicionar">
-                                    <Plus className="h-3.5 w-3.5" />
-                                  </button>
+                                <div className="flex justify-end items-center gap-1">
+                                  <QuickActions
+                                    clientId={item.id}
+                                    clientName={item.nome}
+                                    clientPhone={item.celular}
+                                  />
+                                  <ActionMenu
+                                    clientId={item.id}
+                                    clientName={item.nome}
+                                    clientPhone={item.celular}
+                                    variant="risco"
+                                  />
                                 </div>
                               </td>
                             </tr>
@@ -1390,9 +1444,11 @@ const VisaoGeral = () => {
                       </table>
                     </div>
                   ) : (
-                    <p className="text-center text-muted-foreground py-8">
-                      Nenhum cliente em risco alto/crítico
-                    </p>
+                    <EmptyState
+                      title="Nenhum cliente em risco alto"
+                      description="Não há clientes com sinais de alerta no momento."
+                      variant="card"
+                    />
                   )}
                 </CardContent>
               </Card>
@@ -1417,7 +1473,6 @@ const VisaoGeral = () => {
                           <tr className="border-b text-muted-foreground">
                             <th className="text-left py-2 font-medium">Cliente</th>
                             <th className="text-left py-2 font-medium">Status</th>
-                            <th className="text-left py-2 font-medium">Vencimento</th>
                             <th className="text-right py-2 font-medium">Valor</th>
                             <th className="text-right py-2 font-medium">Atraso</th>
                             <th className="text-right py-2 font-medium">Ações</th>
@@ -1425,36 +1480,49 @@ const VisaoGeral = () => {
                         </thead>
                         <tbody>
                           {cobrancaInteligente.map((item, i) => (
-                            <tr key={`${item.id}-${i}`} className="border-b last:border-0">
-                              <td className="py-2 max-w-[150px] truncate">{item.nome}</td>
+                            <tr key={`${item.id}-${i}`} className="border-b last:border-0 hover:bg-muted/50">
+                              <td className="py-2">
+                                <div className="max-w-[150px]">
+                                  <p className="font-medium truncate">{item.nome}</p>
+                                  <p className="text-xs text-muted-foreground">{item.vencimento}</p>
+                                </div>
+                              </td>
                               <td className="py-2">
                                 <Badge variant="destructive" className="text-xs">
                                   {item.status}
                                 </Badge>
                               </td>
-                              <td className="py-2 text-muted-foreground">{item.vencimento}</td>
                               <td className="py-2 text-right font-medium">
                                 R$ {item.valor.toFixed(2)}
                               </td>
                               <td className="py-2 text-right">
-                                <Badge variant="destructive" className="text-xs">
-                                  {item.atraso}d
-                                </Badge>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Badge 
+                                      variant={item.atraso > 30 ? "destructive" : "secondary"} 
+                                      className="text-xs cursor-help"
+                                    >
+                                      {item.atraso}d
+                                    </Badge>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    {item.atraso > 60 ? "Crítico: +60 dias" : 
+                                     item.atraso > 30 ? "Alto: 31-60 dias" : 
+                                     item.atraso > 15 ? "Médio: 16-30 dias" : "Baixo: 1-15 dias"}
+                                  </TooltipContent>
+                                </Tooltip>
                               </td>
                               <td className="py-2 text-right">
-                                <div className="flex justify-end gap-1">
-                                  <button className="p-1 hover:bg-muted rounded" title="Ligar">
-                                    <Phone className="h-3.5 w-3.5" />
-                                  </button>
-                                  <button className="p-1 hover:bg-muted rounded" title="WhatsApp">
-                                    <MessageSquare className="h-3.5 w-3.5" />
-                                  </button>
-                                  <button className="p-1 hover:bg-muted rounded" title="Configurar">
-                                    <Settings className="h-3.5 w-3.5" />
-                                  </button>
-                                  <button className="p-1 hover:bg-muted rounded" title="Adicionar">
-                                    <Plus className="h-3.5 w-3.5" />
-                                  </button>
+                                <div className="flex justify-end items-center gap-1">
+                                  <QuickActions
+                                    clientId={item.id}
+                                    clientName={item.nome}
+                                  />
+                                  <ActionMenu
+                                    clientId={item.id}
+                                    clientName={item.nome}
+                                    variant="cobranca"
+                                  />
                                 </div>
                               </td>
                             </tr>
@@ -1463,9 +1531,11 @@ const VisaoGeral = () => {
                       </table>
                     </div>
                   ) : (
-                    <p className="text-center text-muted-foreground py-8">
-                      Nenhuma cobrança vencida
-                    </p>
+                    <EmptyState
+                      title="Nenhuma cobrança vencida"
+                      description="Todos os clientes estão em dia."
+                      variant="card"
+                    />
                   )}
                 </CardContent>
               </Card>
