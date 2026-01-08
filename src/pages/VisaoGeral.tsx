@@ -244,23 +244,6 @@ const VisaoGeral = () => {
   const filteredEventos = useMemo(() => {
     let filtered = [...eventos] as Evento[];
 
-    // Log para debug - entender as datas disponíveis
-    if (eventos.length > 0 && periodo !== "todos") {
-      const sample = eventos.slice(0, 5);
-      console.log("📊 DEBUG FILTRO DE PERÍODO:", {
-        periodo,
-        totalEventos: eventos.length,
-        amostra: sample.map(e => ({
-          cliente_id: e.cliente_id,
-          event_datetime: e.event_datetime,
-          data_instalacao: e.data_instalacao,
-          data_vencimento: e.data_vencimento,
-          data_pagamento: e.data_pagamento,
-          dias_atraso: e.dias_atraso,
-          created_at: e.created_at,
-        }))
-      });
-    }
 
     // O período filtra clientes cuja ATIVIDADE (instalação, cobrança, etc) ocorreu no período
     // Usamos múltiplas datas relevantes ao contexto
@@ -303,7 +286,7 @@ const VisaoGeral = () => {
         return dateToCheck >= dataLimite;
       });
       
-      console.log(`📊 Filtro de período ${periodo} dias: ${eventos.length} → ${filtered.length} registros`);
+      
     }
 
     if (uf !== "todos") {
