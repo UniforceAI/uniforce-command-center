@@ -273,12 +273,14 @@ const Financeiro = () => {
       if (cobrancasVistas.has(cobrancaKey)) return;
       cobrancasVistas.add(cobrancaKey);
       
+      const vencimentoDate = e.data_vencimento ? new Date(e.data_vencimento) : null;
       const cobranca: Cobranca = {
         cliente_id: e.cliente_id,
         cliente_nome: e.cliente_nome,
         plano: e.plano_nome || "Sem plano",
         status: e.cobranca_status,
-        vencimento: e.data_vencimento ? new Date(e.data_vencimento).toLocaleDateString("pt-BR") : "N/A",
+        vencimento: vencimentoDate ? vencimentoDate.toLocaleDateString("pt-BR") : "N/A",
+        vencimentoDate,
         valor: e.valor_cobranca || e.valor_mensalidade || 0,
         metodo: e.metodo_cobranca || "N/A",
         dias_atraso: e.dias_atraso || 0,
