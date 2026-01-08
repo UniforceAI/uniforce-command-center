@@ -255,7 +255,7 @@ const Financeiro = () => {
       .sort((a, b) => b.quantidade - a.quantidade);
   }, [filteredEventos]);
 
-  // Fila de cobrança - agrupa por cliente, usando cobranca_id como chave única
+  // Fila de cobrança - agrupa por cliente, deduplicando por data+valor (mesma cobrança real)
   const filaCobranca = useMemo((): ClienteAgrupado[] => {
     const clientesMap = new Map<number, ClienteAgrupado>();
     const cobrancasVistas = new Set<string>();
@@ -265,14 +265,15 @@ const Financeiro = () => {
       e.event_type === "COBRANCA" && (e.vencido === true || e.dias_atraso > 0)
     );
     
-    eventosVencidos.forEach(e => {
-      // CHAVE ÚNICA: usar cobranca_id se existir (identificador real da cobrança no sistema)
-      // Se não existir, fallback para combo cliente+data+valor
-      const cobrancaKey = e.cobranca_id 
-        ? `cobranca_${e.cobranca_id}`
-        : `${e.cliente_id}_${e.data_vencimento}_${Math.round(e.valor_cobranca || e.valor_mensalidade || 0)}`;
+    // Ordenar por dias_atraso DESC para pegar o registro mais recente de cada cobrança
+    const sorted = [...eventosVencidos].sort((a, b) => (b.dias_atraso || 0) - (a.dias_atraso || 0));
+    
+    sorted.forEach(e => {
+      // CHAVE ÚNICA: cliente + data de vencimento + valor arredondado
+      // Isso identifica a mesma cobrança real, independente de quantos registros existam no banco
+      const cobrancaKey = `${e.cliente_id}_${e.data_vencimento}_${Math.round(e.valor_cobranca || e.valor_mensalidade || 0)}`;
       
-      // Pular se já processamos essa cobrança
+      // Pular se já processamos essa cobrança (mantém o primeiro = maior atraso)
       if (cobrancasVistas.has(cobrancaKey)) return;
       cobrancasVistas.add(cobrancaKey);
       
