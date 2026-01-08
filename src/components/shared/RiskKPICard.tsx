@@ -1,5 +1,5 @@
 import { Card } from "@/components/ui/card";
-import { LucideIcon, TrendingUp, TrendingDown, Minus, HelpCircle } from "lucide-react";
+import { LucideIcon, TrendingUp, TrendingDown, Minus, HelpCircle, Construction } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   Tooltip,
@@ -15,10 +15,16 @@ interface RiskKPICardProps {
   variant?: "default" | "success" | "warning" | "danger" | "info";
   delta?: {
     value: number;
-    label?: string; // Ex: "vs últimos 30d"
-    inverted?: boolean; // Se true, negativo é bom (ex: menos churn)
+    label?: string;
+    inverted?: boolean;
   };
-  disponivel?: boolean;
+  /** 
+   * Status da métrica:
+   * - "available": dado disponível (padrão)
+   * - "unavailable": dado não existe ainda, mostrar "Em implantação"
+   * - "loading": carregando
+   */
+  status?: "available" | "unavailable" | "loading";
   tooltip?: string;
   source?: string;
   onClick?: () => void;
@@ -31,13 +37,16 @@ export function RiskKPICard({
   icon: Icon,
   variant = "default",
   delta,
-  disponivel = true,
+  status = "available",
   tooltip,
   source,
   onClick,
 }: RiskKPICardProps) {
+  const isAvailable = status === "available";
+  const isUnavailable = status === "unavailable";
+
   const variantStyles = {
-    default: "border-l-border",
+    default: "border-l-muted-foreground/30",
     success: "border-l-success",
     warning: "border-l-warning",
     danger: "border-l-destructive",
@@ -77,44 +86,48 @@ export function RiskKPICard({
   const content = (
     <Card
       className={cn(
-        "border-l-4 hover:shadow-md transition-all",
-        variantStyles[variant],
-        onClick && "cursor-pointer hover:bg-accent/50",
-        !disponivel && "opacity-60"
+        "border-l-4 transition-all",
+        isAvailable ? variantStyles[variant] : "border-l-muted-foreground/20",
+        onClick && isAvailable && "cursor-pointer hover:shadow-md hover:bg-accent/50",
+        isUnavailable && "opacity-70"
       )}
-      onClick={onClick}
+      onClick={isAvailable ? onClick : undefined}
     >
       <div className="p-4">
-        <div className="flex items-start justify-between">
+        <div className="flex items-start justify-between gap-2">
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-1">
-              <p className="text-xs font-medium text-muted-foreground truncate">
-                {title}
-              </p>
-              {!disponivel && (
+            {/* Título */}
+            <p className="text-xs font-medium text-muted-foreground">
+              {title}
+            </p>
+            
+            {/* Valor */}
+            <div className="mt-1">
+              {isUnavailable ? (
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <HelpCircle className="h-3 w-3 text-muted-foreground/50 flex-shrink-0" />
+                    <div className="flex items-center gap-1.5 cursor-help">
+                      <Construction className="h-4 w-4 text-muted-foreground/50" />
+                      <span className="text-sm font-medium text-muted-foreground">
+                        Em implantação
+                      </span>
+                    </div>
                   </TooltipTrigger>
-                  <TooltipContent>
-                    <p className="font-medium">Dado não disponível</p>
+                  <TooltipContent side="bottom">
+                    <p className="font-medium text-xs">Aguardando dados</p>
                     {tooltip && <p className="text-xs opacity-80">{tooltip}</p>}
                     {source && <p className="text-xs opacity-60 mt-1">Fonte: {source}</p>}
                   </TooltipContent>
                 </Tooltip>
-              )}
-            </div>
-            
-            <div className="mt-1">
-              {disponivel ? (
-                <h3 className="text-2xl font-bold truncate">{value}</h3>
+              ) : status === "loading" ? (
+                <div className="h-7 w-16 bg-muted animate-pulse rounded" />
               ) : (
-                <h3 className="text-2xl font-bold text-muted-foreground">N/A</h3>
+                <h3 className="text-xl font-bold">{value}</h3>
               )}
             </div>
 
             {/* Delta */}
-            {disponivel && delta && (
+            {isAvailable && delta && (
               <div className={cn("flex items-center gap-1 mt-1 text-xs", getDeltaColor())}>
                 {getDeltaIcon()}
                 <span>{formatDelta()}</span>
@@ -125,16 +138,20 @@ export function RiskKPICard({
             )}
 
             {/* Subtitle */}
-            {disponivel && subtitle && !delta && (
-              <p className="text-xs text-muted-foreground mt-1 truncate">
+            {isAvailable && subtitle && !delta && (
+              <p className="text-xs text-muted-foreground mt-1">
                 {subtitle}
               </p>
             )}
           </div>
 
+          {/* Ícone */}
           {Icon && (
-            <div className={cn("p-2 rounded-lg flex-shrink-0", iconBgStyles[variant])}>
-              <Icon className="h-5 w-5" />
+            <div className={cn(
+              "p-2 rounded-lg flex-shrink-0",
+              isAvailable ? iconBgStyles[variant] : "bg-muted/50 text-muted-foreground/50"
+            )}>
+              <Icon className="h-4 w-4" />
             </div>
           )}
         </div>
@@ -142,8 +159,8 @@ export function RiskKPICard({
     </Card>
   );
 
-  // Wrap in tooltip if has onClick
-  if (onClick) {
+  // Wrap com tooltip se tiver onClick
+  if (onClick && isAvailable) {
     return (
       <Tooltip>
         <TooltipTrigger asChild>{content}</TooltipTrigger>
