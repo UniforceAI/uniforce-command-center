@@ -255,15 +255,23 @@ const Financeiro = () => {
       .sort((a, b) => b.quantidade - a.quantidade);
   }, [filteredEventos]);
 
-  // Fila de cobrança - agrupa por cliente, apenas 1 cobrança por cliente (a mais atrasada)
+  // Fila de cobrança - agrupa por cliente com cobranças ÚNICAS por cobranca_id
   const filaCobranca = useMemo((): ClienteAgrupado[] => {
     const clientesMap = new Map<number, ClienteAgrupado>();
+    const cobrancasVistas = new Set<string>(); // Para garantir unicidade
     
-    // Filtrar eventos vencidos e agrupar por cliente
+    // Filtrar eventos vencidos
     const eventosVencidos = filteredEventos.filter(e => e.vencido === true || e.dias_atraso > 0);
     
     eventosVencidos.forEach(e => {
-      const existing = clientesMap.get(e.cliente_id);
+      // Chave única: usar cobranca_id se existir, senão criar chave composta
+      const cobrancaKey = e.cobranca_id 
+        ? String(e.cobranca_id)
+        : `${e.cliente_id}_${e.data_vencimento}_${Math.round(e.valor_cobranca || e.valor_mensalidade || 0)}`;
+      
+      // Pular se já vimos essa cobrança específica
+      if (cobrancasVistas.has(cobrancaKey)) return;
+      cobrancasVistas.add(cobrancaKey);
       
       const cobranca: Cobranca = {
         cliente_id: e.cliente_id,
@@ -278,14 +286,11 @@ const Financeiro = () => {
         email: e.cliente_email,
       };
       
+      const existing = clientesMap.get(e.cliente_id);
       if (existing) {
-        // Só adicionar se for uma cobrança com mais dias de atraso (diferente)
-        // Manter apenas a cobrança com maior atraso por cliente
-        if (cobranca.dias_atraso > existing.maiorAtraso) {
-          existing.cobrancas = [cobranca];
-          existing.totalValor = cobranca.valor;
-          existing.maiorAtraso = cobranca.dias_atraso;
-        }
+        existing.cobrancas.push(cobranca);
+        existing.totalValor += cobranca.valor;
+        existing.maiorAtraso = Math.max(existing.maiorAtraso, cobranca.dias_atraso);
       } else {
         clientesMap.set(e.cliente_id, {
           cliente_id: e.cliente_id,
@@ -297,6 +302,11 @@ const Financeiro = () => {
           maiorAtraso: cobranca.dias_atraso,
         });
       }
+    });
+    
+    // Ordenar cobranças de cada cliente por dias de atraso (maior primeiro)
+    clientesMap.forEach(cliente => {
+      cliente.cobrancas.sort((a, b) => b.dias_atraso - a.dias_atraso);
     });
     
     return Array.from(clientesMap.values())
