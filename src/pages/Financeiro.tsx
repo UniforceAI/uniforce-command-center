@@ -88,7 +88,7 @@ const Financeiro = () => {
     };
   }, [eventosFinanceiros]);
 
-  // Filtrar por período
+  // Filtrar por período - usa data_vencimento para cobranças
   const filteredEventos = useMemo(() => {
     let filtered = [...eventosFinanceiros];
 
@@ -98,9 +98,19 @@ const Financeiro = () => {
       dataLimite.setDate(dataLimite.getDate() - diasAtras);
 
       filtered = filtered.filter((e) => {
-        const dataEvento = e.event_datetime || e.data_vencimento;
-        if (!dataEvento) return true;
-        return new Date(dataEvento) >= dataLimite;
+        // Para cobranças, usar data_vencimento como referência principal
+        // Incluir vencidos sempre (já que queremos ver inadimplência)
+        if (e.vencido === true || e.dias_atraso > 0) {
+          // Para vencidos, verificar se o vencimento caiu no período
+          const dataVenc = e.data_vencimento;
+          if (!dataVenc) return true;
+          return new Date(dataVenc) >= dataLimite;
+        }
+        
+        // Para não vencidos, usar data de criação/evento
+        const dataRef = e.created_at || e.event_datetime || e.data_vencimento;
+        if (!dataRef) return true;
+        return new Date(dataRef) >= dataLimite;
       });
     }
 
