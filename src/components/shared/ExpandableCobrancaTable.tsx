@@ -1,4 +1,3 @@
-import { useState } from "react";
 import {
   Table,
   TableBody,
@@ -9,14 +8,13 @@ import {
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { ChevronRight, ChevronDown, MoreHorizontal } from "lucide-react";
+import { MoreHorizontal } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { cn } from "@/lib/utils";
 
 interface Cobranca {
   cliente_id: number;
@@ -71,20 +69,6 @@ export function ExpandableCobrancaTable({
   actions,
   emptyMessage = "Nenhum dado encontrado",
 }: ExpandableCobrancaTableProps) {
-  const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
-
-  const toggleRow = (clienteId: number) => {
-    setExpandedRows(prev => {
-      const next = new Set(prev);
-      if (next.has(clienteId)) {
-        next.delete(clienteId);
-      } else {
-        next.add(clienteId);
-      }
-      return next;
-    });
-  };
-
   if (data.length === 0) {
     return (
       <div className="flex items-center justify-center py-8 text-muted-foreground">
@@ -98,11 +82,9 @@ export function ExpandableCobrancaTable({
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead className="w-[40px]"></TableHead>
             <TableHead>Cliente</TableHead>
             <TableHead>Plano</TableHead>
             <TableHead>Status</TableHead>
-            <TableHead className="text-center">Cobranças</TableHead>
             <TableHead>Vencimento</TableHead>
             <TableHead>Valor</TableHead>
             <TableHead>Método</TableHead>
@@ -113,106 +95,50 @@ export function ExpandableCobrancaTable({
         </TableHeader>
         <TableBody>
           {data.map((cliente) => {
-            const isExpanded = expandedRows.has(cliente.cliente_id);
-            const hasMultiple = cliente.cobrancas.length > 1;
             const mainCobranca = cliente.cobrancas[0];
 
             return (
-              <>
-                {/* Linha principal do cliente */}
-                <TableRow
-                  key={cliente.cliente_id}
-                  className={cn(
-                    hasMultiple && "cursor-pointer hover:bg-muted/50",
-                    isExpanded && "bg-muted/30"
-                  )}
-                  onClick={() => hasMultiple && toggleRow(cliente.cliente_id)}
-                >
-                  <TableCell className="p-2">
-                    {hasMultiple ? (
-                      <Button variant="ghost" size="icon" className="h-6 w-6">
-                        {isExpanded ? (
-                          <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                        ) : (
-                          <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                        )}
-                      </Button>
-                    ) : (
-                      <div className="w-6" />
-                    )}
-                  </TableCell>
-                  <TableCell className="font-medium">
-                    {cliente.cliente_nome}
-                  </TableCell>
-                  <TableCell>{mainCobranca.plano}</TableCell>
-                  <TableCell><StatusBadge status={mainCobranca.status} /></TableCell>
-                  <TableCell className="text-center">
-                    <span className={cn(
-                      "font-medium",
-                      hasMultiple && "text-orange-600"
-                    )}>
-                      {cliente.cobrancas.length}
-                    </span>
-                  </TableCell>
-                  <TableCell>{mainCobranca.vencimento}</TableCell>
+              <TableRow key={cliente.cliente_id}>
+                <TableCell className="font-medium">
+                  {cliente.cliente_nome}
+                </TableCell>
+                <TableCell>{mainCobranca.plano}</TableCell>
+                <TableCell><StatusBadge status={mainCobranca.status} /></TableCell>
+                <TableCell>{mainCobranca.vencimento}</TableCell>
+                <TableCell>
+                  <span className="font-semibold">
+                    R$ {cliente.totalValor.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                  </span>
+                </TableCell>
+                <TableCell>{mainCobranca.metodo}</TableCell>
+                <TableCell>
+                  <Badge variant="destructive" className="font-medium">
+                    {cliente.maiorAtraso} dias
+                  </Badge>
+                </TableCell>
+                <TableCell>{cliente.celular}</TableCell>
+                {actions && (
                   <TableCell>
-                    <span className={cn(hasMultiple && "font-semibold text-red-600")}>
-                      R$ {cliente.totalValor.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
-                    </span>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-8 w-8">
+                          <MoreHorizontal className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        {actions.map((action, i) => (
+                          <DropdownMenuItem
+                            key={i}
+                            onClick={() => action.onClick(cliente)}
+                          >
+                            {action.label}
+                          </DropdownMenuItem>
+                        ))}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </TableCell>
-                  <TableCell>{mainCobranca.metodo}</TableCell>
-                  <TableCell>
-                    {cliente.maiorAtraso > 0 ? `${cliente.maiorAtraso} dias` : "-"}
-                  </TableCell>
-                  <TableCell>{cliente.celular}</TableCell>
-                  {actions && (
-                    <TableCell>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                          <Button variant="ghost" size="icon" className="h-8 w-8">
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          {actions.map((action, i) => (
-                            <DropdownMenuItem
-                              key={i}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                action.onClick(cliente);
-                              }}
-                            >
-                              {action.label}
-                            </DropdownMenuItem>
-                          ))}
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
-                  )}
-                </TableRow>
-
-                {/* Sublinhas expandidas (outras cobranças) */}
-                {isExpanded && hasMultiple && cliente.cobrancas.slice(1).map((cobranca, idx) => (
-                  <TableRow
-                    key={`${cliente.cliente_id}-sub-${idx}`}
-                    className="bg-muted/20"
-                  >
-                    <TableCell className="p-2">
-                      <div className="w-6 border-l-2 border-muted-foreground/30 h-full ml-3" />
-                    </TableCell>
-                    <TableCell className="text-muted-foreground pl-6">↳ Cobrança {idx + 2}</TableCell>
-                    <TableCell>{cobranca.plano}</TableCell>
-                    <TableCell><StatusBadge status={cobranca.status} /></TableCell>
-                    <TableCell></TableCell>
-                    <TableCell>{cobranca.vencimento}</TableCell>
-                    <TableCell>R$ {cobranca.valor.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</TableCell>
-                    <TableCell>{cobranca.metodo}</TableCell>
-                    <TableCell>{cobranca.dias_atraso > 0 ? `${cobranca.dias_atraso} dias` : "-"}</TableCell>
-                    <TableCell></TableCell>
-                    {actions && <TableCell></TableCell>}
-                  </TableRow>
-                ))}
-              </>
+                )}
+              </TableRow>
             );
           })}
         </TableBody>
