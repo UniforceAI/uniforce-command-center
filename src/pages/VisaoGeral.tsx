@@ -428,6 +428,28 @@ const VisaoGeral = () => {
       ? Math.round(ltvMesesCalculados.reduce((a, b) => a + b, 0) / ltvMesesCalculados.length) 
       : 0;
     
+    // DEBUG: Log detalhado do cálculo LTV
+    console.log("📊 LTV CÁLCULO DETALHADO:", {
+      hojeCalcLtv: hojeCalcLtv.toISOString().split('T')[0],
+      totalClientesUnicos: allClientesUnicos.length,
+      clientesComDataInstalacao: ltvMesesCalculados.length,
+      somaTotalMeses: ltvMesesCalculados.reduce((a, b) => a + b, 0).toFixed(1),
+      mediaMeses: ltvMeses,
+      amostraClientes: allClientesUnicos.slice(0, 5).map(e => ({
+        cliente_id: e.cliente_id,
+        data_instalacao: e.data_instalacao,
+        mesesDesdeInstalacao: e.data_instalacao ? 
+          ((hojeCalcLtv.getTime() - new Date(e.data_instalacao).getTime()) / (1000 * 60 * 60 * 24 * 30.44)).toFixed(1) : 'N/A'
+      })),
+      distribuicaoPorFaixa: {
+        "0-6m": ltvMesesCalculados.filter(m => m < 6).length,
+        "6-12m": ltvMesesCalculados.filter(m => m >= 6 && m < 12).length,
+        "12-24m": ltvMesesCalculados.filter(m => m >= 12 && m < 24).length,
+        "24-36m": ltvMesesCalculados.filter(m => m >= 24 && m < 36).length,
+        "36+m": ltvMesesCalculados.filter(m => m >= 36).length,
+      }
+    });
+    
     // LTV em reais - usar meses calculados × valor_mensalidade médio
     const valorMensalidadeMedia = allClientesUnicos
       .filter(e => e.valor_mensalidade && e.valor_mensalidade > 0)
