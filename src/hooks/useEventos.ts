@@ -26,14 +26,14 @@ export function useEventos() {
 
         if (vencidosError) throw vencidosError;
 
-        // Buscar eventos não-vencidos (limite maior para ter contexto)
+        // Buscar eventos não-vencidos - LIMITADO para performance
         const { data: outrosData, error: outrosError } = await externalSupabase
           .from("eventos")
           .select("*")
           .eq("isp_id", EVENTOS_ISP_ID)
           .or("vencido.is.null,vencido.eq.false")
           .order("event_datetime", { ascending: false })
-          .range(0, 4999);
+          .limit(1000);
 
         if (outrosError) throw outrosError;
 
@@ -44,13 +44,6 @@ export function useEventos() {
         const uniqueData = Array.from(
           new Map(allData.map(item => [item.id, item])).values()
         );
-
-        console.log("📊 EVENTOS CARREGADOS:", {
-          vencidos: vencidosData?.length || 0,
-          outros: outrosData?.length || 0,
-          total: uniqueData.length,
-          clientesVencidos: new Set(vencidosData?.map(e => e.cliente_id) || []).size
-        });
 
         if (uniqueData.length > 0) {
           setColumns(Object.keys(uniqueData[0]));

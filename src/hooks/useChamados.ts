@@ -46,38 +46,17 @@ export function useChamados() {
         setIsLoading(true);
         setError(null);
 
-        // Primeiro, obter a contagem total
-        const { count: totalCount, error: countError } = await externalSupabase
+        // Query única limitada para performance
+        const { data, error } = await externalSupabase
           .from("chamados")
-          .select("*", { count: "exact", head: true })
-          .eq("isp_id", ISP_ID);
+          .select("*")
+          .eq("isp_id", ISP_ID)
+          .order("data_abertura", { ascending: false })
+          .limit(1000);
 
-        if (countError) throw countError;
-
-        // Buscar em batches de 1000
-        const BATCH_SIZE = 1000;
-        const totalBatches = Math.ceil((totalCount || 0) / BATCH_SIZE);
-        let allData: any[] = [];
-
-        for (let i = 0; i < totalBatches; i++) {
-          const start = i * BATCH_SIZE;
-          const end = start + BATCH_SIZE - 1;
-          
-          const { data, error } = await externalSupabase
-            .from("chamados")
-            .select("*")
-            .eq("isp_id", ISP_ID)
-            .order("data_abertura", { ascending: false })
-            .range(start, end);
-
-          if (error) throw error;
-          
-          if (data) {
-            allData = [...allData, ...data];
-          }
-        }
-
-        setChamados(allData as ChamadoData[]);
+        if (error) throw error;
+        
+        setChamados((data || []) as ChamadoData[]);
         
       } catch (err: any) {
         setError(err.message);
