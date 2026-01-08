@@ -410,21 +410,29 @@ const VisaoGeral = () => {
     });
     const allClientesUnicos = Array.from(allClientesMap.values());
     
-    // LTV em reais - usar ltv_reais_estimado do banco
-    const ltvReaisValues = allClientesUnicos
-      .filter(e => e.ltv_reais_estimado && e.ltv_reais_estimado > 0)
-      .map(e => e.ltv_reais_estimado!);
-    const ltvMedio = ltvReaisValues.length > 0 
-      ? ltvReaisValues.reduce((a, b) => a + b, 0) / ltvReaisValues.length 
+    // LTV em meses - CALCULAR COM BASE NA DATA DE INSTALAÇÃO REAL
+    // Diferença entre hoje e data_instalacao em meses
+    const hojeCalcLtv = new Date();
+    const ltvMesesCalculados = allClientesUnicos
+      .filter(e => e.data_instalacao && e.data_instalacao.length >= 10)
+      .map(e => {
+        const dataInstalacao = new Date(e.data_instalacao);
+        if (isNaN(dataInstalacao.getTime())) return null;
+        const diffMs = hojeCalcLtv.getTime() - dataInstalacao.getTime();
+        const meses = diffMs / (1000 * 60 * 60 * 24 * 30.44); // Média de dias por mês
+        return meses > 0 ? meses : 0;
+      })
+      .filter((m): m is number => m !== null && m > 0);
+    
+    const ltvMeses = ltvMesesCalculados.length > 0 
+      ? Math.round(ltvMesesCalculados.reduce((a, b) => a + b, 0) / ltvMesesCalculados.length) 
       : 0;
     
-    // LTV em meses - usar APENAS ltv_meses_estimado do banco (dados reais)
-    const ltvMesesValues = allClientesUnicos
-      .filter(e => e.ltv_meses_estimado !== null && e.ltv_meses_estimado !== undefined && e.ltv_meses_estimado > 0)
-      .map(e => e.ltv_meses_estimado!);
-    const ltvMeses = ltvMesesValues.length > 0 
-      ? Math.round(ltvMesesValues.reduce((a, b) => a + b, 0) / ltvMesesValues.length) 
-      : 0;
+    // LTV em reais - usar meses calculados × valor_mensalidade médio
+    const valorMensalidadeMedia = allClientesUnicos
+      .filter(e => e.valor_mensalidade && e.valor_mensalidade > 0)
+      .reduce((acc, e, _, arr) => acc + (e.valor_mensalidade || 0) / arr.length, 0);
+    const ltvMedio = ltvMeses * valorMensalidadeMedia;
     
 
     // Ticket Médio
