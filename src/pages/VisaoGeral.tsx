@@ -1213,40 +1213,6 @@ const VisaoGeral = () => {
                   </CardContent>
                 </Card>
 
-                {/* Map Section */}
-                <Card>
-                  <CardHeader className="pb-2">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <CardTitle className="text-base flex items-center gap-2">
-                          <MapPin className="h-4 w-4" />
-                          Mapa de Alertas
-                        </CardTitle>
-                        <p className="text-xs text-muted-foreground">
-                          {mapTab === "vencido" ? (
-                            <>
-                              <span className="font-medium text-foreground">{vencidosStats.totalVencidos}</span> vencidos total | 
-                              <span className="font-medium text-green-500 ml-1">{vencidosStats.comCoordenadas}</span> no mapa 
-                              <span className="text-muted-foreground ml-1">({vencidosStats.comGeoExata} geo + {vencidosStats.comBairroFallback} bairro)</span> | 
-                              <span className="font-medium text-orange-500 ml-1">{vencidosStats.semCoordenadas}</span> sem localização
-                            </>
-                          ) : (
-                            <>{mapData.length} clientes em {new Set(mapData.map(e => e.cliente_cidade)).size} cidades</>
-                          )}
-                        </p>
-                      </div>
-                      {availableMapTabs.length > 0 && (
-                        <MapTabs activeTab={mapTab} onTabChange={setMapTab} availableTabs={availableMapTabs} />
-                      )}
-                    </div>
-                  </CardHeader>
-                  <CardContent className="p-0">
-                    <AlertasMapa 
-                      data={mapData} 
-                      activeFilter={mapTab as "churn" | "vencido" | "sinal"} 
-                    />
-                  </CardContent>
-                </Card>
               </div>
 
               {/* Right Sidebar */}
@@ -1350,6 +1316,41 @@ const VisaoGeral = () => {
                 </Card>
               </div>
             </div>
+
+            {/* Map Section - Full Width */}
+            <Card>
+              <CardHeader className="pb-2">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <MapPin className="h-4 w-4" />
+                      Mapa de Alertas
+                    </CardTitle>
+                    <p className="text-xs text-muted-foreground">
+                      {mapTab === "vencido" ? (
+                        <>
+                          <span className="font-medium text-foreground">{vencidosStats.totalVencidos}</span> vencidos total | 
+                          <span className="font-medium text-green-500 ml-1">{vencidosStats.comCoordenadas}</span> no mapa 
+                          <span className="text-muted-foreground ml-1">({vencidosStats.comGeoExata} geo + {vencidosStats.comBairroFallback} bairro)</span> | 
+                          <span className="font-medium text-orange-500 ml-1">{vencidosStats.semCoordenadas}</span> sem localização
+                        </>
+                      ) : (
+                        <>{mapData.length} clientes em {new Set(mapData.map(e => e.cliente_cidade)).size} cidades</>
+                      )}
+                    </p>
+                  </div>
+                  {availableMapTabs.length > 0 && (
+                    <MapTabs activeTab={mapTab} onTabChange={setMapTab} availableTabs={availableMapTabs} />
+                  )}
+                </div>
+              </CardHeader>
+              <CardContent className="p-0">
+                <AlertasMapa 
+                  data={mapData} 
+                  activeFilter={mapTab as "churn" | "vencido" | "sinal"} 
+                />
+              </CardContent>
+            </Card>
 
             {/* Bottom Tables */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
