@@ -14,6 +14,42 @@ export type Database = {
   }
   public: {
     Tables: {
+      actions_log: {
+        Row: {
+          action_type: string
+          channel: string | null
+          client_id: number
+          created_at: string
+          created_by: string | null
+          id: string
+          metadata: Json | null
+          notes: string | null
+          status: string | null
+        }
+        Insert: {
+          action_type: string
+          channel?: string | null
+          client_id: number
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          metadata?: Json | null
+          notes?: string | null
+          status?: string | null
+        }
+        Update: {
+          action_type?: string
+          channel?: string | null
+          client_id?: number
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          metadata?: Json | null
+          notes?: string | null
+          status?: string | null
+        }
+        Relationships: []
+      }
       chamados: {
         Row: {
           categoria: string
