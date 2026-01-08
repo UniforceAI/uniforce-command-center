@@ -1,4 +1,4 @@
-import { AlertTriangle, ThumbsUp, LayoutDashboard, DollarSign, TrendingDown } from "lucide-react";
+import { AlertTriangle, ThumbsUp, LayoutDashboard, DollarSign, TrendingDown, PanelLeftClose, PanelLeft } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
 import {
   Sidebar,
@@ -11,6 +11,7 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar";
+import { Button } from "@/components/ui/button";
 
 const menuItems = [
   { title: "Visão Geral", url: "/visao-geral", icon: LayoutDashboard },
@@ -21,13 +22,29 @@ const menuItems = [
 ];
 
 export function AppSidebar() {
-  const { state } = useSidebar();
+  const { state, toggleSidebar } = useSidebar();
   const location = useLocation();
   const collapsed = state === "collapsed";
 
   return (
     <Sidebar collapsible="icon" className="border-r">
-      <SidebarContent className="pt-4">
+      <SidebarContent className="pt-2">
+        {/* Toggle button at top of sidebar */}
+        <div className="px-2 mb-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={toggleSidebar}
+            className="w-full justify-center h-8"
+          >
+            {collapsed ? (
+              <PanelLeft className="h-4 w-4" />
+            ) : (
+              <PanelLeftClose className="h-4 w-4" />
+            )}
+          </Button>
+        </div>
+        
         <SidebarGroup>
           <SidebarGroupLabel className={collapsed ? "sr-only" : ""}>
             Command Center

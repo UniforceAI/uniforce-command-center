@@ -93,22 +93,22 @@ export function RiskKPICard({
       )}
       onClick={isAvailable ? onClick : undefined}
     >
-      <div className="p-4">
+      <div className="p-3">
         <div className="flex items-start justify-between gap-2">
           <div className="flex-1 min-w-0">
             {/* Título */}
-            <p className="text-xs font-medium text-muted-foreground">
+            <p className="text-[11px] font-medium text-muted-foreground truncate">
               {title}
             </p>
             
             {/* Valor */}
-            <div className="mt-1">
+            <div className="mt-0.5">
               {isUnavailable ? (
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <div className="flex items-center gap-1.5 cursor-help">
-                      <Construction className="h-4 w-4 text-muted-foreground/50" />
-                      <span className="text-sm font-medium text-muted-foreground">
+                    <div className="flex items-center gap-1 cursor-help">
+                      <Construction className="h-3.5 w-3.5 text-muted-foreground/50" />
+                      <span className="text-xs font-medium text-muted-foreground">
                         Em implantação
                       </span>
                     </div>
@@ -120,15 +120,15 @@ export function RiskKPICard({
                   </TooltipContent>
                 </Tooltip>
               ) : status === "loading" ? (
-                <div className="h-7 w-16 bg-muted animate-pulse rounded" />
+                <div className="h-6 w-14 bg-muted animate-pulse rounded" />
               ) : (
-                <h3 className="text-xl font-bold">{value}</h3>
+                <h3 className="text-lg font-bold">{value}</h3>
               )}
             </div>
 
             {/* Delta */}
             {isAvailable && delta && (
-              <div className={cn("flex items-center gap-1 mt-1 text-xs", getDeltaColor())}>
+              <div className={cn("flex items-center gap-1 mt-0.5 text-[10px]", getDeltaColor())}>
                 {getDeltaIcon()}
                 <span>{formatDelta()}</span>
                 {delta.label && (
@@ -139,7 +139,7 @@ export function RiskKPICard({
 
             {/* Subtitle */}
             {isAvailable && subtitle && !delta && (
-              <p className="text-xs text-muted-foreground mt-1">
+              <p className="text-[10px] text-muted-foreground mt-0.5 truncate">
                 {subtitle}
               </p>
             )}
@@ -148,10 +148,10 @@ export function RiskKPICard({
           {/* Ícone */}
           {Icon && (
             <div className={cn(
-              "p-2 rounded-lg flex-shrink-0",
+              "p-1.5 rounded-md flex-shrink-0",
               isAvailable ? iconBgStyles[variant] : "bg-muted/50 text-muted-foreground/50"
             )}>
-              <Icon className="h-4 w-4" />
+              <Icon className="h-3.5 w-3.5" />
             </div>
           )}
         </div>
