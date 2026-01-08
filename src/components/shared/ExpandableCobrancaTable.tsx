@@ -102,6 +102,7 @@ export function ExpandableCobrancaTable({
             <TableHead>Cliente</TableHead>
             <TableHead>Plano</TableHead>
             <TableHead>Status</TableHead>
+            <TableHead className="text-center">Cobranças</TableHead>
             <TableHead>Vencimento</TableHead>
             <TableHead>Valor</TableHead>
             <TableHead>Método</TableHead>
@@ -142,23 +143,22 @@ export function ExpandableCobrancaTable({
                   </TableCell>
                   <TableCell className="font-medium">
                     {cliente.cliente_nome}
-                    {hasMultiple && (
-                      <Badge variant="secondary" className="ml-2 text-xs">
-                        {cliente.cobrancas.length} cobranças
-                      </Badge>
-                    )}
                   </TableCell>
                   <TableCell>{mainCobranca.plano}</TableCell>
                   <TableCell><StatusBadge status={mainCobranca.status} /></TableCell>
+                  <TableCell className="text-center">
+                    <span className={cn(
+                      "font-medium",
+                      hasMultiple && "text-orange-600"
+                    )}>
+                      {cliente.cobrancas.length}
+                    </span>
+                  </TableCell>
                   <TableCell>{mainCobranca.vencimento}</TableCell>
                   <TableCell>
-                    {hasMultiple ? (
-                      <span className="font-semibold text-red-600">
-                        R$ {cliente.totalValor.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
-                      </span>
-                    ) : (
-                      `R$ ${mainCobranca.valor.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`
-                    )}
+                    <span className={cn(hasMultiple && "font-semibold text-red-600")}>
+                      R$ {cliente.totalValor.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                    </span>
                   </TableCell>
                   <TableCell>{mainCobranca.metodo}</TableCell>
                   <TableCell>
@@ -203,6 +203,7 @@ export function ExpandableCobrancaTable({
                     <TableCell className="text-muted-foreground pl-6">↳ Cobrança {idx + 2}</TableCell>
                     <TableCell>{cobranca.plano}</TableCell>
                     <TableCell><StatusBadge status={cobranca.status} /></TableCell>
+                    <TableCell></TableCell>
                     <TableCell>{cobranca.vencimento}</TableCell>
                     <TableCell>R$ {cobranca.valor.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</TableCell>
                     <TableCell>{cobranca.metodo}</TableCell>
