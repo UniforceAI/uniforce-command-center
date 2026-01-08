@@ -3,12 +3,14 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import type { User } from "@supabase/supabase-js";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { useEventos } from "@/hooks/useEventos";
 import { GlobalFilters } from "@/components/shared/GlobalFilters";
 import { KPICardNew } from "@/components/shared/KPICardNew";
 import { DataTable, StatusBadge, Column } from "@/components/shared/DataTable";
+import { ExpandableCobrancaTable, ClienteAgrupado, Cobranca } from "@/components/shared/ExpandableCobrancaTable";
 import { FAIXAS_AGING } from "@/types/evento";
 import { 
   DollarSign, 
@@ -253,45 +255,53 @@ const Financeiro = () => {
       .sort((a, b) => b.quantidade - a.quantidade);
   }, [filteredEventos]);
 
-  // Fila de cobrança - clientes ÚNICOS com maior risco/atraso
-  const filaCobranca = useMemo(() => {
-    const clientesMap = new Map<number, any>();
+  // Fila de cobrança - clientes agrupados com todas as cobranças
+  const filaCobranca = useMemo((): ClienteAgrupado[] => {
+    const clientesMap = new Map<number, ClienteAgrupado>();
     
-    // Agrupar por cliente, mantendo a cobrança mais atrasada
+    // Agrupar todas as cobranças por cliente
     filteredEventos
       .filter(e => e.vencido === true || e.dias_atraso > 0)
       .forEach(e => {
+        const cobranca: Cobranca = {
+          cliente_id: e.cliente_id,
+          cliente_nome: e.cliente_nome,
+          plano: e.plano_nome || "Sem plano",
+          status: e.cobranca_status,
+          vencimento: e.data_vencimento ? new Date(e.data_vencimento).toLocaleDateString("pt-BR") : "N/A",
+          valor: e.valor_cobranca || e.valor_mensalidade || 0,
+          metodo: e.metodo_cobranca || "N/A",
+          dias_atraso: e.dias_atraso || 0,
+          celular: e.cliente_celular || "N/A",
+          email: e.cliente_email,
+        };
+        
         const existing = clientesMap.get(e.cliente_id);
-        if (!existing || (e.dias_atraso || 0) > (existing.dias_atraso || 0)) {
+        if (existing) {
+          existing.cobrancas.push(cobranca);
+          existing.totalValor += cobranca.valor;
+          existing.maiorAtraso = Math.max(existing.maiorAtraso, cobranca.dias_atraso);
+        } else {
           clientesMap.set(e.cliente_id, {
             cliente_id: e.cliente_id,
             cliente_nome: e.cliente_nome,
-            plano: e.plano_nome,
-            status: e.cobranca_status,
-            vencimento: e.data_vencimento ? new Date(e.data_vencimento).toLocaleDateString("pt-BR") : "N/A",
-            valor: e.valor_cobranca || e.valor_mensalidade || 0,
-            metodo: e.metodo_cobranca || "N/A",
-            dias_atraso: e.dias_atraso || 0,
-            celular: e.cliente_celular,
+            celular: e.cliente_celular || "N/A",
             email: e.cliente_email,
+            cobrancas: [cobranca],
+            totalValor: cobranca.valor,
+            maiorAtraso: cobranca.dias_atraso,
           });
         }
       });
     
+    // Ordenar cobranças de cada cliente por dias de atraso (decrescente)
+    clientesMap.forEach(cliente => {
+      cliente.cobrancas.sort((a, b) => b.dias_atraso - a.dias_atraso);
+    });
+    
     return Array.from(clientesMap.values())
-      .sort((a, b) => b.dias_atraso - a.dias_atraso);
+      .sort((a, b) => b.maiorAtraso - a.maiorAtraso);
   }, [filteredEventos]);
-
-  const filaCobrancaColumns: Column<typeof filaCobranca[0]>[] = [
-    { key: "cliente_nome", label: "Cliente" },
-    { key: "plano", label: "Plano" },
-    { key: "status", label: "Status", render: (item) => <StatusBadge status={item.status} /> },
-    { key: "vencimento", label: "Vencimento" },
-    { key: "valor", label: "Valor", render: (item) => `R$ ${item.valor.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}` },
-    { key: "metodo", label: "Método" },
-    { key: "dias_atraso", label: "Dias Atraso", render: (item) => item.dias_atraso > 0 ? `${item.dias_atraso} dias` : "-" },
-    { key: "celular", label: "Celular" },
-  ];
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -556,12 +566,14 @@ const Financeiro = () => {
                 <CardTitle className="flex items-center gap-2">
                   <DollarSign className="h-5 w-5 text-orange-500" />
                   Fila de Cobrança Inteligente
+                  <Badge variant="secondary" className="ml-2">
+                    {filaCobranca.length} clientes
+                  </Badge>
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <DataTable
+                <ExpandableCobrancaTable
                   data={filaCobranca}
-                  columns={filaCobrancaColumns}
                   emptyMessage="Nenhuma cobrança pendente identificada"
                   actions={[
                     { label: "Ver detalhes", onClick: (item) => console.log("Detalhes:", item) },
