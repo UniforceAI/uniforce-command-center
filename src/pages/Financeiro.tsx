@@ -135,15 +135,24 @@ const Financeiro = () => {
     const aVencer = filteredEventos.filter(e => e.cobranca_status === "A Vencer" && !e.vencido);
     const pagos = filteredEventos.filter(e => e.data_pagamento || e.cobranca_status === "Pago");
     
+    // CLIENTES únicos com vencido (para consistência com o mapa)
+    const clientesVencidosMap = new Map<number, any>();
+    vencidos.forEach(e => {
+      if (!clientesVencidosMap.has(e.cliente_id)) {
+        clientesVencidosMap.set(e.cliente_id, e);
+      }
+    });
+    const clientesVencidos = clientesVencidosMap.size;
+    
     // Valores usando valor_cobranca
     const valorVencido = vencidos.reduce((acc, e) => acc + (e.valor_cobranca || e.valor_mensalidade || 0), 0);
     const valorAVencer = aVencer.reduce((acc, e) => acc + (e.valor_cobranca || e.valor_mensalidade || 0), 0);
     const valorPago = pagos.reduce((acc, e) => acc + (e.valor_pago || e.valor_cobranca || 0), 0);
     const valorTotal = filteredEventos.reduce((acc, e) => acc + (e.valor_cobranca || e.valor_mensalidade || 0), 0);
     
-    // Taxa de inadimplência
-    const taxaInadimplencia = filteredEventos.length > 0 
-      ? ((vencidos.length / filteredEventos.length) * 100).toFixed(1) 
+    // Taxa de inadimplência baseada em CLIENTES, não cobranças
+    const taxaInadimplencia = clientesUnicos > 0 
+      ? ((clientesVencidos / clientesUnicos) * 100).toFixed(1) 
       : "0";
     
     // Taxa de recuperação (pagos vs vencidos históricos)
@@ -168,7 +177,8 @@ const Financeiro = () => {
     return {
       totalCobrancas: filteredEventos.length,
       clientesUnicos,
-      vencidos: vencidos.length,
+      clientesVencidos, // NOVO: clientes únicos vencidos (igual ao mapa)
+      cobrancasVencidas: vencidos.length, // cobranças vencidas
       aVencer: aVencer.length,
       pagos: pagos.length,
       valorVencido,
@@ -394,8 +404,9 @@ const Financeiro = () => {
                 variant="info"
               />
               <KPICardNew
-                title="Vencidos"
-                value={kpis.vencidos.toLocaleString()}
+                title="Clientes Vencidos"
+                value={kpis.clientesVencidos.toLocaleString()}
+                subtitle={`${kpis.cobrancasVencidas} cobranças`}
                 icon={Calendar}
                 variant="danger"
               />
@@ -517,7 +528,7 @@ const Financeiro = () => {
                     </div>
                     <div className="p-4 bg-red-100 dark:bg-red-900/30 rounded-lg">
                       <p className="text-sm text-muted-foreground">Vencidos</p>
-                      <p className="text-2xl font-bold text-red-600">{kpis.vencidos.toLocaleString()}</p>
+                      <p className="text-2xl font-bold text-red-600">{kpis.clientesVencidos.toLocaleString()}</p>
                       <p className="text-sm text-red-600">R$ {kpis.valorVencido.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</p>
                     </div>
                     <div className="p-4 bg-blue-100 dark:bg-blue-900/30 rounded-lg">
