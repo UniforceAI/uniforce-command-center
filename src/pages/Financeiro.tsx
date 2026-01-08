@@ -287,9 +287,9 @@ const Financeiro = () => {
       onChange: setPeriodo,
       options: [
         { value: "7", label: "Últimos 7 dias" },
+        { value: "14", label: "Últimos 14 dias" },
         { value: "30", label: "Últimos 30 dias" },
-        { value: "90", label: "Últimos 90 dias" },
-        { value: "365", label: "Último ano" },
+        { value: "60", label: "Últimos 60 dias" },
         { value: "todos", label: "Todo período" },
       ],
     },
