@@ -1240,7 +1240,7 @@ const VisaoGeral = () => {
                       )}
                     </div>
                   </CardHeader>
-                  <CardContent>
+                  <CardContent className="p-0">
                     <AlertasMapa 
                       data={mapData} 
                       activeFilter={mapTab as "churn" | "vencido" | "sinal"} 
