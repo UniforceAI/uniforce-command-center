@@ -939,17 +939,14 @@ const VisaoGeral = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header with Filters */}
-      <header className="border-b bg-card">
-        <div className="px-6 py-4">
-          <div className="flex items-center gap-4 flex-wrap">
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <Filter className="h-4 w-4" />
-              <span className="text-sm font-medium">Filtros:</span>
-            </div>
+      {/* Header Compacto com Filtros */}
+      <header className="border-b bg-card/50">
+        <div className="px-4 py-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <Filter className="h-3.5 w-3.5 text-muted-foreground" />
             
             <Select value={periodo} onValueChange={setPeriodo}>
-              <SelectTrigger className="w-[130px] h-9">
+              <SelectTrigger className="w-[100px] h-7 text-xs">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -962,8 +959,8 @@ const VisaoGeral = () => {
             </Select>
 
             <Select value={uf} onValueChange={setUf}>
-              <SelectTrigger className="w-[120px] h-9">
-                <SelectValue placeholder="Todas UFs" />
+              <SelectTrigger className="w-[90px] h-7 text-xs">
+                <SelectValue placeholder="UF" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="todos">Todas UFs</SelectItem>
@@ -974,11 +971,11 @@ const VisaoGeral = () => {
             </Select>
 
             <Select value={cidade} onValueChange={setCidade}>
-              <SelectTrigger className="w-[140px] h-9">
-                <SelectValue placeholder="Todas Cidades" />
+              <SelectTrigger className="w-[110px] h-7 text-xs">
+                <SelectValue placeholder="Cidade" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="todos">Todas Cidades</SelectItem>
+                <SelectItem value="todos">Todas</SelectItem>
                 {filterOptions.cidades.map(c => (
                   <SelectItem key={c} value={c}>{c}</SelectItem>
                 ))}
@@ -986,11 +983,11 @@ const VisaoGeral = () => {
             </Select>
 
             <Select value={bairro} onValueChange={setBairro}>
-              <SelectTrigger className="w-[140px] h-9">
-                <SelectValue placeholder="Todos Bairros" />
+              <SelectTrigger className="w-[110px] h-7 text-xs">
+                <SelectValue placeholder="Bairro" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="todos">Todos Bairros</SelectItem>
+                <SelectItem value="todos">Todos</SelectItem>
                 {filterOptions.bairros.map(b => (
                   <SelectItem key={b} value={b}>{b}</SelectItem>
                 ))}
@@ -998,23 +995,23 @@ const VisaoGeral = () => {
             </Select>
 
             <Select value={plano} onValueChange={setPlano}>
-              <SelectTrigger className="w-[150px] h-9">
-                <SelectValue placeholder="Todos Planos" />
+              <SelectTrigger className="w-[120px] h-7 text-xs">
+                <SelectValue placeholder="Plano" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="todos">Todos Planos</SelectItem>
+                <SelectItem value="todos">Todos</SelectItem>
                 {filterOptions.planos.map(p => (
-                  <SelectItem key={p} value={p}>{p.substring(0, 40)}...</SelectItem>
+                  <SelectItem key={p} value={p}>{p.length > 25 ? p.substring(0, 25) + "…" : p}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
 
             <Select value={status} onValueChange={setStatus}>
-              <SelectTrigger className="w-[140px] h-9">
-                <SelectValue placeholder="Todos Status" />
+              <SelectTrigger className="w-[100px] h-7 text-xs">
+                <SelectValue placeholder="Status" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="todos">Todos Status</SelectItem>
+                <SelectItem value="todos">Todos</SelectItem>
                 <SelectItem value="A">Ativo</SelectItem>
                 <SelectItem value="D">Desativado</SelectItem>
                 <SelectItem value="B">Bloqueado</SelectItem>
@@ -1025,12 +1022,7 @@ const VisaoGeral = () => {
         </div>
       </header>
 
-      <main className="p-6 space-y-6">
-        {/* Title */}
-        <div>
-          <h1 className="text-2xl font-bold text-primary">Command Center</h1>
-          <p className="text-muted-foreground text-sm">Visão executiva em tempo real</p>
-        </div>
+      <main className="p-4 space-y-4">
 
         {isLoading ? (
           <div className="flex items-center justify-center py-12">
@@ -1045,32 +1037,27 @@ const VisaoGeral = () => {
           <>
             {/* Resumo Executivo */}
             <ExecutiveSummary
-              clientesEmRisco={filaRisco.length}
-              mrrEmRisco={kpis.mrrEmRisco}
-              projecaoPerda30d={kpis.mrrEmRisco * 0.3} // Estimativa conservadora
-              hasRiskScore={false} // Ainda não temos risk score real
-              hasNPS={kpis.pctDetratores !== "N/A"}
+              clientesEmAlerta={vencidosStats.totalVencidos + filaRisco.filter(r => r.driver.includes("técnico")).length}
+              mrrSobRisco={kpis.mrrEmRisco}
+              perdaEstimada30d={kpis.mrrEmRisco * 0.3}
+              alertLevel={vencidosStats.totalVencidos > 50 ? "critical" : vencidosStats.totalVencidos > 20 ? "warning" : "normal"}
               drivers={[
                 {
                   id: "inadimplencia",
                   label: "Inadimplência",
                   count: vencidosStats.totalVencidos,
+                  unit: "clientes",
                   severity: vencidosStats.totalVencidos > 50 ? "critical" : vencidosStats.totalVencidos > 20 ? "high" : "medium",
                   icon: <DollarSign className="h-3 w-3 mr-1" />,
+                  onClick: () => navigate("/financeiro"),
                 },
                 {
                   id: "alerta_tecnico",
                   label: "Alertas Técnicos",
                   count: filaRisco.filter(r => r.driver.includes("técnico")).length,
+                  unit: "clientes",
                   severity: "high",
                   icon: <Wifi className="h-3 w-3 mr-1" />,
-                },
-                {
-                  id: "reincidencia",
-                  label: "Reincidência",
-                  count: 0, // Placeholder - aguardando dados
-                  severity: "medium",
-                  icon: <RefreshCcw className="h-3 w-3 mr-1" />,
                 },
               ]}
               onVerFilaRisco={() => {
@@ -1080,8 +1067,8 @@ const VisaoGeral = () => {
               onVerCobranca={() => navigate("/financeiro")}
             />
 
-            {/* KPIs de Risco */}
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+            {/* KPIs Principais */}
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
               <RiskKPICard
                 title="Clientes Ativos"
                 value={kpis.clientesAtivos.toLocaleString()}
@@ -1089,34 +1076,32 @@ const VisaoGeral = () => {
                 variant="info"
               />
               <RiskKPICard
-                title="Clientes em Risco (30d)"
-                value={filaRisco.length}
+                title="Clientes em Alerta"
+                value={vencidosStats.totalVencidos + filaRisco.filter(r => r.driver.includes("técnico")).length}
                 icon={AlertTriangle}
-                variant="danger"
-                disponivel={false}
-                tooltip="Aguardando Risk Score"
-                source="tabela risk_score"
+                variant="warning"
+                subtitle="inadimplência + técnico"
               />
               <RiskKPICard
-                title="MRR em Risco (30d)"
+                title="MRR sob Risco"
                 value={formatCurrency(kpis.mrrEmRisco)}
                 icon={DollarSign}
                 variant="danger"
                 subtitle="baseado em alertas"
               />
               <RiskKPICard
-                title="RR Vencido (mês)"
+                title="RR Vencido"
                 value={formatCurrency(kpis.rrVencido)}
                 icon={Clock}
                 variant="warning"
               />
               <RiskKPICard
-                title="Reincidência (30d)"
-                value="N/A"
+                title="Chamados (7d)"
+                value={0}
                 icon={RefreshCcw}
                 variant="default"
-                disponivel={false}
-                tooltip="Aguardando dados de atendimento"
+                status="unavailable"
+                tooltip="Integração de chamados em desenvolvimento"
                 source="tabela chamados"
               />
               <RiskKPICard
