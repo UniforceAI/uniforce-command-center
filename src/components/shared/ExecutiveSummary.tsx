@@ -75,11 +75,11 @@ export function ExecutiveSummary({
 
   return (
     <Card className={cn("border", bgClass)}>
-      <CardContent className="p-4 sm:p-5">
-        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+      <CardContent className="p-3 sm:p-4">
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
           {/* Título e Insight */}
-          <div className="flex-1 space-y-3">
-            <h2 className="text-base font-semibold text-foreground">
+          <div className="flex-1 space-y-2">
+            <h2 className="text-sm font-semibold text-foreground">
               Hoje: {clientesEmAlerta} clientes em alerta{" "}
               <span className="text-muted-foreground font-normal">
                 ({formatCurrency(mrrSobRisco)}/mês sob risco)
@@ -88,7 +88,7 @@ export function ExecutiveSummary({
 
             {/* Drivers Principais - Chips clicáveis */}
             {topDrivers.length > 0 && (
-              <div className="flex flex-wrap gap-2 items-center">
+              <div className="flex flex-wrap gap-1.5 items-center">
                 <span className="text-xs text-muted-foreground">
                   Drivers:
                 </span>
@@ -97,7 +97,7 @@ export function ExecutiveSummary({
                     key={driver.id}
                     variant="outline"
                     className={cn(
-                      "text-xs cursor-pointer transition-colors",
+                      "text-xs cursor-pointer transition-colors py-0.5 px-2",
                       severityColors[driver.severity]
                     )}
                     onClick={driver.onClick}
@@ -113,32 +113,32 @@ export function ExecutiveSummary({
           </div>
 
           {/* KPIs Compactos */}
-          <div className="flex items-center gap-6 lg:gap-8">
+          <div className="flex items-center gap-4 lg:gap-6">
             <div className="text-center">
-              <div className="flex items-center justify-center gap-1.5 text-xl font-bold text-foreground">
-                <Users className="h-4 w-4 text-muted-foreground" />
+              <div className="flex items-center justify-center gap-1 text-lg font-bold text-foreground">
+                <Users className="h-3.5 w-3.5 text-muted-foreground" />
                 {clientesEmAlerta}
               </div>
-              <div className="text-xs text-muted-foreground">Em alerta</div>
+              <div className="text-[10px] text-muted-foreground">Em alerta</div>
             </div>
             
             <div className="text-center">
-              <div className="flex items-center justify-center gap-1.5 text-xl font-bold text-foreground">
-                <DollarSign className="h-4 w-4 text-muted-foreground" />
+              <div className="flex items-center justify-center gap-1 text-lg font-bold text-foreground">
+                <DollarSign className="h-3.5 w-3.5 text-muted-foreground" />
                 {formatCurrency(mrrSobRisco)}
               </div>
-              <div className="text-xs text-muted-foreground">MRR sob risco</div>
+              <div className="text-[10px] text-muted-foreground">MRR sob risco</div>
             </div>
             
             {perdaEstimada30d !== null && perdaEstimada30d !== undefined && (
               <Tooltip>
                 <TooltipTrigger asChild>
                   <div className="text-center cursor-help">
-                    <div className="flex items-center justify-center gap-1.5 text-xl font-bold text-orange-500">
+                    <div className="flex items-center justify-center gap-1 text-lg font-bold text-orange-500">
                       {formatCurrency(perdaEstimada30d)}
-                      <HelpCircle className="h-3 w-3 text-muted-foreground" />
+                      <HelpCircle className="h-2.5 w-2.5 text-muted-foreground" />
                     </div>
-                    <div className="text-xs text-muted-foreground">Perda estimada 30d</div>
+                    <div className="text-[10px] text-muted-foreground">Perda estimada 30d</div>
                   </div>
                 </TooltipTrigger>
                 <TooltipContent side="bottom" className="max-w-[200px]">
@@ -153,21 +153,21 @@ export function ExecutiveSummary({
         </div>
 
         {/* Botões de Ação - Linha separada, mais compacta */}
-        <div className="flex flex-wrap gap-2 mt-4 pt-3 border-t border-border/50">
+        <div className="flex flex-wrap gap-2 mt-3 pt-2 border-t border-border/50">
           {onVerFilaRisco && (
-            <Button onClick={onVerFilaRisco} size="sm" variant="default">
+            <Button onClick={onVerFilaRisco} size="sm" variant="default" className="h-7 text-xs">
               Ver Fila de Risco
-              <ArrowRight className="h-3.5 w-3.5 ml-1" />
+              <ArrowRight className="h-3 w-3 ml-1" />
             </Button>
           )}
           {onVerCobranca && (
-            <Button onClick={onVerCobranca} variant="outline" size="sm">
+            <Button onClick={onVerCobranca} variant="outline" size="sm" className="h-7 text-xs">
               Ver Cobrança
             </Button>
           )}
           {onAplicarPlaybook && (
-            <Button onClick={onAplicarPlaybook} variant="ghost" size="sm">
-              <Zap className="h-3.5 w-3.5 mr-1" />
+            <Button onClick={onAplicarPlaybook} variant="ghost" size="sm" className="h-7 text-xs">
+              <Zap className="h-3 w-3 mr-1" />
               Playbook
             </Button>
           )}

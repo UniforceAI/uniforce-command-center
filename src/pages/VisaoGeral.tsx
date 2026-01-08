@@ -939,90 +939,88 @@ const VisaoGeral = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header Compacto com Filtros */}
-      <header className="border-b bg-card/50">
-        <div className="px-4 py-2">
-          <div className="flex items-center gap-2 flex-wrap">
-            <Filter className="h-3.5 w-3.5 text-muted-foreground" />
-            
-            <Select value={periodo} onValueChange={setPeriodo}>
-              <SelectTrigger className="w-[100px] h-7 text-xs">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="7">7 dias</SelectItem>
-                <SelectItem value="30">30 dias</SelectItem>
-                <SelectItem value="90">90 dias</SelectItem>
-                <SelectItem value="365">1 ano</SelectItem>
-                <SelectItem value="todos">Todos</SelectItem>
-              </SelectContent>
-            </Select>
+      {/* Header Compacto com Filtros - linha única fina */}
+      <header className="bg-muted/30 border-b">
+        <div className="flex items-center gap-2 flex-wrap px-3 py-1.5">
+          <Filter className="h-3.5 w-3.5 text-muted-foreground" />
+          
+          <Select value={periodo} onValueChange={setPeriodo}>
+            <SelectTrigger className="w-[80px] h-6 text-xs bg-background">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="7">7 dias</SelectItem>
+              <SelectItem value="30">30 dias</SelectItem>
+              <SelectItem value="90">90 dias</SelectItem>
+              <SelectItem value="365">1 ano</SelectItem>
+              <SelectItem value="todos">Todos</SelectItem>
+            </SelectContent>
+          </Select>
 
-            <Select value={uf} onValueChange={setUf}>
-              <SelectTrigger className="w-[90px] h-7 text-xs">
-                <SelectValue placeholder="UF" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="todos">Todas UFs</SelectItem>
-                {filterOptions.ufs.map(u => (
-                  <SelectItem key={u} value={u}>{u}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <Select value={uf} onValueChange={setUf}>
+            <SelectTrigger className="w-[80px] h-6 text-xs bg-background">
+              <SelectValue placeholder="UF" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="todos">Todas</SelectItem>
+              {filterOptions.ufs.map(u => (
+                <SelectItem key={u} value={u}>{u}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
 
-            <Select value={cidade} onValueChange={setCidade}>
-              <SelectTrigger className="w-[110px] h-7 text-xs">
-                <SelectValue placeholder="Cidade" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="todos">Todas</SelectItem>
-                {filterOptions.cidades.map(c => (
-                  <SelectItem key={c} value={c}>{c}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <Select value={cidade} onValueChange={setCidade}>
+            <SelectTrigger className="w-[90px] h-6 text-xs bg-background">
+              <SelectValue placeholder="Cidade" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="todos">Todas</SelectItem>
+              {filterOptions.cidades.map(c => (
+                <SelectItem key={c} value={c}>{c}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
 
-            <Select value={bairro} onValueChange={setBairro}>
-              <SelectTrigger className="w-[110px] h-7 text-xs">
-                <SelectValue placeholder="Bairro" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="todos">Todos</SelectItem>
-                {filterOptions.bairros.map(b => (
-                  <SelectItem key={b} value={b}>{b}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <Select value={bairro} onValueChange={setBairro}>
+            <SelectTrigger className="w-[90px] h-6 text-xs bg-background">
+              <SelectValue placeholder="Bairro" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="todos">Todos</SelectItem>
+              {filterOptions.bairros.map(b => (
+                <SelectItem key={b} value={b}>{b}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
 
-            <Select value={plano} onValueChange={setPlano}>
-              <SelectTrigger className="w-[120px] h-7 text-xs">
-                <SelectValue placeholder="Plano" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="todos">Todos</SelectItem>
-                {filterOptions.planos.map(p => (
-                  <SelectItem key={p} value={p}>{p.length > 25 ? p.substring(0, 25) + "…" : p}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <Select value={plano} onValueChange={setPlano}>
+            <SelectTrigger className="w-[100px] h-6 text-xs bg-background">
+              <SelectValue placeholder="Plano" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="todos">Todos</SelectItem>
+              {filterOptions.planos.map(p => (
+                <SelectItem key={p} value={p}>{p.length > 20 ? p.substring(0, 20) + "…" : p}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
 
-            <Select value={status} onValueChange={setStatus}>
-              <SelectTrigger className="w-[100px] h-7 text-xs">
-                <SelectValue placeholder="Status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="todos">Todos</SelectItem>
-                <SelectItem value="A">Ativo</SelectItem>
-                <SelectItem value="D">Desativado</SelectItem>
-                <SelectItem value="B">Bloqueado</SelectItem>
-                <SelectItem value="C">Cancelado</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+          <Select value={status} onValueChange={setStatus}>
+            <SelectTrigger className="w-[80px] h-6 text-xs bg-background">
+              <SelectValue placeholder="Status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="todos">Todos</SelectItem>
+              <SelectItem value="A">Ativo</SelectItem>
+              <SelectItem value="D">Desativado</SelectItem>
+              <SelectItem value="B">Bloqueado</SelectItem>
+              <SelectItem value="C">Cancelado</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
       </header>
 
-      <main className="p-4 space-y-4">
+      <main className="p-3 space-y-3">
 
         {isLoading ? (
           <div className="flex items-center justify-center py-12">
@@ -1068,7 +1066,7 @@ const VisaoGeral = () => {
             />
 
             {/* KPIs Principais */}
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2">
               <RiskKPICard
                 title="Clientes Ativos"
                 value={kpis.clientesAtivos.toLocaleString()}
@@ -1113,7 +1111,7 @@ const VisaoGeral = () => {
             </div>
 
             {/* Main Content Grid */}
-            <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+            <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
               {/* Left: Cohort Chart */}
               <div className="lg:col-span-3 space-y-4">
                 {/* Cohort Tabs */}
