@@ -255,19 +255,24 @@ const Financeiro = () => {
       .sort((a, b) => b.quantidade - a.quantidade);
   }, [filteredEventos]);
 
-  // Fila de cobrança - agrupa por cliente, deduplicando cobranças iguais
+  // Fila de cobrança - agrupa por cliente, usando cobranca_id como chave única
   const filaCobranca = useMemo((): ClienteAgrupado[] => {
     const clientesMap = new Map<number, ClienteAgrupado>();
     const cobrancasVistas = new Set<string>();
     
-    // Filtrar eventos vencidos
-    const eventosVencidos = filteredEventos.filter(e => e.vencido === true || e.dias_atraso > 0);
+    // Filtrar eventos vencidos (COBRANCA)
+    const eventosVencidos = filteredEventos.filter(e => 
+      e.event_type === "COBRANCA" && (e.vencido === true || e.dias_atraso > 0)
+    );
     
     eventosVencidos.forEach(e => {
-      // Chave única: cliente + data + valor + plano (ignorar duplicatas do banco)
-      const cobrancaKey = `${e.cliente_id}_${e.data_vencimento}_${Math.round(e.valor_cobranca || e.valor_mensalidade || 0)}_${e.plano_nome || ''}`;
+      // CHAVE ÚNICA: usar cobranca_id se existir (identificador real da cobrança no sistema)
+      // Se não existir, fallback para combo cliente+data+valor
+      const cobrancaKey = e.cobranca_id 
+        ? `cobranca_${e.cobranca_id}`
+        : `${e.cliente_id}_${e.data_vencimento}_${Math.round(e.valor_cobranca || e.valor_mensalidade || 0)}`;
       
-      // Pular duplicatas
+      // Pular se já processamos essa cobrança
       if (cobrancasVistas.has(cobrancaKey)) return;
       cobrancasVistas.add(cobrancaKey);
       
