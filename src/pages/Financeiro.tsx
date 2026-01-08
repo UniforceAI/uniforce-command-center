@@ -253,24 +253,33 @@ const Financeiro = () => {
       .sort((a, b) => b.quantidade - a.quantidade);
   }, [filteredEventos]);
 
-  // Fila de cobrança - clientes com maior risco/atraso
+  // Fila de cobrança - clientes ÚNICOS com maior risco/atraso
   const filaCobranca = useMemo(() => {
-    return filteredEventos
+    const clientesMap = new Map<number, any>();
+    
+    // Agrupar por cliente, mantendo a cobrança mais atrasada
+    filteredEventos
       .filter(e => e.vencido === true || e.dias_atraso > 0)
-      .map(e => ({
-        cliente_id: e.cliente_id,
-        cliente_nome: e.cliente_nome,
-        plano: e.plano_nome,
-        status: e.cobranca_status,
-        vencimento: e.data_vencimento ? new Date(e.data_vencimento).toLocaleDateString("pt-BR") : "N/A",
-        valor: e.valor_cobranca || e.valor_mensalidade || 0,
-        metodo: e.metodo_cobranca || "N/A",
-        dias_atraso: e.dias_atraso || 0,
-        celular: e.cliente_celular,
-        email: e.cliente_email,
-      }))
-      .sort((a, b) => b.dias_atraso - a.dias_atraso)
-      .slice(0, 30);
+      .forEach(e => {
+        const existing = clientesMap.get(e.cliente_id);
+        if (!existing || (e.dias_atraso || 0) > (existing.dias_atraso || 0)) {
+          clientesMap.set(e.cliente_id, {
+            cliente_id: e.cliente_id,
+            cliente_nome: e.cliente_nome,
+            plano: e.plano_nome,
+            status: e.cobranca_status,
+            vencimento: e.data_vencimento ? new Date(e.data_vencimento).toLocaleDateString("pt-BR") : "N/A",
+            valor: e.valor_cobranca || e.valor_mensalidade || 0,
+            metodo: e.metodo_cobranca || "N/A",
+            dias_atraso: e.dias_atraso || 0,
+            celular: e.cliente_celular,
+            email: e.cliente_email,
+          });
+        }
+      });
+    
+    return Array.from(clientesMap.values())
+      .sort((a, b) => b.dias_atraso - a.dias_atraso);
   }, [filteredEventos]);
 
   const filaCobrancaColumns: Column<typeof filaCobranca[0]>[] = [
