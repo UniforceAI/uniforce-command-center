@@ -255,21 +255,32 @@ const Financeiro = () => {
       .sort((a, b) => b.quantidade - a.quantidade);
   }, [filteredEventos]);
 
-  // Fila de cobrança - agrupa por cliente com cobranças ÚNICAS por cobranca_id
+  // Fila de cobrança - agrupa por cliente com cobranças ÚNICAS
   const filaCobranca = useMemo((): ClienteAgrupado[] => {
     const clientesMap = new Map<number, ClienteAgrupado>();
-    const cobrancasVistas = new Set<string>(); // Para garantir unicidade
+    const cobrancasVistas = new Set<string>();
     
     // Filtrar eventos vencidos
     const eventosVencidos = filteredEventos.filter(e => e.vencido === true || e.dias_atraso > 0);
     
+    // DEBUG: Log para verificar cobranças
+    console.log("🔍 EVENTOS VENCIDOS:", eventosVencidos.length);
+    const clientesPorId = new Map<number, any[]>();
     eventosVencidos.forEach(e => {
-      // Chave única: usar cobranca_id se existir, senão criar chave composta
-      const cobrancaKey = e.cobranca_id 
-        ? String(e.cobranca_id)
-        : `${e.cliente_id}_${e.data_vencimento}_${Math.round(e.valor_cobranca || e.valor_mensalidade || 0)}`;
+      if (!clientesPorId.has(e.cliente_id)) clientesPorId.set(e.cliente_id, []);
+      clientesPorId.get(e.cliente_id)!.push(e);
+    });
+    console.log("🔍 CLIENTES COM MÚLTIPLAS COBRANÇAS:", 
+      Array.from(clientesPorId.entries())
+        .filter(([_, evts]) => evts.length > 1)
+        .map(([id, evts]) => ({ id, count: evts.length, nome: evts[0].cliente_nome }))
+    );
+    
+    eventosVencidos.forEach(e => {
+      // Chave única mais específica: combina evento ID + cobranca_id + data + valor
+      const cobrancaKey = `${e.id}_${e.cobranca_id || ''}_${e.data_vencimento}_${e.valor_cobranca || e.valor_mensalidade || 0}`;
       
-      // Pular se já vimos essa cobrança específica
+      // Pular APENAS se for exatamente o mesmo registro
       if (cobrancasVistas.has(cobrancaKey)) return;
       cobrancasVistas.add(cobrancaKey);
       
@@ -306,10 +317,13 @@ const Financeiro = () => {
       }
     });
     
-    // Ordenar cobranças de cada cliente por dias de atraso (maior primeiro)
-    clientesMap.forEach(cliente => {
-      cliente.cobrancas.sort((a, b) => b.dias_atraso - a.dias_atraso);
-    });
+    // DEBUG: Verificar resultado final
+    const clientesMultiplos = Array.from(clientesMap.values()).filter(c => c.cobrancas.length > 1);
+    console.log("✅ CLIENTES AGRUPADOS COM MÚLTIPLAS COBRANÇAS:", clientesMultiplos.map(c => ({
+      nome: c.cliente_nome,
+      qtd: c.cobrancas.length,
+      total: c.totalValor
+    })));
     
     return Array.from(clientesMap.values())
       .sort((a, b) => b.maiorAtraso - a.maiorAtraso);
