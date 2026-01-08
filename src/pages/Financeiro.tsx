@@ -255,14 +255,26 @@ const Financeiro = () => {
       .sort((a, b) => b.quantidade - a.quantidade);
   }, [filteredEventos]);
 
-  // Fila de cobrança - clientes agrupados com todas as cobranças
+  // Fila de cobrança - clientes agrupados com cobranças únicas (sem duplicatas)
   const filaCobranca = useMemo((): ClienteAgrupado[] => {
     const clientesMap = new Map<number, ClienteAgrupado>();
+    const cobrancasProcessadas = new Set<string>(); // Para evitar duplicatas
     
-    // Agrupar todas as cobranças por cliente
+    // Agrupar cobranças únicas por cliente
     filteredEventos
       .filter(e => e.vencido === true || e.dias_atraso > 0)
       .forEach(e => {
+        // Criar chave única: cobranca_id OU combinação de cliente_id + data_vencimento + valor
+        const cobrancaKey = e.cobranca_id 
+          ? `cobranca_${e.cobranca_id}` 
+          : `${e.cliente_id}_${e.data_vencimento}_${e.valor_cobranca || e.valor_mensalidade}`;
+        
+        // Pular se já processamos esta cobrança
+        if (cobrancasProcessadas.has(cobrancaKey)) {
+          return;
+        }
+        cobrancasProcessadas.add(cobrancaKey);
+        
         const cobranca: Cobranca = {
           cliente_id: e.cliente_id,
           cliente_nome: e.cliente_nome,
