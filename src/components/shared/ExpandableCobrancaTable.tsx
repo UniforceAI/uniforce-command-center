@@ -24,6 +24,7 @@ interface Cobranca {
   plano: string;
   status: string;
   vencimento: string;
+  vencimentoDate: Date | null;
   valor: number;
   metodo: string;
   dias_atraso: number;
@@ -98,23 +99,31 @@ export function ExpandableCobrancaTable({
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead className="w-[50px]"></TableHead>
+            <TableHead className="w-[40px]"></TableHead>
             <TableHead>Cliente</TableHead>
             <TableHead>Plano</TableHead>
             <TableHead>Status</TableHead>
             <TableHead>Vencimento</TableHead>
-            <TableHead>Valor Total</TableHead>
+            <TableHead>Valor</TableHead>
             <TableHead>Método</TableHead>
-            <TableHead>Maior Atraso</TableHead>
+            <TableHead>Atraso</TableHead>
             <TableHead>Celular</TableHead>
             {actions && <TableHead className="w-[80px]">Ações</TableHead>}
           </TableRow>
         </TableHeader>
         <TableBody>
-          {data.map((cliente) => {
+          {data.map((cliente, clienteIdx) => {
             const isExpanded = expandedRows.has(cliente.cliente_id);
             const hasMultiple = cliente.cobrancas.length > 1;
-            const mainCobranca = cliente.cobrancas[0];
+            // Ordenar cobranças por data (mais antiga primeiro = mais atrasada)
+            const sortedCobrancas = [...cliente.cobrancas].sort((a, b) => {
+              if (!a.vencimentoDate && !b.vencimentoDate) return 0;
+              if (!a.vencimentoDate) return 1;
+              if (!b.vencimentoDate) return -1;
+              return a.vencimentoDate.getTime() - b.vencimentoDate.getTime();
+            });
+            const mainCobranca = sortedCobrancas[0];
+            const rowBgClass = clienteIdx % 2 === 0 ? "bg-background" : "bg-muted/20";
 
             return (
               <>
@@ -122,30 +131,29 @@ export function ExpandableCobrancaTable({
                 <TableRow
                   key={cliente.cliente_id}
                   className={cn(
-                    hasMultiple && "cursor-pointer hover:bg-muted/50",
-                    isExpanded && "bg-primary/5 border-l-2 border-l-primary"
+                    rowBgClass,
+                    hasMultiple && "cursor-pointer",
+                    isExpanded && "bg-primary/10 border-l-4 border-l-primary"
                   )}
                   onClick={() => hasMultiple && toggleRow(cliente.cliente_id)}
                 >
-                  <TableCell className="p-2">
-                    {hasMultiple ? (
-                      <Button variant="ghost" size="icon" className="h-7 w-7">
+                  <TableCell className="p-2 text-center">
+                    {hasMultiple && (
+                      <div className="flex items-center justify-center">
                         {isExpanded ? (
-                          <ChevronDown className="h-4 w-4 text-primary" />
+                          <ChevronDown className="h-5 w-5 text-primary transition-transform" />
                         ) : (
-                          <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                          <ChevronRight className="h-5 w-5 text-muted-foreground transition-transform" />
                         )}
-                      </Button>
-                    ) : (
-                      <div className="w-7" />
+                      </div>
                     )}
                   </TableCell>
                   <TableCell className="font-medium">
                     <div className="flex items-center gap-2">
-                      {cliente.cliente_nome}
+                      <span>{cliente.cliente_nome}</span>
                       {hasMultiple && (
-                        <Badge variant="secondary" className="text-xs font-normal bg-orange-100 text-orange-700 border-orange-200">
-                          {cliente.cobrancas.length} cobranças
+                        <Badge className="text-xs font-semibold bg-orange-500 text-white hover:bg-orange-600">
+                          {cliente.cobrancas.length}
                         </Badge>
                       )}
                     </div>
@@ -154,14 +162,17 @@ export function ExpandableCobrancaTable({
                   <TableCell><StatusBadge status={mainCobranca.status} /></TableCell>
                   <TableCell>{mainCobranca.vencimento}</TableCell>
                   <TableCell>
-                    <span className={cn("font-semibold", hasMultiple && "text-red-600")}>
-                      R$ {cliente.totalValor.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                    <span className={cn("font-semibold", hasMultiple ? "text-red-600" : "")}>
+                      {hasMultiple 
+                        ? `R$ ${cliente.totalValor.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`
+                        : `R$ ${mainCobranca.valor.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`
+                      }
                     </span>
                   </TableCell>
                   <TableCell>{mainCobranca.metodo}</TableCell>
                   <TableCell>
                     <Badge variant="destructive" className="font-medium">
-                      {cliente.maiorAtraso} dias
+                      {hasMultiple ? `${cliente.maiorAtraso} dias` : `${mainCobranca.dias_atraso} dias`}
                     </Badge>
                   </TableCell>
                   <TableCell>{cliente.celular}</TableCell>
@@ -191,32 +202,52 @@ export function ExpandableCobrancaTable({
                   )}
                 </TableRow>
 
-                {/* Sublinhas expandidas - detalhes de cada cobrança */}
+                {/* Painel expandido com cobranças detalhadas */}
                 {isExpanded && hasMultiple && (
-                  <TableRow className="bg-muted/30 hover:bg-muted/30">
-                    <TableCell colSpan={actions ? 10 : 9} className="p-0">
-                      <div className="px-6 py-3 ml-8 border-l-2 border-primary/30">
-                        <p className="text-xs text-muted-foreground mb-2 font-medium">
-                          Detalhamento das {cliente.cobrancas.length} cobranças:
-                        </p>
-                        <div className="space-y-2">
-                          {cliente.cobrancas.map((cobranca, idx) => (
+                  <TableRow className="hover:bg-transparent">
+                    <TableCell colSpan={actions ? 10 : 9} className="p-0 border-0">
+                      <div className={cn(
+                        "mx-4 my-2 rounded-lg border-2 border-primary/30 overflow-hidden",
+                        clienteIdx % 2 === 0 ? "bg-primary/5" : "bg-primary/10"
+                      )}>
+                        <div className="bg-primary/20 px-4 py-2 border-b border-primary/20">
+                          <span className="text-sm font-semibold text-primary">
+                            {cliente.cobrancas.length} cobranças de {cliente.cliente_nome}
+                          </span>
+                          <span className="text-sm text-muted-foreground ml-2">
+                            (Total: R$ {cliente.totalValor.toLocaleString("pt-BR", { minimumFractionDigits: 2 })})
+                          </span>
+                        </div>
+                        <div className="divide-y divide-border/50">
+                          {sortedCobrancas.map((cobranca, idx) => (
                             <div 
                               key={idx} 
-                              className="flex items-center gap-4 text-sm bg-background rounded-md px-3 py-2 border"
+                              className="grid grid-cols-5 gap-4 px-4 py-3 items-center hover:bg-primary/5 transition-colors"
                             >
-                              <span className="text-muted-foreground font-medium w-6">#{idx + 1}</span>
-                              <StatusBadge status={cobranca.status} />
-                              <span className="text-muted-foreground">Venc:</span>
-                              <span className="font-medium">{cobranca.vencimento}</span>
-                              <span className="text-muted-foreground">Valor:</span>
-                              <span className="font-semibold text-red-600">
-                                R$ {cobranca.valor.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
-                              </span>
-                              <span className="text-muted-foreground">Atraso:</span>
-                              <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200">
-                                {cobranca.dias_atraso} dias
-                              </Badge>
+                              <div className="flex flex-col">
+                                <span className="text-xs text-muted-foreground uppercase tracking-wide">Vencimento</span>
+                                <span className="font-medium">{cobranca.vencimento}</span>
+                              </div>
+                              <div className="flex flex-col">
+                                <span className="text-xs text-muted-foreground uppercase tracking-wide">Valor</span>
+                                <span className="font-bold text-red-600">
+                                  R$ {cobranca.valor.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                                </span>
+                              </div>
+                              <div className="flex flex-col">
+                                <span className="text-xs text-muted-foreground uppercase tracking-wide">Atraso</span>
+                                <Badge variant="destructive" className="w-fit">
+                                  {cobranca.dias_atraso} dias
+                                </Badge>
+                              </div>
+                              <div className="flex flex-col">
+                                <span className="text-xs text-muted-foreground uppercase tracking-wide">Status</span>
+                                <StatusBadge status={cobranca.status} />
+                              </div>
+                              <div className="flex flex-col">
+                                <span className="text-xs text-muted-foreground uppercase tracking-wide">Plano</span>
+                                <span className="text-sm">{cobranca.plano}</span>
+                              </div>
                             </div>
                           ))}
                         </div>
