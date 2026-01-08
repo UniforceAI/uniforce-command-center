@@ -255,60 +255,48 @@ const Financeiro = () => {
       .sort((a, b) => b.quantidade - a.quantidade);
   }, [filteredEventos]);
 
-  // Fila de cobrança - clientes agrupados com cobranças únicas (sem duplicatas)
+  // Fila de cobrança - agrupa por cliente, apenas 1 cobrança por cliente (a mais atrasada)
   const filaCobranca = useMemo((): ClienteAgrupado[] => {
     const clientesMap = new Map<number, ClienteAgrupado>();
-    const cobrancasProcessadas = new Set<string>(); // Para evitar duplicatas
     
-    // Agrupar cobranças únicas por cliente
-    filteredEventos
-      .filter(e => e.vencido === true || e.dias_atraso > 0)
-      .forEach(e => {
-        // Criar chave única: cobranca_id OU combinação de cliente_id + data_vencimento + valor
-        const cobrancaKey = e.cobranca_id 
-          ? `cobranca_${e.cobranca_id}` 
-          : `${e.cliente_id}_${e.data_vencimento}_${e.valor_cobranca || e.valor_mensalidade}`;
-        
-        // Pular se já processamos esta cobrança
-        if (cobrancasProcessadas.has(cobrancaKey)) {
-          return;
+    // Filtrar eventos vencidos e agrupar por cliente
+    const eventosVencidos = filteredEventos.filter(e => e.vencido === true || e.dias_atraso > 0);
+    
+    eventosVencidos.forEach(e => {
+      const existing = clientesMap.get(e.cliente_id);
+      
+      const cobranca: Cobranca = {
+        cliente_id: e.cliente_id,
+        cliente_nome: e.cliente_nome,
+        plano: e.plano_nome || "Sem plano",
+        status: e.cobranca_status,
+        vencimento: e.data_vencimento ? new Date(e.data_vencimento).toLocaleDateString("pt-BR") : "N/A",
+        valor: e.valor_cobranca || e.valor_mensalidade || 0,
+        metodo: e.metodo_cobranca || "N/A",
+        dias_atraso: e.dias_atraso || 0,
+        celular: e.cliente_celular || "N/A",
+        email: e.cliente_email,
+      };
+      
+      if (existing) {
+        // Só adicionar se for uma cobrança com mais dias de atraso (diferente)
+        // Manter apenas a cobrança com maior atraso por cliente
+        if (cobranca.dias_atraso > existing.maiorAtraso) {
+          existing.cobrancas = [cobranca];
+          existing.totalValor = cobranca.valor;
+          existing.maiorAtraso = cobranca.dias_atraso;
         }
-        cobrancasProcessadas.add(cobrancaKey);
-        
-        const cobranca: Cobranca = {
+      } else {
+        clientesMap.set(e.cliente_id, {
           cliente_id: e.cliente_id,
           cliente_nome: e.cliente_nome,
-          plano: e.plano_nome || "Sem plano",
-          status: e.cobranca_status,
-          vencimento: e.data_vencimento ? new Date(e.data_vencimento).toLocaleDateString("pt-BR") : "N/A",
-          valor: e.valor_cobranca || e.valor_mensalidade || 0,
-          metodo: e.metodo_cobranca || "N/A",
-          dias_atraso: e.dias_atraso || 0,
           celular: e.cliente_celular || "N/A",
           email: e.cliente_email,
-        };
-        
-        const existing = clientesMap.get(e.cliente_id);
-        if (existing) {
-          existing.cobrancas.push(cobranca);
-          existing.totalValor += cobranca.valor;
-          existing.maiorAtraso = Math.max(existing.maiorAtraso, cobranca.dias_atraso);
-        } else {
-          clientesMap.set(e.cliente_id, {
-            cliente_id: e.cliente_id,
-            cliente_nome: e.cliente_nome,
-            celular: e.cliente_celular || "N/A",
-            email: e.cliente_email,
-            cobrancas: [cobranca],
-            totalValor: cobranca.valor,
-            maiorAtraso: cobranca.dias_atraso,
-          });
-        }
-      });
-    
-    // Ordenar cobranças de cada cliente por dias de atraso (decrescente)
-    clientesMap.forEach(cliente => {
-      cliente.cobrancas.sort((a, b) => b.dias_atraso - a.dias_atraso);
+          cobrancas: [cobranca],
+          totalValor: cobranca.valor,
+          maiorAtraso: cobranca.dias_atraso,
+        });
+      }
     });
     
     return Array.from(clientesMap.values())
