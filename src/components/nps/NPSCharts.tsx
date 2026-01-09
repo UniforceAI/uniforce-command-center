@@ -51,55 +51,48 @@ export const NPSCharts = memo(({ respostas }: NPSChartsProps) => {
     });
   };
 
-  // Evolução do NPS no tempo
+  // Evolução da média no tempo
   const evolucaoData = useMemo(() => {
     const byDate: Record<string, { 
-      contrato: { promotores: number; detratores: number; total: number };
-      os: { promotores: number; detratores: number; total: number };
-      atendimento: { promotores: number; detratores: number; total: number };
-      geral: { promotores: number; detratores: number; total: number };
+      contrato: { soma: number; total: number };
+      os: { soma: number; total: number };
+      atendimento: { soma: number; total: number };
+      geral: { soma: number; total: number };
     }> = {};
 
     respostas.forEach((r) => {
       if (!byDate[r.data_resposta]) {
         byDate[r.data_resposta] = {
-          contrato: { promotores: 0, detratores: 0, total: 0 },
-          os: { promotores: 0, detratores: 0, total: 0 },
-          atendimento: { promotores: 0, detratores: 0, total: 0 },
-          geral: { promotores: 0, detratores: 0, total: 0 },
+          contrato: { soma: 0, total: 0 },
+          os: { soma: 0, total: 0 },
+          atendimento: { soma: 0, total: 0 },
+          geral: { soma: 0, total: 0 },
         };
       }
       
       const tipo = r.tipo_nps as keyof typeof byDate[string];
+      byDate[r.data_resposta][tipo].soma += r.nota;
       byDate[r.data_resposta][tipo].total++;
+      byDate[r.data_resposta].geral.soma += r.nota;
       byDate[r.data_resposta].geral.total++;
-      
-      if (r.classificacao === "Promotor") {
-        byDate[r.data_resposta][tipo].promotores++;
-        byDate[r.data_resposta].geral.promotores++;
-      }
-      if (r.classificacao === "Detrator") {
-        byDate[r.data_resposta][tipo].detratores++;
-        byDate[r.data_resposta].geral.detratores++;
-      }
     });
 
-    const calcNPS = (data: { promotores: number; detratores: number; total: number }) => 
-      data.total > 0 ? Math.round(((data.promotores - data.detratores) / data.total) * 100) : null;
+    const calcMedia = (data: { soma: number; total: number }) => 
+      data.total > 0 ? Number((data.soma / data.total).toFixed(1)) : null;
 
     return Object.entries(byDate)
       .map(([date, data]) => ({
         date: new Date(date).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }),
         dateSort: date,
-        geral: calcNPS(data.geral),
-        contrato: calcNPS(data.contrato),
-        os: calcNPS(data.os),
-        atendimento: calcNPS(data.atendimento),
+        geral: calcMedia(data.geral),
+        contrato: calcMedia(data.contrato),
+        os: calcMedia(data.os),
+        atendimento: calcMedia(data.atendimento),
       }))
       .sort((a, b) => a.dateSort.localeCompare(b.dateSort));
   }, [respostas]);
 
-  // Comparação entre tipos
+  // Comparação entre tipos - Média das notas
   const comparacaoData = useMemo(() => {
     const tipos = [
       { id: "contrato", name: "Contrato", color: COLORS.contrato },
@@ -108,13 +101,12 @@ export const NPSCharts = memo(({ respostas }: NPSChartsProps) => {
     ];
     return tipos.map((tipo) => {
       const filtradas = respostas.filter((r) => r.tipo_nps === tipo.id);
-      const promotores = filtradas.filter((r) => r.classificacao === "Promotor").length;
-      const detratores = filtradas.filter((r) => r.classificacao === "Detrator").length;
+      const soma = filtradas.reduce((acc, r) => acc + r.nota, 0);
       const total = filtradas.length;
       
       return {
         name: tipo.name,
-        nps: total > 0 ? Math.round(((promotores - detratores) / total) * 100) : 0,
+        media: total > 0 ? Number((soma / total).toFixed(1)) : 0,
         fill: tipo.color,
       };
     });
@@ -189,7 +181,7 @@ export const NPSCharts = memo(({ respostas }: NPSChartsProps) => {
               </defs>
               <CartesianGrid strokeDasharray="3 3" className="opacity-20" />
               <XAxis dataKey="date" fontSize={11} tickLine={false} axisLine={false} />
-              <YAxis domain={[-100, 100]} fontSize={11} tickLine={false} axisLine={false} />
+              <YAxis domain={[0, 10]} fontSize={11} tickLine={false} axisLine={false} />
               <Tooltip 
                 contentStyle={{ 
                   backgroundColor: 'hsl(var(--card))', 
@@ -266,9 +258,9 @@ export const NPSCharts = memo(({ respostas }: NPSChartsProps) => {
               <BarChart data={comparacaoData}>
                 <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
                 <XAxis dataKey="name" fontSize={10} />
-                <YAxis domain={[-100, 100]} fontSize={11} />
+                <YAxis domain={[0, 10]} fontSize={11} />
                 <Tooltip />
-                <Bar dataKey="nps" radius={[4, 4, 0, 0]}>
+                <Bar dataKey="media" name="Média" radius={[4, 4, 0, 0]}>
                   {comparacaoData.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={entry.fill} />
                   ))}

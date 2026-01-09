@@ -10,9 +10,10 @@ interface NPSKPICardProps {
 }
 
 function getNPSStatus(value: number): { label: string; variant: string; FaceIcon: LucideIcon } {
-  if (value >= 75) return { label: "Excelente", variant: "success", FaceIcon: Smile };
-  if (value >= 50) return { label: "Bom", variant: "default", FaceIcon: Smile };
-  if (value >= 0) return { label: "Alerta", variant: "warning", FaceIcon: Meh };
+  // Escala de 0-10 (média das notas)
+  if (value >= 9) return { label: "Excelente", variant: "success", FaceIcon: Smile };
+  if (value >= 7) return { label: "Bom", variant: "default", FaceIcon: Smile };
+  if (value >= 5) return { label: "Alerta", variant: "warning", FaceIcon: Meh };
   return { label: "Crítico", variant: "destructive", FaceIcon: Frown };
 }
 
