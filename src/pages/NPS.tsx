@@ -139,7 +139,11 @@ const NPS = () => {
       const diasAtras = parseInt(periodo);
       const dataLimite = new Date();
       dataLimite.setDate(dataLimite.getDate() - diasAtras);
-      filtered = filtered.filter(r => new Date(r.data_resposta) >= dataLimite);
+      dataLimite.setHours(0, 0, 0, 0); // Início do dia
+      filtered = filtered.filter(r => {
+        const dataResposta = new Date(r.data_resposta);
+        return dataResposta >= dataLimite;
+      });
     }
 
     // Filtro por tipo
