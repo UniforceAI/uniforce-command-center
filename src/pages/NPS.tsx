@@ -134,16 +134,25 @@ const NPS = () => {
   const filteredRespostas = useMemo(() => {
     let filtered = [...respostasNPS];
 
+    console.log("🔍 Filtro período:", periodo, "| Total antes:", filtered.length);
+    
     // Filtro por período
     if (periodo !== "todos") {
       const diasAtras = parseInt(periodo);
       const dataLimite = new Date();
       dataLimite.setDate(dataLimite.getDate() - diasAtras);
       dataLimite.setHours(0, 0, 0, 0); // Início do dia
+      
+      console.log("📅 Data limite:", dataLimite.toISOString());
+      console.log("📅 Exemplos de datas nos dados:", filtered.slice(0, 3).map(r => r.data_resposta));
+      
       filtered = filtered.filter(r => {
         const dataResposta = new Date(r.data_resposta);
-        return dataResposta >= dataLimite;
+        const passou = dataResposta >= dataLimite;
+        return passou;
       });
+      
+      console.log("📅 Após filtro de período:", filtered.length);
     }
 
     // Filtro por tipo
