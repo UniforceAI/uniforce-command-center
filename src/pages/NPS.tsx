@@ -168,20 +168,19 @@ const NPS = () => {
     return filtered;
   }, [respostasNPS, periodo, tipoNPS, classificacao]);
 
-  // Calcular KPIs
+  // Calcular KPIs - Média das notas (0-10)
   const kpis = useMemo(() => {
-    const calcNPS = (respostas: RespostaNPS[]) => {
+    const calcMedia = (respostas: RespostaNPS[]) => {
       if (respostas.length === 0) return 0;
-      const promotores = respostas.filter(r => r.classificacao === "Promotor").length;
-      const detratores = respostas.filter(r => r.classificacao === "Detrator").length;
-      return Math.round(((promotores - detratores) / respostas.length) * 100);
+      const soma = respostas.reduce((acc, r) => acc + r.nota, 0);
+      return Number((soma / respostas.length).toFixed(1));
     };
 
     return {
-      geral: calcNPS(filteredRespostas),
-      contrato: calcNPS(filteredRespostas.filter(r => r.tipo_nps === "contrato")),
-      os: calcNPS(filteredRespostas.filter(r => r.tipo_nps === "os")),
-      atendimento: calcNPS(filteredRespostas.filter(r => r.tipo_nps === "atendimento")),
+      geral: calcMedia(filteredRespostas),
+      contrato: calcMedia(filteredRespostas.filter(r => r.tipo_nps === "contrato")),
+      os: calcMedia(filteredRespostas.filter(r => r.tipo_nps === "os")),
+      atendimento: calcMedia(filteredRespostas.filter(r => r.tipo_nps === "atendimento")),
     };
   }, [filteredRespostas]);
 
