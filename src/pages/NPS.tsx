@@ -82,12 +82,13 @@ const NPS = () => {
           .from("nps_check")
           .select("*")
           .eq("isp_id", ISP_ID)
+          .not("data_resposta", "is", null) // Filtrar apenas respondidas
           .order("data_resposta", { ascending: false })
           .limit(1000);
 
         if (error) throw error;
 
-        console.log(`✅ ${data?.length || 0} respostas NPS para ${ISP_ID}`);
+        console.log(`✅ ${data?.length || 0} respostas NPS respondidas para ${ISP_ID}`);
 
         // Transformar dados do banco para o formato esperado
         const respostasTransformadas: RespostaNPS[] = (data || []).map((item: any) => {
