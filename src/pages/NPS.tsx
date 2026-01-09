@@ -47,9 +47,11 @@ const NPS = () => {
   // Função para mapear tipo_nps do banco para o formato esperado
   const mapTipoNPS = (tipo: string): TipoNPS => {
     const tipoLower = tipo?.toLowerCase().trim() || "";
-    if (tipoLower.includes("contrato")) return "contrato";
-    if (tipoLower.includes("os") || tipoLower.includes("o.s") || tipoLower.includes("ordem")) return "os";
-    return "atendimento"; // default
+    if (tipoLower === "contrato") return "contrato";
+    if (tipoLower === "atendimento") return "atendimento";
+    if (tipoLower.includes("os") || tipoLower.includes("o.s") || tipoLower.includes("ordem") || tipoLower.includes("pós")) return "os";
+    // Default baseado no valor exato
+    return tipoLower as TipoNPS || "atendimento";
   };
 
   // Função para calcular classificação baseada na nota
@@ -90,12 +92,22 @@ const NPS = () => {
         // Transformar dados do banco para o formato esperado
         const respostasTransformadas: RespostaNPS[] = (data || []).map((item: any) => {
           const nota = item.nota_numerica ?? Number(item.nota) ?? 0;
+          
+          // Mapear classificação do banco (MAIÚSCULO) para formato esperado (Capitalizado)
+          const mapClassificacao = (classif: string): "Promotor" | "Neutro" | "Detrator" => {
+            const lower = classif?.toLowerCase().trim() || "";
+            if (lower === "promotor") return "Promotor";
+            if (lower === "neutro") return "Neutro";
+            if (lower === "detrator") return "Detrator";
+            return calcClassificacao(nota);
+          };
+          
           return {
             cliente_id: item.id_cliente || item.cliente_id || 0,
             cliente_nome: item.nome || item.cliente_nome || "N/A",
             tipo_nps: mapTipoNPS(item.nps_type || item.origem || ""),
             nota,
-            classificacao: (item.classificacao_nps || calcClassificacao(nota)) as "Promotor" | "Neutro" | "Detrator",
+            classificacao: mapClassificacao(item.classificacao_nps),
             comentario: item.mensagem_melhoria || item.comentario || "",
             data_resposta: item.data_resposta || item.data_envio || new Date().toISOString().split('T')[0],
           };
