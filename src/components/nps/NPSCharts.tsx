@@ -121,16 +121,16 @@ export const NPSCharts = memo(({ respostas }: NPSChartsProps) => {
   }, [respostas]);
 
   // Distribuição de notas
+  // Distribuição de notas
   const distribuicaoData = useMemo(() => {
     const promotores = respostas.filter((r) => r.classificacao === "Promotor").length;
     const neutros = respostas.filter((r) => r.classificacao === "Neutro").length;
     const detratores = respostas.filter((r) => r.classificacao === "Detrator").length;
-    const total = respostas.length;
     
     return [
-      { name: "Promotores (9-10)", value: promotores, percent: total > 0 ? (promotores / total) * 100 : 0, color: COLORS.promotor },
-      { name: "Neutros (7-8)", value: neutros, percent: total > 0 ? (neutros / total) * 100 : 0, color: COLORS.neutro },
-      { name: "Detratores (0-6)", value: detratores, percent: total > 0 ? (detratores / total) * 100 : 0, color: COLORS.detrator },
+      { name: "Promotores (9-10)", value: promotores, color: COLORS.promotor },
+      { name: "Neutros (7-8)", value: neutros, color: COLORS.neutro },
+      { name: "Detratores (0-6)", value: detratores, color: COLORS.detrator },
     ];
   }, [respostas]);
 
