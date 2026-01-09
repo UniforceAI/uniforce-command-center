@@ -1163,8 +1163,54 @@ const VisaoGeral = () => {
                             tick={{ fill: 'hsl(var(--muted-foreground))' }}
                           />
                           <RechartsTooltip 
-                            formatter={(value: number) => [cohortMetricInfo.format(value), cohortMetricInfo.label]}
-                            labelFormatter={(label) => label}
+                            content={({ active, payload, label }) => {
+                              if (!active || !payload || !payload.length) return null;
+                              const data = payload[0].payload;
+                              const value = (data as any)[cohortMetricInfo.dataKey] || 0;
+                              return (
+                                <div className="bg-popover border rounded-lg shadow-lg p-3 text-sm">
+                                  <p className="font-semibold text-foreground mb-1">{data.key}</p>
+                                  <div className="space-y-1 text-muted-foreground">
+                                    {cohortTab === "financeiro" && (
+                                      <>
+                                        <p><span className="text-destructive font-medium">{value.toFixed(1)}%</span> dos clientes estão vencidos</p>
+                                        <p>Vencidos: <span className="text-foreground font-medium">{data.clientesVencidos}</span> de {data.total} clientes</p>
+                                        <p>Valor em atraso: <span className="text-foreground font-medium">R$ {(data.valorVencido / 1000).toFixed(1)}k</span></p>
+                                      </>
+                                    )}
+                                    {cohortTab === "churn" && (
+                                      <>
+                                        <p><span className="text-destructive font-medium">{value.toFixed(1)}%</span> de churn</p>
+                                        <p>Cancelados: <span className="text-foreground font-medium">{data.cancelados}</span> de {data.total} clientes</p>
+                                      </>
+                                    )}
+                                    {cohortTab === "nps" && (
+                                      <>
+                                        <p><span className="text-destructive font-medium">{value.toFixed(1)}%</span> de detratores</p>
+                                        <p>Detratores: <span className="text-foreground font-medium">{data.detratores}</span> de {data.npsCount} respostas</p>
+                                        <p>Média NPS: <span className="text-foreground font-medium">{data.npsMedia?.toFixed(1) || "N/A"}</span></p>
+                                      </>
+                                    )}
+                                    {cohortTab === "ltv" && (
+                                      <>
+                                        <p>LTV Médio: <span className="text-primary font-medium">R$ {(value / 1000).toFixed(1)}k</span></p>
+                                        <p>Total clientes: <span className="text-foreground font-medium">{data.total}</span></p>
+                                        <p>MRR: <span className="text-foreground font-medium">R$ {(data.mrrTotal / 1000).toFixed(1)}k</span></p>
+                                      </>
+                                    )}
+                                    {cohortTab === "suporte" && (
+                                      <>
+                                        <p><span className="text-warning font-medium">{value.toFixed(1)}%</span> com chamados</p>
+                                        <p>Total clientes: <span className="text-foreground font-medium">{data.total}</span></p>
+                                      </>
+                                    )}
+                                    {!["financeiro", "churn", "nps", "ltv", "suporte"].includes(cohortTab) && (
+                                      <p>{cohortMetricInfo.format(value)}</p>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            }}
                           />
                           <Bar 
                             dataKey={cohortMetricInfo.dataKey} 
@@ -1237,6 +1283,10 @@ const VisaoGeral = () => {
                         </button>
                       </div>
                     </div>
+                    {/* Legenda explicativa */}
+                    <p className="text-[10px] text-muted-foreground mt-1">
+                      📊 Distribuição: onde estão concentrados os {top5Filter === "churn" ? "cancelamentos" : "vencidos"}
+                    </p>
                     {/* Filtros de dimensão independentes */}
                     <div className="flex items-center gap-1 mt-2">
                       <button
@@ -1272,16 +1322,37 @@ const VisaoGeral = () => {
                     </div>
                   </CardHeader>
                   <CardContent className="space-y-2">
-                    {top5Risco.length > 0 ? top5Risco.map((item, i) => (
-                      <div key={i} className="flex justify-between items-center text-sm">
-                        <span className="text-muted-foreground truncate max-w-[180px]" title={item.key}>
-                          {item.label.length > 35 ? item.label.substring(0, 35) + "..." : item.label}
-                        </span>
-                        <span className={`font-medium ${parseFloat(item.pct) > 0 ? "text-destructive" : "text-muted-foreground"}`}>
-                          {item.pct}%
-                        </span>
-                      </div>
-                    )) : (
+                    {top5Risco.length > 0 ? top5Risco.map((item, i) => {
+                      // Buscar dados completos do item para exibir detalhes
+                      const itemData = top5Data.find(d => d.key === item.key);
+                      const countKey = top5Filter === "churn" ? "cancelados" : "clientesVencidos";
+                      const count = itemData ? (itemData as any)[countKey] : 0;
+                      const total = itemData?.total || 0;
+                      
+                      return (
+                        <Tooltip key={i}>
+                          <TooltipTrigger asChild>
+                            <div className="flex justify-between items-center text-sm cursor-help hover:bg-muted/50 rounded px-1 -mx-1 py-0.5">
+                              <span className="text-muted-foreground truncate max-w-[180px]" title={item.key}>
+                                {item.label.length > 35 ? item.label.substring(0, 35) + "..." : item.label}
+                              </span>
+                              <span className={`font-medium ${parseFloat(item.pct) > 0 ? "text-destructive" : "text-muted-foreground"}`}>
+                                {item.pct}%
+                              </span>
+                            </div>
+                          </TooltipTrigger>
+                          <TooltipContent side="left" className="max-w-[250px]">
+                            <p className="font-semibold mb-1">{item.key}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {top5Filter === "churn" ? "Cancelados" : "Vencidos"}: <span className="text-foreground font-medium">{count}</span> de {total} clientes
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              Representa <span className="text-destructive font-medium">{item.pct}%</span> do total dos Top 5
+                            </p>
+                          </TooltipContent>
+                        </Tooltip>
+                      );
+                    }) : (
                       <p className="text-center text-muted-foreground text-xs py-2">Sem dados</p>
                     )}
                   </CardContent>
