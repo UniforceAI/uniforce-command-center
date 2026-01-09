@@ -36,6 +36,8 @@ export function NPSFilters({
               <SelectValue placeholder="Selecione o período" />
             </SelectTrigger>
             <SelectContent>
+              <SelectItem value="1">Hoje</SelectItem>
+              <SelectItem value="3">Últimos 3 dias</SelectItem>
               <SelectItem value="7">Últimos 7 dias</SelectItem>
               <SelectItem value="15">Últimos 15 dias</SelectItem>
               <SelectItem value="30">Últimos 30 dias</SelectItem>
