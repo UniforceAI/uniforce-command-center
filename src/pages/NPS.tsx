@@ -46,11 +46,10 @@ const NPS = () => {
 
   // Função para mapear tipo_nps do banco para o formato esperado
   const mapTipoNPS = (tipo: string): TipoNPS => {
-    const tipoLower = tipo?.toLowerCase() || "";
-    if (tipoLower.includes("instalacao") || tipoLower.includes("instalação")) return "pos_instalacao";
-    if (tipoLower.includes("os") || tipoLower.includes("o.s")) return "pos_os";
-    if (tipoLower.includes("atendimento")) return "pos_atendimento";
-    return "pos_atendimento"; // default
+    const tipoLower = tipo?.toLowerCase().trim() || "";
+    if (tipoLower.includes("contrato")) return "contrato";
+    if (tipoLower.includes("os") || tipoLower.includes("o.s") || tipoLower.includes("ordem")) return "os";
+    return "atendimento"; // default
   };
 
   // Função para calcular classificação baseada na nota
@@ -60,26 +59,22 @@ const NPS = () => {
     return "Promotor";
   };
 
-  // Buscar dados do Supabase externo - tabela nps-check
+  // Buscar dados do Supabase externo - tabela nps_check
   useEffect(() => {
     if (!user) return;
 
     const fetchNPSData = async () => {
       try {
         setIsLoading(true);
-        console.log("🔄 Buscando dados NPS do Supabase externo...");
-        console.log(`🏢 Filtro multi-tenant: isp_id = ${ISP_ID}`);
-        console.log(`📊 Tabela: nps-check`);
 
         const { data, error } = await externalSupabase
-          .from("nps-check")
+          .from("nps_check")
           .select("*")
           .eq("isp_id", ISP_ID)
-          .order("data_resposta", { ascending: false });
+          .order("data_resposta", { ascending: false })
+          .limit(1000);
 
         if (error) throw error;
-
-        console.log(`✅ ${data?.length || 0} respostas NPS encontradas`);
 
         // Transformar dados do banco para o formato esperado
         const respostasTransformadas: RespostaNPS[] = (data || []).map((item: any) => {
@@ -97,10 +92,9 @@ const NPS = () => {
 
         setRespostasNPS(respostasTransformadas);
       } catch (error: any) {
-        console.error("❌ Erro ao buscar dados NPS:", error);
         toast({
           title: "Erro ao carregar dados NPS",
-          description: error.message || "Não foi possível carregar os dados. Tente novamente.",
+          description: error.message || "Não foi possível carregar os dados.",
           variant: "destructive",
         });
       } finally {
@@ -147,9 +141,9 @@ const NPS = () => {
 
     return {
       geral: calcNPS(filteredRespostas),
-      instalacao: calcNPS(filteredRespostas.filter(r => r.tipo_nps === "pos_instalacao")),
-      os: calcNPS(filteredRespostas.filter(r => r.tipo_nps === "pos_os")),
-      atendimento: calcNPS(filteredRespostas.filter(r => r.tipo_nps === "pos_atendimento")),
+      contrato: calcNPS(filteredRespostas.filter(r => r.tipo_nps === "contrato")),
+      os: calcNPS(filteredRespostas.filter(r => r.tipo_nps === "os")),
+      atendimento: calcNPS(filteredRespostas.filter(r => r.tipo_nps === "atendimento")),
     };
   }, [filteredRespostas]);
 
@@ -222,25 +216,21 @@ const NPS = () => {
           <NPSKPICard
             title="NPS Geral"
             value={kpis.geral}
-            trend={5}
             icon={Gauge}
           />
           <NPSKPICard
-            title="NPS Pós-Instalação"
-            value={kpis.instalacao}
-            trend={-3}
-            icon={Wrench}
+            title="NPS Contrato"
+            value={kpis.contrato}
+            icon={ThumbsUp}
           />
           <NPSKPICard
             title="NPS Pós-O.S"
             value={kpis.os}
-            trend={-8}
             icon={Wrench}
           />
           <NPSKPICard
-            title="NPS Pós-Atendimento"
+            title="NPS Atendimento"
             value={kpis.atendimento}
-            trend={12}
             icon={Headphones}
           />
         </div>

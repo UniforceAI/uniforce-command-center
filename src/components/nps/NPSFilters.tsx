@@ -54,9 +54,9 @@ export function NPSFilters({
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="todos">Todos</SelectItem>
-              <SelectItem value="pos_instalacao">Pós-Instalação</SelectItem>
-              <SelectItem value="pos_os">Pós-O.S</SelectItem>
-              <SelectItem value="pos_atendimento">Pós-Atendimento</SelectItem>
+              <SelectItem value="contrato">Contrato</SelectItem>
+              <SelectItem value="os">Pós-O.S</SelectItem>
+              <SelectItem value="atendimento">Atendimento</SelectItem>
             </SelectContent>
           </Select>
         </div>

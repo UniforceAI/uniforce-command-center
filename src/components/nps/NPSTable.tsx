@@ -24,9 +24,9 @@ interface NPSTableProps {
 }
 
 const tipoNPSLabels: Record<string, string> = {
-  pos_instalacao: "Pós-Instalação",
-  pos_os: "Pós-O.S",
-  pos_atendimento: "Pós-Atendimento",
+  contrato: "Contrato",
+  os: "Pós-O.S",
+  atendimento: "Atendimento",
 };
 
 export const NPSTable = memo(({ respostas }: NPSTableProps) => {

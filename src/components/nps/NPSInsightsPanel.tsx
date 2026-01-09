@@ -14,15 +14,15 @@ export const NPSInsightsPanel = memo(({ respostas }: NPSInsightsPanelProps) => {
     const detratoresCriticos = respostas.filter(r => r.nota <= 3);
     
     // Calcular NPS por tipo para detectar quedas
-    const npsInstalacao = calcularNPS(respostas.filter(r => r.tipo_nps === "pos_instalacao"));
-    const npsOS = calcularNPS(respostas.filter(r => r.tipo_nps === "pos_os"));
-    const npsAtendimento = calcularNPS(respostas.filter(r => r.tipo_nps === "pos_atendimento"));
+    const npsContrato = calcularNPS(respostas.filter(r => r.tipo_nps === "contrato"));
+    const npsOS = calcularNPS(respostas.filter(r => r.tipo_nps === "os"));
+    const npsAtendimento = calcularNPS(respostas.filter(r => r.tipo_nps === "atendimento"));
     
     // Detectar tipo com pior NPS
     const tiposNPS = [
-      { tipo: "Pós-Instalação", nps: npsInstalacao },
+      { tipo: "Contrato", nps: npsContrato },
       { tipo: "Pós-O.S", nps: npsOS },
-      { tipo: "Pós-Atendimento", nps: npsAtendimento },
+      { tipo: "Atendimento", nps: npsAtendimento },
     ].sort((a, b) => a.nps - b.nps);
     
     // Reincidência de detratores (mesmo cliente com mais de uma resposta detratora)

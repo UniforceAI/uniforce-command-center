@@ -1,4 +1,4 @@
-export type TipoNPS = "pos_instalacao" | "pos_os" | "pos_atendimento";
+export type TipoNPS = "atendimento" | "contrato" | "os";
 export type ClassificacaoNPS = "Detrator" | "Neutro" | "Promotor";
 
 export interface RespostaNPS {
