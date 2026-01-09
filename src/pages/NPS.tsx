@@ -67,6 +67,15 @@ const NPS = () => {
       try {
         setIsLoading(true);
 
+        // Primeiro buscar sem filtro para debug
+        const { data: allData } = await externalSupabase
+          .from("nps_check")
+          .select("*")
+          .limit(5);
+        
+        console.log("🔍 DEBUG - Amostra de dados:", allData);
+        console.log("🔍 DEBUG - isp_ids disponíveis:", [...new Set(allData?.map((d: any) => d.isp_id) || [])]);
+
         const { data, error } = await externalSupabase
           .from("nps_check")
           .select("*")
@@ -75,6 +84,8 @@ const NPS = () => {
           .limit(1000);
 
         if (error) throw error;
+
+        console.log(`✅ ${data?.length || 0} respostas NPS para ${ISP_ID}`);
 
         // Transformar dados do banco para o formato esperado
         const respostasTransformadas: RespostaNPS[] = (data || []).map((item: any) => {
@@ -92,6 +103,7 @@ const NPS = () => {
 
         setRespostasNPS(respostasTransformadas);
       } catch (error: any) {
+        console.error("❌ Erro:", error);
         toast({
           title: "Erro ao carregar dados NPS",
           description: error.message || "Não foi possível carregar os dados.",
