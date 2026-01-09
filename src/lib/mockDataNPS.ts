@@ -51,11 +51,11 @@ function getComentario(classificacao: ClassificacaoNPS): string {
 }
 
 function generateNota(tipo: TipoNPS): number {
-  // Pós-atendimento tem melhor avaliação
-  if (tipo === "pos_atendimento") {
+  // Atendimento tem melhor avaliação
+  if (tipo === "atendimento") {
     return Math.random() > 0.3 ? Math.floor(Math.random() * 4) + 7 : Math.floor(Math.random() * 7);
   }
-  // Pós-instalação e pós-OS têm mais detratores
+  // Contrato e OS têm mais detratores
   return Math.random() > 0.5 ? Math.floor(Math.random() * 4) + 7 : Math.floor(Math.random() * 7);
 }
 
@@ -68,7 +68,7 @@ function generateDate(): string {
 }
 
 export function generateMockNPSData(count: number = 200): RespostaNPS[] {
-  const tipos: TipoNPS[] = ["pos_instalacao", "pos_os", "pos_atendimento"];
+  const tipos: TipoNPS[] = ["contrato", "os", "atendimento"];
   const data: RespostaNPS[] = [];
 
   for (let i = 0; i < count; i++) {
@@ -95,10 +95,10 @@ export function generateMockNPSData(count: number = 200): RespostaNPS[] {
 // Gerar insight automático baseado nos dados
 export function generateInsight(resposta: RespostaNPS): string {
   if (resposta.classificacao === "Detrator") {
-    if (resposta.tipo_nps === "pos_instalacao") {
-      return "Cliente detrator após instalação - verificar processo";
+    if (resposta.tipo_nps === "contrato") {
+      return "Cliente detrator no contrato - verificar processo";
     }
-    if (resposta.tipo_nps === "pos_os") {
+    if (resposta.tipo_nps === "os") {
       return "Possível falha no processo de O.S - acompanhar";
     }
     return "Alta chance de reincidência de chamados";

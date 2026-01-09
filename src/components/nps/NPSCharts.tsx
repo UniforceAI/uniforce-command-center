@@ -26,16 +26,16 @@ const COLORS = {
   neutro: "hsl(38, 92%, 50%)",
   detrator: "hsl(0, 84%, 60%)",
   geral: "hsl(221, 83%, 53%)",           // Azul
-  pos_instalacao: "hsl(142, 71%, 45%)",  // Verde
-  pos_os: "hsl(280, 87%, 60%)",          // Roxo
-  pos_atendimento: "hsl(0, 84%, 60%)",   // Vermelho
+  contrato: "hsl(142, 71%, 45%)",        // Verde
+  os: "hsl(280, 87%, 60%)",              // Roxo
+  atendimento: "hsl(38, 92%, 50%)",      // Amarelo
 };
 
 const FILTER_OPTIONS = [
   { id: "geral", label: "Geral", color: COLORS.geral },
-  { id: "pos_instalacao", label: "Pós-Instalação", color: COLORS.pos_instalacao },
-  { id: "pos_os", label: "Pós-O.S", color: COLORS.pos_os },
-  { id: "pos_atendimento", label: "Pós-Atendimento", color: COLORS.pos_atendimento },
+  { id: "contrato", label: "Contrato", color: COLORS.contrato },
+  { id: "os", label: "Pós-O.S", color: COLORS.os },
+  { id: "atendimento", label: "Atendimento", color: COLORS.atendimento },
 ];
 
 export const NPSCharts = memo(({ respostas }: NPSChartsProps) => {
@@ -54,18 +54,18 @@ export const NPSCharts = memo(({ respostas }: NPSChartsProps) => {
   // Evolução do NPS no tempo
   const evolucaoData = useMemo(() => {
     const byDate: Record<string, { 
-      pos_instalacao: { promotores: number; detratores: number; total: number };
-      pos_os: { promotores: number; detratores: number; total: number };
-      pos_atendimento: { promotores: number; detratores: number; total: number };
+      contrato: { promotores: number; detratores: number; total: number };
+      os: { promotores: number; detratores: number; total: number };
+      atendimento: { promotores: number; detratores: number; total: number };
       geral: { promotores: number; detratores: number; total: number };
     }> = {};
 
     respostas.forEach((r) => {
       if (!byDate[r.data_resposta]) {
         byDate[r.data_resposta] = {
-          pos_instalacao: { promotores: 0, detratores: 0, total: 0 },
-          pos_os: { promotores: 0, detratores: 0, total: 0 },
-          pos_atendimento: { promotores: 0, detratores: 0, total: 0 },
+          contrato: { promotores: 0, detratores: 0, total: 0 },
+          os: { promotores: 0, detratores: 0, total: 0 },
+          atendimento: { promotores: 0, detratores: 0, total: 0 },
           geral: { promotores: 0, detratores: 0, total: 0 },
         };
       }
@@ -92,9 +92,9 @@ export const NPSCharts = memo(({ respostas }: NPSChartsProps) => {
         date: new Date(date).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }),
         dateSort: date,
         geral: calcNPS(data.geral),
-        pos_instalacao: calcNPS(data.pos_instalacao),
-        pos_os: calcNPS(data.pos_os),
-        pos_atendimento: calcNPS(data.pos_atendimento),
+        contrato: calcNPS(data.contrato),
+        os: calcNPS(data.os),
+        atendimento: calcNPS(data.atendimento),
       }))
       .sort((a, b) => a.dateSort.localeCompare(b.dateSort));
   }, [respostas]);
@@ -102,9 +102,9 @@ export const NPSCharts = memo(({ respostas }: NPSChartsProps) => {
   // Comparação entre tipos
   const comparacaoData = useMemo(() => {
     const tipos = [
-      { id: "pos_instalacao", name: "Pós-Instalação", color: COLORS.pos_instalacao },
-      { id: "pos_os", name: "Pós-O.S", color: COLORS.pos_os },
-      { id: "pos_atendimento", name: "Pós-Atendimento", color: COLORS.pos_atendimento },
+      { id: "contrato", name: "Contrato", color: COLORS.contrato },
+      { id: "os", name: "Pós-O.S", color: COLORS.os },
+      { id: "atendimento", name: "Atendimento", color: COLORS.atendimento },
     ];
     return tipos.map((tipo) => {
       const filtradas = respostas.filter((r) => r.tipo_nps === tipo.id);
@@ -173,17 +173,17 @@ export const NPSCharts = memo(({ respostas }: NPSChartsProps) => {
                   <stop offset="5%" stopColor={COLORS.geral} stopOpacity={0.4}/>
                   <stop offset="95%" stopColor={COLORS.geral} stopOpacity={0.05}/>
                 </linearGradient>
-                <linearGradient id="gradientPosInstalacao" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor={COLORS.pos_instalacao} stopOpacity={0.4}/>
-                  <stop offset="95%" stopColor={COLORS.pos_instalacao} stopOpacity={0.05}/>
+                <linearGradient id="gradientContrato" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor={COLORS.contrato} stopOpacity={0.4}/>
+                  <stop offset="95%" stopColor={COLORS.contrato} stopOpacity={0.05}/>
                 </linearGradient>
-                <linearGradient id="gradientPosOs" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor={COLORS.pos_os} stopOpacity={0.4}/>
-                  <stop offset="95%" stopColor={COLORS.pos_os} stopOpacity={0.05}/>
+                <linearGradient id="gradientOs" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor={COLORS.os} stopOpacity={0.4}/>
+                  <stop offset="95%" stopColor={COLORS.os} stopOpacity={0.05}/>
                 </linearGradient>
-                <linearGradient id="gradientPosAtendimento" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor={COLORS.pos_atendimento} stopOpacity={0.4}/>
-                  <stop offset="95%" stopColor={COLORS.pos_atendimento} stopOpacity={0.05}/>
+                <linearGradient id="gradientAtendimento" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor={COLORS.atendimento} stopOpacity={0.4}/>
+                  <stop offset="95%" stopColor={COLORS.atendimento} stopOpacity={0.05}/>
                 </linearGradient>
               </defs>
               <CartesianGrid strokeDasharray="3 3" className="opacity-20" />
@@ -208,36 +208,36 @@ export const NPSCharts = memo(({ respostas }: NPSChartsProps) => {
                   connectNulls
                 />
               )}
-              {selectedFilters.includes("pos_instalacao") && (
+              {selectedFilters.includes("contrato") && (
                 <Area 
                   type="monotone" 
-                  dataKey="pos_instalacao" 
-                  name="Pós-Instalação"
-                  stroke={COLORS.pos_instalacao}
+                  dataKey="contrato" 
+                  name="Contrato"
+                  stroke={COLORS.contrato}
                   strokeWidth={2}
-                  fill="url(#gradientPosInstalacao)"
+                  fill="url(#gradientContrato)"
                   connectNulls
                 />
               )}
-              {selectedFilters.includes("pos_os") && (
+              {selectedFilters.includes("os") && (
                 <Area 
                   type="monotone" 
-                  dataKey="pos_os" 
+                  dataKey="os" 
                   name="Pós-O.S"
-                  stroke={COLORS.pos_os}
+                  stroke={COLORS.os}
                   strokeWidth={2}
-                  fill="url(#gradientPosOs)"
+                  fill="url(#gradientOs)"
                   connectNulls
                 />
               )}
-              {selectedFilters.includes("pos_atendimento") && (
+              {selectedFilters.includes("atendimento") && (
                 <Area 
                   type="monotone" 
-                  dataKey="pos_atendimento" 
-                  name="Pós-Atendimento"
-                  stroke={COLORS.pos_atendimento}
+                  dataKey="atendimento" 
+                  name="Atendimento"
+                  stroke={COLORS.atendimento}
                   strokeWidth={2}
-                  fill="url(#gradientPosAtendimento)"
+                  fill="url(#gradientAtendimento)"
                   connectNulls
                 />
               )}
