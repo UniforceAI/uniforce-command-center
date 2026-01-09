@@ -89,15 +89,15 @@ const NPS = () => {
 
         // Transformar dados do banco para o formato esperado
         const respostasTransformadas: RespostaNPS[] = (data || []).map((item: any) => {
-          const nota = Number(item.nota) || 0;
+          const nota = item.nota_numerica ?? Number(item.nota) ?? 0;
           return {
-            cliente_id: item.cliente_id || item.id_cliente || 0,
-            cliente_nome: item.cliente_nome || item.solicitante || "N/A",
-            tipo_nps: mapTipoNPS(item.tipo_nps || item.tipo || ""),
+            cliente_id: item.id_cliente || item.cliente_id || 0,
+            cliente_nome: item.nome || item.cliente_nome || "N/A",
+            tipo_nps: mapTipoNPS(item.nps_type || item.origem || ""),
             nota,
-            classificacao: calcClassificacao(nota),
-            comentario: item.comentario || item.observacao || "",
-            data_resposta: item.data_resposta || new Date().toISOString().split('T')[0],
+            classificacao: (item.classificacao_nps || calcClassificacao(nota)) as "Promotor" | "Neutro" | "Detrator",
+            comentario: item.mensagem_melhoria || item.comentario || "",
+            data_resposta: item.data_resposta || item.data_envio || new Date().toISOString().split('T')[0],
           };
         });
 
