@@ -1,6 +1,9 @@
 import { useState, useEffect, useCallback } from "react";
-import { externalSupabase, ISP_ID } from "@/integrations/supabase/external-client";
+import { externalSupabase } from "@/integrations/supabase/external-client";
 import { useToast } from "@/hooks/use-toast";
+
+// ISP ID para chamados - d-kiros tem os dados de chamados
+const CHAMADOS_ISP_ID = "d-kiros";
 
 export interface ChamadoData {
   id_cliente: number;
@@ -50,7 +53,7 @@ export function useChamados() {
         const { data, error } = await externalSupabase
           .from("chamados")
           .select("*")
-          .eq("isp_id", ISP_ID)
+          .eq("isp_id", CHAMADOS_ISP_ID)
           .order("data_abertura", { ascending: false })
           .limit(1000);
 
