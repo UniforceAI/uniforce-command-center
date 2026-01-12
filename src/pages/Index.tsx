@@ -61,15 +61,33 @@ const Index = () => {
         console.log("🔄 Buscando chamados do Supabase externo...");
         console.log(`🏢 Filtro multi-tenant: isp_id = ${CHAMADOS_ISP_ID}`);
 
-        // Primeiro, obter a contagem total com filtro isp_id
+        // Primeiro, verificar total sem filtro para debug
+        const { count: totalSemFiltro } = await externalSupabase
+          .from("chamados")
+          .select("*", { count: "exact", head: true });
+        
+        console.log(`📊 Total SEM filtro: ${totalSemFiltro}`);
+
+        // Verificar quais isp_ids existem
+        const { data: ispIds } = await externalSupabase
+          .from("chamados")
+          .select("isp_id")
+          .limit(10);
+        
+        console.log(`🔍 ISP IDs encontrados:`, ispIds?.map(r => r.isp_id));
+
+        // Agora com filtro
         const { count: totalCount, error: countError } = await externalSupabase
           .from("chamados")
           .select("*", { count: "exact", head: true })
           .eq("isp_id", CHAMADOS_ISP_ID);
 
-        if (countError) throw countError;
+        if (countError) {
+          console.error("❌ Erro ao contar:", countError);
+          throw countError;
+        }
 
-        console.log(`📊 Total de registros no banco (${CHAMADOS_ISP_ID}): ${totalCount}`);
+        console.log(`📊 Total com filtro (${CHAMADOS_ISP_ID}): ${totalCount}`);
 
         // Buscar em batches de 1000
         const BATCH_SIZE = 1000;
