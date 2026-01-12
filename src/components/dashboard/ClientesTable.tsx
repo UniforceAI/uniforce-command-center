@@ -244,7 +244,7 @@ export const ClientesTable = memo(({ chamados, onClienteClick }: ClientesTablePr
           </Button>
         );
       },
-      cell: info => <span className="truncate max-w-[180px] block">{info.getValue() as string}</span>,
+      cell: info => <span className="truncate max-w-[180px] block">{(info.getValue() as string) || "—"}</span>,
       size: 180,
     },
     {
@@ -262,16 +262,28 @@ export const ClientesTable = memo(({ chamados, onClienteClick }: ClientesTablePr
         );
       },
       cell: info => {
-        const dataCompleta = info.getValue() as string;
+        const dataCompleta = (info.getValue() as string) || "";
+        if (!dataCompleta) return <span className="text-sm text-muted-foreground">—</span>;
         const [datePart] = dataCompleta.split(" ");
         return <span className="text-sm text-muted-foreground">{datePart}</span>;
       },
       size: 120,
       sortingFn: (rowA, rowB) => {
-        const parseData = (dataStr: string) => {
-          const [datePart] = dataStr.split(" ");
-          const [dia, mes, ano] = datePart.split("/");
-          return new Date(parseInt(ano), parseInt(mes) - 1, parseInt(dia)).getTime();
+        const parseData = (dataStr: string | null) => {
+          if (!dataStr) return 0;
+          try {
+            const [datePart] = dataStr.split(" ");
+            // Suportar YYYY-MM-DD e DD/MM/YYYY
+            if (datePart.includes("-")) {
+              const [ano, mes, dia] = datePart.split("-");
+              return new Date(parseInt(ano), parseInt(mes) - 1, parseInt(dia)).getTime();
+            } else {
+              const [dia, mes, ano] = datePart.split("/");
+              return new Date(parseInt(ano), parseInt(mes) - 1, parseInt(dia)).getTime();
+            }
+          } catch {
+            return 0;
+          }
         };
         return parseData(rowA.original["Data de Abertura"]) - parseData(rowB.original["Data de Abertura"]);
       },
@@ -308,7 +320,7 @@ export const ClientesTable = memo(({ chamados, onClienteClick }: ClientesTablePr
           </Button>
         );
       },
-      cell: info => <span className="truncate max-w-[200px] block">{info.getValue() as string}</span>,
+      cell: info => <span className="truncate max-w-[200px] block">{(info.getValue() as string) || "—"}</span>,
       size: 200,
     },
     {
@@ -325,7 +337,7 @@ export const ClientesTable = memo(({ chamados, onClienteClick }: ClientesTablePr
           </Button>
         );
       },
-      cell: info => <Badge variant="secondary">{info.getValue() as number} dias</Badge>,
+      cell: info => <Badge variant="secondary">{info.getValue() as number ?? "—"} dias</Badge>,
       size: 150,
     },
     {

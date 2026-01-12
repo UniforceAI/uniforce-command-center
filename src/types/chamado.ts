@@ -1,24 +1,27 @@
 export interface Chamado {
   "_id"?: string; // ID único do banco de dados
-  "ID Cliente": number;
-  "Qtd. Chamados": number;
-  "Protocolo": string;
-  "Data de Abertura": string;
-  "Última Atualização": string;
-  "Responsável": string;
-  "Setor": string;
-  "Categoria": string;
-  "Motivo do Contato": string;
-  "Origem": string;
-  "Solicitante": string;
-  "Urgência": "Alta" | "Média" | "Baixa";
-  "Status": "Novo" | "Em Andamento" | "Resolvido" | "Fechado";
-  "Dias ultimo chamado": number;
-  "Tempo de Atendimento": string | number;
-  "Classificação": "Rápido" | "Normal" | "Lento" | "Reincidente";
-  "Insight": string;
-  "Chamados Anteriores": string;
+  "ID Cliente": string | number; // TEXT no banco
+  "Qtd. Chamados": number | null;
+  "Protocolo": string | null;
+  "Data de Abertura": string | null;
+  "Última Atualização": string | null;
+  "Responsável": string | null;
+  "Setor": string | null;
+  "Categoria": string | null;
+  "Motivo do Contato": string | null;
+  "Origem": string | null;
+  "Solicitante": string | null;
+  "Urgência": string | null;
+  "Status": string | null;
+  "Dias ultimo chamado": number | null;
+  "Tempo de Atendimento": string | number | null;
+  "Classificação": string | null;
+  "Insight": string | null;
+  "Chamados Anteriores": string | null;
   "_chamadosAnteriores"?: Chamado[]; // Lista real de chamados anteriores deste cliente
+  // Campos adicionais do schema
+  "isp_id"?: string | null;
+  "instancia_isp"?: string | null;
 }
 
 export interface DashboardData {

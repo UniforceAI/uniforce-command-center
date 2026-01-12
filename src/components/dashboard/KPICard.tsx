@@ -12,7 +12,7 @@ interface KPICardProps {
   icon: LucideIcon;
   trend?: "up" | "down" | "neutral";
   variant?: "default" | "warning" | "success" | "destructive";
-  detalhes?: Array<{ id: number; label: string }>;
+  detalhes?: Array<{ id: string | number; label: string | null }>;
 }
 
 export function KPICard({ title, value, subtitle, icon: Icon, trend, variant = "default", detalhes }: KPICardProps) {
@@ -66,9 +66,9 @@ export function KPICard({ title, value, subtitle, icon: Icon, trend, variant = "
               <div className="space-y-2 mt-3">
                 <p className="text-xs font-semibold text-muted-foreground mb-2">Clientes:</p>
                 <div className="flex flex-wrap gap-2">
-                  {detalhes.slice(0, 10).map((item) => (
-                    <Badge key={item.id} variant="outline" className="text-xs">
-                      #{item.id} - {item.label}
+                  {detalhes.slice(0, 10).map((item, idx) => (
+                    <Badge key={`${item.id}-${idx}`} variant="outline" className="text-xs">
+                      #{item.id} - {item.label || "—"}
                     </Badge>
                   ))}
                   {detalhes.length > 10 && (
