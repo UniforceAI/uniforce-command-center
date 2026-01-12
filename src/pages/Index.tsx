@@ -306,11 +306,21 @@ const Index = () => {
     setSheetOpen(true);
   }, []);
 
-  // Função auxiliar para parsear data
+  // Função auxiliar para parsear data (suporta YYYY-MM-DD e DD/MM/YYYY)
   const parseData = (dataStr: string) => {
     try {
       const [datePart, timePart] = dataStr.split(" ");
-      const [dia, mes, ano] = datePart.split("/");
+      let dia: string, mes: string, ano: string;
+      
+      // Detectar formato da data
+      if (datePart.includes("-")) {
+        // Formato: YYYY-MM-DD
+        [ano, mes, dia] = datePart.split("-");
+      } else {
+        // Formato: DD/MM/YYYY
+        [dia, mes, ano] = datePart.split("/");
+      }
+      
       const [hora, min, seg] = (timePart || "00:00:00").split(":");
       return new Date(
         parseInt(ano),
@@ -393,8 +403,17 @@ const Index = () => {
         try {
           const dataString = principal["Data de Abertura"];
           const [datePart] = dataString.split(" ");
-          const [dia, mes, ano] = datePart.split("/");
-          // Criar data zerada para comparação justa
+          let dia: string, mes: string, ano: string;
+          
+          // Detectar formato da data
+          if (datePart.includes("-")) {
+            // Formato: YYYY-MM-DD
+            [ano, mes, dia] = datePart.split("-");
+          } else {
+            // Formato: DD/MM/YYYY
+            [dia, mes, ano] = datePart.split("/");
+          }
+          
           const dataAbertura = new Date(parseInt(ano), parseInt(mes) - 1, parseInt(dia), 0, 0, 0);
           return dataAbertura >= dataLimite;
         } catch (e) {
