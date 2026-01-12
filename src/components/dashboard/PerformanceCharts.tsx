@@ -25,7 +25,11 @@ export const PerformanceCharts = memo(({ chamados }: PerformanceChartsProps) => 
     // Dados para tempo de atendimento por responsável
     const responsaveisMap = new Map<string, { total: number; count: number }>();
     chamados.forEach((chamado) => {
-      const responsavel = chamado.Responsável.split(" ")[0];
+      // Null check para Responsável
+      const responsavelRaw = chamado.Responsável;
+      if (!responsavelRaw) return; // Skip se não tem responsável
+      
+      const responsavel = responsavelRaw.split(" ")[0];
       const tempo = chamado["Tempo de Atendimento"];
       
       let horas = 0;
