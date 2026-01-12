@@ -2,7 +2,10 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { Chamado } from "@/types/chamado";
 import { supabase } from "@/integrations/supabase/client";
-import { externalSupabase, ISP_ID } from "@/integrations/supabase/external-client";
+import { externalSupabase } from "@/integrations/supabase/external-client";
+
+// ISP ID para chamados - d-kiros tem os dados
+const CHAMADOS_ISP_ID = "d-kiros";
 import type { User } from "@supabase/supabase-js";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
@@ -56,17 +59,17 @@ const Index = () => {
       try {
         setIsLoading(true);
         console.log("🔄 Buscando chamados do Supabase externo...");
-        console.log(`🏢 Filtro multi-tenant: isp_id = ${ISP_ID}`);
+        console.log(`🏢 Filtro multi-tenant: isp_id = ${CHAMADOS_ISP_ID}`);
 
         // Primeiro, obter a contagem total com filtro isp_id
         const { count: totalCount, error: countError } = await externalSupabase
           .from("chamados")
           .select("*", { count: "exact", head: true })
-          .eq("isp_id", ISP_ID);
+          .eq("isp_id", CHAMADOS_ISP_ID);
 
         if (countError) throw countError;
 
-        console.log(`📊 Total de registros no banco (${ISP_ID}): ${totalCount}`);
+        console.log(`📊 Total de registros no banco (${CHAMADOS_ISP_ID}): ${totalCount}`);
 
         // Buscar em batches de 1000
         const BATCH_SIZE = 1000;
@@ -82,7 +85,7 @@ const Index = () => {
           const { data, error } = await externalSupabase
             .from("chamados")
             .select("*")
-            .eq("isp_id", ISP_ID)
+            .eq("isp_id", CHAMADOS_ISP_ID)
             .order("data_abertura", { ascending: false })
             .range(start, end);
 
