@@ -118,28 +118,36 @@ const Index = () => {
 
         // Transformar dados do banco para o formato esperado
         const chamadosTransformados: Chamado[] = allData.map((item: any) => ({
-          "ID Cliente": item.id_cliente,
-          "Qtd. Chamados": item.qtd_chamados,
-          Protocolo: item.protocolo,
-          "Data de Abertura": item.data_abertura,
-          "Última Atualização": item.ultima_atualizacao,
-          Responsável: item.responsavel,
-          Setor: item.setor,
-          Categoria: item.categoria,
-          "Motivo do Contato": item.motivo_contato,
-          Origem: item.origem,
-          Solicitante: item.solicitante,
-          Urgência: item.urgencia,
-          Status: item.status,
-          "Dias ultimo chamado": item.dias_desde_ultimo,
-          "Tempo de Atendimento": item.tempo_atendimento,
-          Classificação: item.classificacao,
-          Insight: item.insight,
-          "Chamados Anteriores": item.chamados_anteriores,
+          "ID Cliente": item.id_cliente || "",
+          "Qtd. Chamados": item.qtd_chamados ?? 0,
+          Protocolo: item.protocolo || "",
+          "Data de Abertura": item.data_abertura || "",
+          "Última Atualização": item.ultima_atualizacao || "",
+          Responsável: item.responsavel || "",
+          Setor: item.setor || "",
+          Categoria: item.categoria || "",
+          "Motivo do Contato": item.motivo_contato || "",
+          Origem: item.origem || "",
+          Solicitante: item.solicitante || item.id_cliente || "", // Fallback para id_cliente se não houver nome
+          Urgência: item.urgencia || "",
+          Status: item.status || "",
+          "Dias ultimo chamado": item.dias_desde_ultimo ?? null,
+          "Tempo de Atendimento": item.tempo_atendimento || "",
+          Classificação: item.classificacao || "",
+          Insight: item.insight || "",
+          "Chamados Anteriores": item.chamados_anteriores || "",
           _id: item.id, // ID único do banco
+          isp_id: item.isp_id || null,
+          instancia_isp: item.instancia_isp || null,
         }));
 
         console.log(`✅ ${chamadosTransformados.length} chamados transformados`);
+        
+        // Log de amostra para debug
+        if (allData.length > 0) {
+          console.log("📋 Amostra de dados raw:", allData[0]);
+          console.log("📋 Amostra transformada:", chamadosTransformados[0]);
+        }
 
         // Log de debug: contar chamados por cliente ALLAN
         const allanChamados = chamadosTransformados.filter(c => 
@@ -338,13 +346,13 @@ const Index = () => {
 
   // Agrupar e processar clientes com useMemo
   const clientesCriticos = useMemo(() => {
-    // Agrupar TODOS os chamados por ID Cliente
+    // Agrupar TODOS os chamados por ID Cliente (agora TEXT)
     const todosChamadosPorCliente = chamados.reduce(
       (acc, chamado) => {
-        const idCliente = Number(chamado["ID Cliente"]);
+        const idCliente = String(chamado["ID Cliente"] || "").trim();
 
-        if (isNaN(idCliente)) {
-          console.warn("ID Cliente inválido:", chamado["ID Cliente"], chamado);
+        if (!idCliente) {
+          console.warn("ID Cliente vazio:", chamado);
           return acc;
         }
 
@@ -356,8 +364,8 @@ const Index = () => {
         } else {
           acc[idCliente].todos.push(chamado);
 
-          const dataAtual = parseData(acc[idCliente].principal["Data de Abertura"]);
-          const dataNovo = parseData(chamado["Data de Abertura"]);
+          const dataAtual = parseData(acc[idCliente].principal["Data de Abertura"] || "");
+          const dataNovo = parseData(chamado["Data de Abertura"] || "");
 
           if (dataNovo > dataAtual) {
             acc[idCliente].principal = chamado;
@@ -366,7 +374,7 @@ const Index = () => {
 
         return acc;
       },
-      {} as Record<number, { principal: Chamado; todos: Chamado[] }>,
+      {} as Record<string, { principal: Chamado; todos: Chamado[] }>,
     );
 
     // Corrigir a quantidade real de chamados
