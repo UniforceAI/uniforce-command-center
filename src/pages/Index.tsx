@@ -191,12 +191,22 @@ const Index = () => {
 
       filtered = filtered.filter((c) => {
         try {
-          // Converter string DD/MM/YYYY HH:MM:SS para Date
           const dataString = c["Data de Abertura"];
-          const [datePart] = dataString.split(" "); // Separar data de hora
-          const [dia, mes, ano] = datePart.split("/");
-          // Criar data zerada (sem horas) para comparação justa
-          const dataAbertura = new Date(parseInt(ano), parseInt(mes) - 1, parseInt(dia), 0, 0, 0);
+          let dataAbertura: Date;
+          
+          // Detectar formato da data: YYYY-MM-DD ou DD/MM/YYYY
+          if (dataString.includes("-")) {
+            // Formato: YYYY-MM-DD HH:MM:SS
+            const [datePart] = dataString.split(" ");
+            const [ano, mes, dia] = datePart.split("-");
+            dataAbertura = new Date(parseInt(ano), parseInt(mes) - 1, parseInt(dia), 0, 0, 0);
+          } else {
+            // Formato: DD/MM/YYYY HH:MM:SS
+            const [datePart] = dataString.split(" ");
+            const [dia, mes, ano] = datePart.split("/");
+            dataAbertura = new Date(parseInt(ano), parseInt(mes) - 1, parseInt(dia), 0, 0, 0);
+          }
+          
           return dataAbertura >= dataLimite;
         } catch (e) {
           console.error("Erro ao parsear data:", c["Data de Abertura"], e);
