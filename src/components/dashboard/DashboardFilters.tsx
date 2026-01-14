@@ -33,10 +33,12 @@ export function DashboardFilters({
               <SelectValue placeholder="Selecione" />
             </SelectTrigger>
             <SelectContent>
+              <SelectItem value="todos">Todos</SelectItem>
               <SelectItem value="0">Hoje</SelectItem>
               <SelectItem value="1">Ontem</SelectItem>
               <SelectItem value="7">Últimos 7 dias</SelectItem>
               <SelectItem value="30">Últimos 30 dias</SelectItem>
+              <SelectItem value="90">Últimos 90 dias</SelectItem>
             </SelectContent>
           </Select>
         </div>
