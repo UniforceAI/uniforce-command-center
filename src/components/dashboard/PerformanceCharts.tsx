@@ -1,15 +1,19 @@
-import { memo, useMemo } from "react";
+import { memo, useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { Chamado } from "@/types/chamado";
 import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
+import { ArrowUpDown } from "lucide-react";
 
 interface PerformanceChartsProps {
   chamados: Chamado[];
 }
 
 export const PerformanceCharts = memo(({ chamados }: PerformanceChartsProps) => {
+  const [ordemCrescente, setOrdemCrescente] = useState(true);
+  
   // Memoizar dados de gráficos
-  const { motivosData, responsaveisData, setorData } = useMemo(() => {
+  const { motivosData, responsaveisDataBase, setorData } = useMemo(() => {
     // Dados para principais motivos de chamados
     const motivosMap = new Map<string, number>();
     chamados.forEach((chamado) => {
@@ -85,14 +89,13 @@ export const PerformanceCharts = memo(({ chamados }: PerformanceChartsProps) => 
       }
     });
 
-    const responsaveisData = Array.from(responsaveisMap.entries())
+    const responsaveisDataBase = Array.from(responsaveisMap.entries())
       .map(([nome, data]) => ({
         nome,
         media: data.count > 0 ? parseFloat((data.total / data.count).toFixed(1)) : 0,
         count: data.count,
       }))
-      .filter(item => item.media > 0 && item.count >= 3) // Mínimo 3 chamados para ser relevante
-      .sort((a, b) => a.media - b.media); // Ordenar do mais rápido ao mais lento
+      .filter(item => item.media > 0 && item.count >= 3); // Mínimo 3 chamados para ser relevante
 
     // Dados de classificação por setor
     const setorClassificacaoMap = new Map<string, Record<string, number>>();
@@ -116,8 +119,16 @@ export const PerformanceCharts = memo(({ chamados }: PerformanceChartsProps) => 
       ...data,
     }));
 
-    return { motivosData, responsaveisData, setorData };
+    return { motivosData, responsaveisDataBase, setorData };
   }, [chamados]);
+
+  // Ordenar responsáveis com base no estado
+  const responsaveisData = useMemo(() => {
+    const sorted = [...responsaveisDataBase].sort((a, b) => 
+      ordemCrescente ? a.media - b.media : b.media - a.media
+    );
+    return sorted.slice(0, 10); // Top 10
+  }, [responsaveisDataBase, ordemCrescente]);
 
   const coresMotivos = [
     "hsl(var(--destructive))",
@@ -159,12 +170,21 @@ export const PerformanceCharts = memo(({ chamados }: PerformanceChartsProps) => 
 
       {/* Tempo Médio por Responsável */}
       <Card>
-        <CardHeader>
-          <CardTitle>Tempo Médio de Atendimento</CardTitle>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+          <CardTitle className="text-base font-medium">Tempo Médio de Atendimento</CardTitle>
+          <Button 
+            variant="outline" 
+            size="sm"
+            onClick={() => setOrdemCrescente(!ordemCrescente)}
+            className="h-8 gap-1 text-xs"
+          >
+            <ArrowUpDown className="h-3 w-3" />
+            {ordemCrescente ? "Mais rápidos" : "Mais lentos"}
+          </Button>
         </CardHeader>
         <CardContent>
-          <ResponsiveContainer width="100%" height={Math.max(300, responsaveisData.length * 40)}>
-            <BarChart data={responsaveisData} layout="vertical" margin={{ right: 60 }}>
+          <ResponsiveContainer width="100%" height={300}>
+            <BarChart data={responsaveisData} layout="vertical" margin={{ right: 50 }}>
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis 
                 type="number" 
@@ -175,7 +195,7 @@ export const PerformanceCharts = memo(({ chamados }: PerformanceChartsProps) => 
                   return `${value.toFixed(1)}h`;
                 }}
               />
-              <YAxis dataKey="nome" type="category" width={100} />
+              <YAxis dataKey="nome" type="category" width={80} tick={{ fontSize: 12 }} />
               <Tooltip 
                 formatter={(value: number) => {
                   if (value >= 24) {
@@ -192,17 +212,7 @@ export const PerformanceCharts = memo(({ chamados }: PerformanceChartsProps) => 
               <Bar 
                 dataKey="media" 
                 fill="hsl(var(--primary))" 
-                radius={[0, 8, 8, 0]}
-                label={({ x, y, width, value }) => (
-                  <text 
-                    x={x + width + 5} 
-                    y={y + 12} 
-                    fill="hsl(var(--foreground))" 
-                    fontSize={12}
-                  >
-                    {value >= 24 ? `${(value / 24).toFixed(1)}d` : value < 1 ? `${Math.round(value * 60)}min` : `${value.toFixed(1)}h`}
-                  </text>
-                )}
+                radius={[0, 4, 4, 0]}
               />
             </BarChart>
           </ResponsiveContainer>
