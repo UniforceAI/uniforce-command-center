@@ -169,8 +169,8 @@ export const PerformanceCharts = memo(({ chamados }: PerformanceChartsProps) => 
       </Card>
 
       {/* Tempo Médio por Responsável */}
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+      <Card className="flex flex-col">
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 flex-shrink-0">
           <CardTitle className="text-base font-medium">Tempo Médio de Atendimento</CardTitle>
           <Button 
             variant="outline" 
@@ -182,41 +182,52 @@ export const PerformanceCharts = memo(({ chamados }: PerformanceChartsProps) => 
             {ordemCrescente ? "Mais rápidos" : "Mais lentos"}
           </Button>
         </CardHeader>
-        <CardContent className="overflow-y-auto max-h-[320px]">
-          <div style={{ height: Math.max(300, responsaveisData.length * 32) }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={responsaveisData} layout="vertical" margin={{ right: 50 }}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis 
-                  type="number" 
-                  tickFormatter={(value) => {
-                    if (value >= 24) {
-                      return `${(value / 24).toFixed(1)}d`;
-                    }
-                    return `${value.toFixed(1)}h`;
-                  }}
-                />
-                <YAxis dataKey="nome" type="category" width={80} tick={{ fontSize: 11 }} />
-                <Tooltip 
-                  formatter={(value: number) => {
-                    if (value >= 24) {
-                      const dias = (value / 24).toFixed(1);
-                      return [`${dias} dias`, 'Tempo Médio'];
-                    }
-                    if (value < 1) {
-                      const min = Math.round(value * 60);
-                      return [`${min} min`, 'Tempo Médio'];
-                    }
-                    return [`${value.toFixed(1)}h`, 'Tempo Médio'];
-                  }}
-                />
-                <Bar 
-                  dataKey="media" 
-                  fill="hsl(var(--primary))" 
-                  radius={[0, 4, 4, 0]}
-                />
-              </BarChart>
-            </ResponsiveContainer>
+        <CardContent className="flex-1 min-h-0 flex flex-col">
+          <div className="overflow-y-auto flex-1 max-h-[280px]">
+            <div style={{ height: Math.max(280, responsaveisData.length * 36) }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={responsaveisData} layout="vertical" margin={{ right: 60, left: 10 }}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis 
+                    type="number"
+                    fontSize={11}
+                    orientation="top"
+                    tickFormatter={(value) => {
+                      if (value >= 24) {
+                        return `${(value / 24).toFixed(1)}d`;
+                      }
+                      return `${value.toFixed(1)}h`;
+                    }}
+                  />
+                  <YAxis 
+                    dataKey="nome" 
+                    type="category" 
+                    width={80} 
+                    tick={{ fontSize: 11 }}
+                    tickFormatter={(value) => value.length > 12 ? `${value.substring(0, 12)}...` : value}
+                  />
+                  <Tooltip 
+                    formatter={(value: number) => {
+                      if (value >= 24) {
+                        const dias = (value / 24).toFixed(1);
+                        return [`${dias} dias`, 'Tempo Médio'];
+                      }
+                      if (value < 1) {
+                        const min = Math.round(value * 60);
+                        return [`${min} min`, 'Tempo Médio'];
+                      }
+                      return [`${value.toFixed(1)}h`, 'Tempo Médio'];
+                    }}
+                    labelFormatter={(label) => label}
+                  />
+                  <Bar 
+                    dataKey="media" 
+                    fill="hsl(var(--primary))" 
+                    radius={[0, 4, 4, 0]}
+                  />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
           </div>
         </CardContent>
       </Card>
