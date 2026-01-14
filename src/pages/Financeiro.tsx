@@ -237,11 +237,13 @@ const Financeiro = () => {
       .map(([plano, data]) => ({ plano, ...data }));
   }, [filteredEventos]);
 
-  // Ordenar vencido por plano com base no estado
+  // Ordenar vencido por plano com base no estado (filtra itens com valor > 0)
   const vencidoPorPlano = useMemo(() => {
-    return [...vencidoPorPlanoBase].sort((a, b) => 
-      ordemPlanoDecrescente ? b.valor - a.valor : a.valor - b.valor
-    );
+    return [...vencidoPorPlanoBase]
+      .filter(p => p.valor > 0)
+      .sort((a, b) => 
+        ordemPlanoDecrescente ? b.valor - a.valor : a.valor - b.valor
+      );
   }, [vencidoPorPlanoBase, ordemPlanoDecrescente]);
 
   // Por método de cobrança
