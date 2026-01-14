@@ -494,8 +494,8 @@ const Financeiro = () => {
               </Card>
 
               {/* Vencido por Plano */}
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <Card className="flex flex-col">
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 flex-shrink-0">
                   <CardTitle className="text-base font-medium">📊 Vencido por Plano</CardTitle>
                   <Button 
                     variant="outline" 
@@ -507,24 +507,35 @@ const Financeiro = () => {
                     {ordemPlanoDecrescente ? "Maior valor" : "Menor valor"}
                   </Button>
                 </CardHeader>
-                <CardContent className="overflow-y-auto max-h-[320px]">
+                <CardContent className="flex-1 min-h-0 flex flex-col">
                   {vencidoPorPlano.length > 0 ? (
-                    <div style={{ height: Math.max(250, vencidoPorPlano.length * 32) }}>
-                      <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={vencidoPorPlano} layout="vertical" margin={{ right: 50 }}>
-                          <CartesianGrid strokeDasharray="3 3" />
-                          <XAxis 
-                            type="number" 
-                            fontSize={12} 
-                            tickFormatter={(v) => `R$ ${(v / 1000).toFixed(0)}k`} 
-                          />
-                          <YAxis dataKey="plano" type="category" fontSize={10} width={150} tick={{ fontSize: 10 }} />
-                          <Tooltip 
-                            formatter={(v) => [`R$ ${Number(v).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`, 'Valor Vencido']}
-                          />
-                          <Bar dataKey="valor" fill="#f97316" name="Valor Vencido" radius={[0, 4, 4, 0]} />
-                        </BarChart>
-                      </ResponsiveContainer>
+                    <div className="overflow-y-auto flex-1 max-h-[280px]">
+                      <div style={{ height: Math.max(250, vencidoPorPlano.length * 36) }}>
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart data={vencidoPorPlano} layout="vertical" margin={{ right: 60, left: 10 }}>
+                            <CartesianGrid strokeDasharray="3 3" />
+                            <XAxis 
+                              type="number" 
+                              fontSize={11} 
+                              tickFormatter={(v) => `R$ ${(v / 1000).toFixed(0)}k`}
+                              orientation="top"
+                            />
+                            <YAxis 
+                              dataKey="plano" 
+                              type="category" 
+                              fontSize={10} 
+                              width={120} 
+                              tick={{ fontSize: 10 }}
+                              tickFormatter={(value) => value.length > 18 ? `${value.substring(0, 18)}...` : value}
+                            />
+                            <Tooltip 
+                              formatter={(v) => [`R$ ${Number(v).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`, 'Valor Vencido']}
+                              labelFormatter={(label) => label}
+                            />
+                            <Bar dataKey="valor" fill="#f97316" name="Valor Vencido" radius={[0, 4, 4, 0]} />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
                     </div>
                   ) : (
                     <p className="text-center text-muted-foreground py-8">
