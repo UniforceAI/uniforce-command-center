@@ -35,12 +35,38 @@ export const PerformanceCharts = memo(({ chamados }: PerformanceChartsProps) => 
       let horas = 0;
       if (typeof tempo === 'number') {
         horas = tempo;
-      } else if (typeof tempo === 'string') {
-        if (tempo.includes("h")) {
-          horas = parseFloat(tempo.split("h")[0]);
-        } else if (tempo.includes("min")) {
-          horas = parseFloat(tempo.split("min")[0]) / 60;
-        } else {
+      } else if (typeof tempo === 'string' && tempo.trim() !== '') {
+        // Formato "Aberto há X.Xd" - extrair dias e converter para horas
+        const abertoMatch = tempo.match(/Aberto há ([\d.]+)d/i);
+        if (abertoMatch) {
+          const dias = parseFloat(abertoMatch[1]);
+          if (!isNaN(dias)) {
+            horas = dias * 24;
+          }
+        }
+        // Formato com "d" para dias
+        else if (tempo.includes("d")) {
+          const match = tempo.match(/([\d.]+)d/);
+          if (match) {
+            horas = parseFloat(match[1]) * 24;
+          }
+        }
+        // Formato com "h" para horas
+        else if (tempo.includes("h")) {
+          const match = tempo.match(/([\d.]+)h/);
+          if (match) {
+            horas = parseFloat(match[1]);
+          }
+        }
+        // Formato com "min" para minutos
+        else if (tempo.includes("min")) {
+          const match = tempo.match(/([\d.]+)min/);
+          if (match) {
+            horas = parseFloat(match[1]) / 60;
+          }
+        }
+        // Número puro
+        else {
           const parsed = parseFloat(tempo);
           if (!isNaN(parsed)) {
             horas = parsed;
@@ -48,19 +74,24 @@ export const PerformanceCharts = memo(({ chamados }: PerformanceChartsProps) => 
         }
       }
 
-      if (!responsaveisMap.has(responsavel)) {
-        responsaveisMap.set(responsavel, { total: 0, count: 0 });
+      // Só adicionar se tiver horas válidas
+      if (horas > 0 && !isNaN(horas)) {
+        if (!responsaveisMap.has(responsavel)) {
+          responsaveisMap.set(responsavel, { total: 0, count: 0 });
+        }
+        const current = responsaveisMap.get(responsavel)!;
+        current.total += horas;
+        current.count += 1;
       }
-      const current = responsaveisMap.get(responsavel)!;
-      current.total += horas;
-      current.count += 1;
     });
 
     const responsaveisData = Array.from(responsaveisMap.entries())
       .map(([nome, data]) => ({
         nome,
-        media: data.count > 0 ? (data.total / data.count).toFixed(1) : 0,
+        media: data.count > 0 ? parseFloat((data.total / data.count).toFixed(1)) : 0,
       }))
+      .filter(item => item.media > 0)
+      .sort((a, b) => b.media - a.media)
       .slice(0, 6);
 
     // Dados de classificação por setor
