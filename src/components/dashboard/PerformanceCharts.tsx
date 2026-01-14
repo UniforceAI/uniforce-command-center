@@ -122,12 +122,13 @@ export const PerformanceCharts = memo(({ chamados }: PerformanceChartsProps) => 
     return { motivosData, responsaveisDataBase, setorData };
   }, [chamados]);
 
-  // Ordenar responsáveis com base no estado
+  // Ordenar responsáveis com base no estado (filtra itens com media > 0)
   const responsaveisData = useMemo(() => {
-    const sorted = [...responsaveisDataBase].sort((a, b) => 
-      ordemCrescente ? a.media - b.media : b.media - a.media
-    );
-    return sorted; // Todos os responsáveis
+    return [...responsaveisDataBase]
+      .filter(r => r.media > 0)
+      .sort((a, b) => 
+        ordemCrescente ? a.media - b.media : b.media - a.media
+      );
   }, [responsaveisDataBase, ordemCrescente]);
 
   const coresMotivos = [
