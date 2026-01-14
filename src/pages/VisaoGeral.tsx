@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useEventos } from "@/hooks/useEventos";
+import { useChamados } from "@/hooks/useChamados";
 
 import { Evento } from "@/types/evento";
 import { AlertasMapa } from "@/components/map/AlertasMapa";
@@ -163,7 +164,7 @@ const VisaoGeral = () => {
   const { toast } = useToast();
   const [user, setUser] = useState<User | null>(null);
   const { eventos, isLoading, error } = useEventos();
-  
+  const { chamados, getChamadosPorCliente, isLoading: isLoadingChamados } = useChamados();
 
   // Filtros
   const [periodo, setPeriodo] = useState("365");
@@ -453,6 +454,49 @@ const VisaoGeral = () => {
     };
   }, [filteredEventos, periodo]);
 
+  // Chamados por cliente - memoizado para performance
+  const chamadosStats = useMemo(() => {
+    const diasPeriodo = periodo === "todos" ? undefined : parseInt(periodo);
+    const chamadosPorCliente = getChamadosPorCliente(diasPeriodo);
+    
+    // Total de chamados no período
+    let totalChamados = 0;
+    let totalReincidentes = 0;
+    const clientesComChamados = new Set<number>();
+    
+    chamadosPorCliente.forEach((dados, clienteId) => {
+      totalChamados += dados.chamados_periodo;
+      if (dados.reincidente) {
+        totalReincidentes++;
+      }
+      if (dados.chamados_periodo > 0) {
+        clientesComChamados.add(clienteId);
+      }
+    });
+
+    return {
+      totalChamados,
+      totalReincidentes,
+      clientesComChamados: clientesComChamados.size,
+      chamadosPorCliente,
+    };
+  }, [chamados, getChamadosPorCliente, periodo]);
+
+  // Criar mapa de cliente -> plano/cidade/bairro para usar em chamados
+  const clientePlanoMap = useMemo(() => {
+    const map = new Map<number, { plano: string; cidade: string | null; bairro: string | null }>();
+    eventos.forEach(e => {
+      if (!map.has(e.cliente_id)) {
+        map.set(e.cliente_id, {
+          plano: e.plano_nome || "Sem plano",
+          cidade: getCidadeNome(e.cliente_cidade),
+          bairro: e.cliente_bairro || null,
+        });
+      }
+    });
+    return map;
+  }, [eventos]);
+
   // Generic function to calculate cohort data for any dimension
   const calculateCohortData = (dimension: "plano" | "cidade" | "bairro") => {
     const stats: Record<string, { 
@@ -585,6 +629,26 @@ const VisaoGeral = () => {
       }
     });
 
+    // Integrar dados de chamados - usando o mapa de chamados por cliente
+    chamadosStats.chamadosPorCliente.forEach((dadosChamado, clienteId) => {
+      const infoCliente = clientePlanoMap.get(clienteId);
+      if (!infoCliente) return;
+      
+      let key: string | null = null;
+      switch (dimension) {
+        case "plano": key = infoCliente.plano; break;
+        case "cidade": key = infoCliente.cidade; break;
+        case "bairro": key = infoCliente.bairro; break;
+      }
+      
+      if (key && stats[key]) {
+        stats[key].chamados += dadosChamado.chamados_periodo;
+        if (dadosChamado.reincidente) {
+          stats[key].reincidentes++;
+        }
+      }
+    });
+
     // Calculate all percentages - CORRIGIDO: usar clientesVencidos (únicos)
     return Object.values(stats)
       .map(p => ({
@@ -604,7 +668,7 @@ const VisaoGeral = () => {
   // Cohort data based on selected dimension
   const cohortData = useMemo(() => {
     return calculateCohortData(cohortDimension);
-  }, [filteredEventos, cohortDimension]);
+  }, [filteredEventos, cohortDimension, chamadosStats, clientePlanoMap]);
 
   // Sorted cohort data based on selected tab - FILTRAR planos com mínimo de clientes
   const sortedCohortData = useMemo(() => {
@@ -669,7 +733,7 @@ const VisaoGeral = () => {
   // Top 5 Data - calculado com sua própria dimensão independente
   const top5Data = useMemo(() => {
     return calculateCohortData(top5Dimension);
-  }, [filteredEventos, top5Dimension]);
+  }, [filteredEventos, top5Dimension, chamadosStats, clientePlanoMap]);
 
   // Top 5 por métrica selecionada - FILTRAR mínimo de clientes
   const top5Risco = useMemo(() => {
@@ -1033,6 +1097,15 @@ const VisaoGeral = () => {
                   onClick: () => navigate("/financeiro"),
                 },
                 {
+                  id: "suporte",
+                  label: "Chamados",
+                  count: chamadosStats.totalChamados,
+                  unit: "chamados",
+                  severity: chamadosStats.totalReincidentes > 20 ? "high" : chamadosStats.totalChamados > 100 ? "medium" : "low",
+                  icon: <RefreshCcw className="h-3 w-3 mr-1" />,
+                  onClick: () => navigate("/chamados"),
+                },
+                {
                   id: "alerta_tecnico",
                   label: "Alertas Técnicos",
                   count: filaRisco.filter(r => r.driver.includes("técnico")).length,
@@ -1077,12 +1150,12 @@ const VisaoGeral = () => {
                 variant="warning"
               />
               <RiskKPICard
-                title="Chamados (7d)"
-                value={0}
+                title={`Chamados (${periodo === "todos" ? "total" : periodo + "d"})`}
+                value={chamadosStats.totalChamados.toLocaleString()}
                 icon={RefreshCcw}
-                variant="default"
-                status="unavailable"
-                tooltip="Integração de chamados em desenvolvimento"
+                variant={chamadosStats.totalChamados > 100 ? "warning" : "default"}
+                subtitle={`${chamadosStats.clientesComChamados} clientes`}
+                tooltip={`${chamadosStats.totalReincidentes} reincidentes`}
                 source="tabela chamados"
               />
               <RiskKPICard
