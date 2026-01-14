@@ -685,7 +685,7 @@ const VisaoGeral = () => {
       churn: "churnPct",
       contratos: "contratosPct", 
       financeiro: "financeiroPct",
-      suporte: "suportePct",
+      suporte: "chamados", // Ordenar por total absoluto de chamados
       rede: "redePct",
       nps: "npsPct",
       ltv: "ltvMedio",
@@ -707,7 +707,7 @@ const VisaoGeral = () => {
       churn: { dataKey: "churnPct", label: `% Churn por ${dimensionLabel}`, format: (v) => `${v.toFixed(1)}%` },
       contratos: { dataKey: "contratosPct", label: `% Bloqueados por ${dimensionLabel}`, format: (v) => `${v.toFixed(1)}%` },
       financeiro: { dataKey: "financeiroPct", label: `% Vencido por ${dimensionLabel}`, format: (v) => `${v.toFixed(1)}%` },
-      suporte: { dataKey: "suportePct", label: `Chamados por ${dimensionLabel}`, format: (v) => `${v.toFixed(1)}%` },
+      suporte: { dataKey: "chamados", label: `Total Chamados por ${dimensionLabel}`, format: (v) => `${v}` },
       rede: { dataKey: "redePct", label: `% Rede por ${dimensionLabel}`, format: (v) => `${v.toFixed(1)}%` },
       nps: { dataKey: "npsPct", label: `% Detratores por ${dimensionLabel}`, format: (v) => `${v.toFixed(1)}%` },
       ltv: { dataKey: "ltvMedio", label: `LTV Médio por ${dimensionLabel}`, format: (v) => `R$ ${(v/1000).toFixed(1)}k` },
