@@ -160,16 +160,50 @@ export const PerformanceCharts = memo(({ chamados }: PerformanceChartsProps) => 
       {/* Tempo Médio por Responsável */}
       <Card>
         <CardHeader>
-          <CardTitle>Tempo Médio de Atendimento (horas)</CardTitle>
+          <CardTitle>Tempo Médio de Atendimento</CardTitle>
         </CardHeader>
         <CardContent>
           <ResponsiveContainer width="100%" height={300}>
             <BarChart data={responsaveisData} layout="vertical">
               <CartesianGrid strokeDasharray="3 3" />
-              <XAxis type="number" />
+              <XAxis 
+                type="number" 
+                tickFormatter={(value) => {
+                  if (value >= 24) {
+                    return `${(value / 24).toFixed(1)}d`;
+                  }
+                  return `${value.toFixed(1)}h`;
+                }}
+              />
               <YAxis dataKey="nome" type="category" width={100} />
-              <Tooltip />
-              <Bar dataKey="media" fill="hsl(var(--primary))" radius={[0, 8, 8, 0]} />
+              <Tooltip 
+                formatter={(value: number) => {
+                  if (value >= 24) {
+                    const dias = (value / 24).toFixed(1);
+                    return [`${dias} dias`, 'Tempo Médio'];
+                  }
+                  if (value < 1) {
+                    const min = Math.round(value * 60);
+                    return [`${min} min`, 'Tempo Médio'];
+                  }
+                  return [`${value.toFixed(1)}h`, 'Tempo Médio'];
+                }}
+              />
+              <Bar 
+                dataKey="media" 
+                fill="hsl(var(--primary))" 
+                radius={[0, 8, 8, 0]}
+                label={({ x, y, width, value }) => (
+                  <text 
+                    x={x + width + 5} 
+                    y={y + 12} 
+                    fill="hsl(var(--foreground))" 
+                    fontSize={12}
+                  >
+                    {value >= 24 ? `${(value / 24).toFixed(1)}d` : value < 1 ? `${Math.round(value * 60)}min` : `${value.toFixed(1)}h`}
+                  </text>
+                )}
+              />
             </BarChart>
           </ResponsiveContainer>
         </CardContent>
