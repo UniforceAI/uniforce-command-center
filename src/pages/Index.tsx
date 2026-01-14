@@ -117,29 +117,39 @@ const Index = () => {
         console.log(`✅ Total de registros buscados: ${allData.length}`);
 
         // Transformar dados do banco para o formato esperado
-        const chamadosTransformados: Chamado[] = allData.map((item: any) => ({
-          "ID Cliente": item.id_cliente || "",
-          "Qtd. Chamados": item.qtd_chamados ?? 0,
-          Protocolo: item.protocolo || "",
-          "Data de Abertura": item.data_abertura || "",
-          "Última Atualização": item.ultima_atualizacao || "",
-          Responsável: item.responsavel || "",
-          Setor: item.setor || "",
-          Categoria: item.categoria || "",
-          "Motivo do Contato": item.motivo_contato || "",
-          Origem: item.origem || "",
-          Solicitante: item.solicitante || item.id_cliente || "", // Fallback para id_cliente se não houver nome
-          Urgência: item.urgencia || "",
-          Status: item.status || "",
-          "Dias ultimo chamado": item.dias_desde_ultimo ?? null,
-          "Tempo de Atendimento": item.tempo_atendimento || "",
-          Classificação: item.classificacao || "",
-          Insight: item.insight || "",
-          "Chamados Anteriores": item.chamados_anteriores || "",
-          _id: item.id, // ID único do banco
-          isp_id: item.isp_id || null,
-          instancia_isp: item.instancia_isp || null,
-        }));
+        // Se motivo_contato é "Não informado" ou vazio, usar o ID da categoria
+        const chamadosTransformados: Chamado[] = allData.map((item: any) => {
+          const motivoOriginal = item.motivo_contato || "";
+          const categoria = item.categoria || "";
+          // Se motivo está vazio ou é "Não informado", mostrar o ID da categoria
+          const motivoFinal = (!motivoOriginal || motivoOriginal === "Não informado" || motivoOriginal.trim() === "") 
+            ? (categoria ? `ID: ${categoria}` : "—") 
+            : motivoOriginal;
+          
+          return {
+            "ID Cliente": item.id_cliente || "",
+            "Qtd. Chamados": item.qtd_chamados ?? 0,
+            Protocolo: item.protocolo || "",
+            "Data de Abertura": item.data_abertura || "",
+            "Última Atualização": item.ultima_atualizacao || "",
+            Responsável: item.responsavel || "",
+            Setor: item.setor || "",
+            Categoria: categoria,
+            "Motivo do Contato": motivoFinal,
+            Origem: item.origem || "",
+            Solicitante: item.solicitante || item.id_cliente || "", // Fallback para id_cliente se não houver nome
+            Urgência: item.urgencia || "",
+            Status: item.status || "",
+            "Dias ultimo chamado": item.dias_desde_ultimo ?? null,
+            "Tempo de Atendimento": item.tempo_atendimento || "",
+            Classificação: item.classificacao || "",
+            Insight: item.insight || "",
+            "Chamados Anteriores": item.chamados_anteriores || "",
+            _id: item.id, // ID único do banco
+            isp_id: item.isp_id || null,
+            instancia_isp: item.instancia_isp || null,
+          };
+        });
 
         console.log(`✅ ${chamadosTransformados.length} chamados transformados`);
         
@@ -390,9 +400,11 @@ const Index = () => {
   // Agrupar e processar clientes com useMemo
   const clientesCriticos = useMemo(() => {
     // Agrupar TODOS os chamados por ID Cliente (agora TEXT)
+    // IMPORTANTE: Usar Set de protocolos para evitar duplicatas
     const todosChamadosPorCliente = chamados.reduce(
       (acc, chamado) => {
         const idCliente = String(chamado["ID Cliente"] || "").trim();
+        const protocolo = chamado.Protocolo || "";
 
         if (!idCliente) {
           console.warn("ID Cliente vazio:", chamado);
@@ -403,9 +415,17 @@ const Index = () => {
           acc[idCliente] = {
             principal: chamado,
             todos: [chamado],
+            protocolosUnicos: new Set([protocolo]),
           };
         } else {
-          acc[idCliente].todos.push(chamado);
+          // Só adicionar se o protocolo for único (evitar duplicatas)
+          if (protocolo && !acc[idCliente].protocolosUnicos.has(protocolo)) {
+            acc[idCliente].todos.push(chamado);
+            acc[idCliente].protocolosUnicos.add(protocolo);
+          } else if (!protocolo) {
+            // Se não tem protocolo, adicionar mesmo assim (pode ser registro válido)
+            acc[idCliente].todos.push(chamado);
+          }
 
           const dataAtual = parseData(acc[idCliente].principal["Data de Abertura"] || "");
           const dataNovo = parseData(chamado["Data de Abertura"] || "");
@@ -417,12 +437,13 @@ const Index = () => {
 
         return acc;
       },
-      {} as Record<string, { principal: Chamado; todos: Chamado[] }>,
+      {} as Record<string, { principal: Chamado; todos: Chamado[]; protocolosUnicos: Set<string> }>,
     );
 
-    // Corrigir a quantidade real de chamados
-    Object.entries(todosChamadosPorCliente).forEach(([idCliente, { principal, todos }]) => {
-      const qtdReal = todos.length;
+    // Corrigir a quantidade real de chamados (baseado em protocolos únicos)
+    Object.entries(todosChamadosPorCliente).forEach(([idCliente, { principal, todos, protocolosUnicos }]) => {
+      // Usar quantidade de protocolos únicos ou todos.length se não houver protocolos
+      const qtdReal = protocolosUnicos.size > 0 ? protocolosUnicos.size : todos.length;
       principal["Qtd. Chamados"] = qtdReal;
     });
 
