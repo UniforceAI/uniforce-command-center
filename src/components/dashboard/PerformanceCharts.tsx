@@ -127,7 +127,7 @@ export const PerformanceCharts = memo(({ chamados }: PerformanceChartsProps) => 
     const sorted = [...responsaveisDataBase].sort((a, b) => 
       ordemCrescente ? a.media - b.media : b.media - a.media
     );
-    return sorted.slice(0, 10); // Top 10
+    return sorted; // Todos os responsáveis
   }, [responsaveisDataBase, ordemCrescente]);
 
   const coresMotivos = [
@@ -182,40 +182,42 @@ export const PerformanceCharts = memo(({ chamados }: PerformanceChartsProps) => 
             {ordemCrescente ? "Mais rápidos" : "Mais lentos"}
           </Button>
         </CardHeader>
-        <CardContent>
-          <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={responsaveisData} layout="vertical" margin={{ right: 50 }}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis 
-                type="number" 
-                tickFormatter={(value) => {
-                  if (value >= 24) {
-                    return `${(value / 24).toFixed(1)}d`;
-                  }
-                  return `${value.toFixed(1)}h`;
-                }}
-              />
-              <YAxis dataKey="nome" type="category" width={80} tick={{ fontSize: 12 }} />
-              <Tooltip 
-                formatter={(value: number) => {
-                  if (value >= 24) {
-                    const dias = (value / 24).toFixed(1);
-                    return [`${dias} dias`, 'Tempo Médio'];
-                  }
-                  if (value < 1) {
-                    const min = Math.round(value * 60);
-                    return [`${min} min`, 'Tempo Médio'];
-                  }
-                  return [`${value.toFixed(1)}h`, 'Tempo Médio'];
-                }}
-              />
-              <Bar 
-                dataKey="media" 
-                fill="hsl(var(--primary))" 
-                radius={[0, 4, 4, 0]}
-              />
-            </BarChart>
-          </ResponsiveContainer>
+        <CardContent className="overflow-y-auto max-h-[320px]">
+          <div style={{ height: Math.max(300, responsaveisData.length * 32) }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={responsaveisData} layout="vertical" margin={{ right: 50 }}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis 
+                  type="number" 
+                  tickFormatter={(value) => {
+                    if (value >= 24) {
+                      return `${(value / 24).toFixed(1)}d`;
+                    }
+                    return `${value.toFixed(1)}h`;
+                  }}
+                />
+                <YAxis dataKey="nome" type="category" width={80} tick={{ fontSize: 11 }} />
+                <Tooltip 
+                  formatter={(value: number) => {
+                    if (value >= 24) {
+                      const dias = (value / 24).toFixed(1);
+                      return [`${dias} dias`, 'Tempo Médio'];
+                    }
+                    if (value < 1) {
+                      const min = Math.round(value * 60);
+                      return [`${min} min`, 'Tempo Médio'];
+                    }
+                    return [`${value.toFixed(1)}h`, 'Tempo Médio'];
+                  }}
+                />
+                <Bar 
+                  dataKey="media" 
+                  fill="hsl(var(--primary))" 
+                  radius={[0, 4, 4, 0]}
+                />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
         </CardContent>
       </Card>
 
