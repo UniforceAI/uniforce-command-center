@@ -432,20 +432,19 @@ const Index = () => {
     // Filtrar por período baseado no chamado mais recente
     if (periodo !== "todos") {
       const diasAtras = parseInt(periodo);
-      const agora = new Date();
-      // SEMPRE zerar horas para comparação correta
-      const hoje = new Date(agora.getFullYear(), agora.getMonth(), agora.getDate(), 0, 0, 0);
+      // Usar a data mais recente dos dados como referência
+      const hoje = new Date(dataMaisRecente.getFullYear(), dataMaisRecente.getMonth(), dataMaisRecente.getDate(), 0, 0, 0);
       let dataLimite: Date;
       
       if (diasAtras === 0) {
-        // Hoje: desde 00:00 de hoje
+        // Hoje: desde 00:00 do dia mais recente dos dados
         dataLimite = hoje;
       } else if (diasAtras === 1) {
-        // Ontem: desde 00:00 de ontem
+        // Ontem: desde 00:00 do dia anterior ao mais recente
         dataLimite = new Date(hoje);
         dataLimite.setDate(dataLimite.getDate() - 1);
       } else {
-        // X dias atrás - IMPORTANTE: zerar horas
+        // X dias atrás da data mais recente
         dataLimite = new Date(hoje);
         dataLimite.setDate(dataLimite.getDate() - diasAtras);
       }
@@ -506,7 +505,7 @@ const Index = () => {
         };
       })
       .sort((a, b) => b["Qtd. Chamados"] - a["Qtd. Chamados"]);
-  }, [chamados, periodo, status, urgencia, setor]);
+  }, [chamados, periodo, status, urgencia, setor, dataMaisRecente]);
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
