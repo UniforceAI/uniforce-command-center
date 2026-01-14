@@ -172,6 +172,37 @@ const Index = () => {
 
   }, [user, toast]);
 
+  // Encontrar a data mais recente dos dados
+  const dataMaisRecente = useMemo(() => {
+    let maxDate: Date | null = null;
+    
+    chamados.forEach((c) => {
+      const dataString = c["Data de Abertura"];
+      if (!dataString || dataString.trim() === "") return;
+      
+      try {
+        let dataAbertura: Date;
+        if (dataString.includes("-")) {
+          const [datePart] = dataString.split(" ");
+          const [ano, mes, dia] = datePart.split("-");
+          dataAbertura = new Date(parseInt(ano), parseInt(mes) - 1, parseInt(dia), 0, 0, 0);
+        } else {
+          const [datePart] = dataString.split(" ");
+          const [dia, mes, ano] = datePart.split("/");
+          dataAbertura = new Date(parseInt(ano), parseInt(mes) - 1, parseInt(dia), 0, 0, 0);
+        }
+        
+        if (!isNaN(dataAbertura.getTime()) && (!maxDate || dataAbertura > maxDate)) {
+          maxDate = dataAbertura;
+        }
+      } catch (e) {
+        // ignorar erros
+      }
+    });
+    
+    return maxDate || new Date();
+  }, [chamados]);
+
   // Aplicar filtros com useMemo
   const filteredChamados = useMemo(() => {
     let filtered = [...chamados];
@@ -179,25 +210,24 @@ const Index = () => {
     // Filtro por período baseado na data de abertura
     if (periodo !== "todos") {
       const diasAtras = parseInt(periodo);
-      const agora = new Date();
-      // SEMPRE zerar horas para comparação correta de datas
-      const hoje = new Date(agora.getFullYear(), agora.getMonth(), agora.getDate(), 0, 0, 0);
+      // Usar a data mais recente dos dados como referência, não a data do sistema
+      const hoje = new Date(dataMaisRecente.getFullYear(), dataMaisRecente.getMonth(), dataMaisRecente.getDate(), 0, 0, 0);
       let dataLimite: Date;
       
       if (diasAtras === 0) {
-        // Hoje: desde 00:00 de hoje
+        // Hoje: desde 00:00 do dia mais recente dos dados
         dataLimite = hoje;
       } else if (diasAtras === 1) {
-        // Ontem: desde 00:00 de ontem
+        // Ontem: desde 00:00 do dia anterior ao mais recente
         dataLimite = new Date(hoje);
         dataLimite.setDate(dataLimite.getDate() - 1);
       } else {
-        // X dias atrás - IMPORTANTE: zerar horas
+        // X dias atrás da data mais recente
         dataLimite = new Date(hoje);
         dataLimite.setDate(dataLimite.getDate() - diasAtras);
       }
 
-      console.log(`🔍 Filtro período: ${periodo} dias, dataLimite: ${dataLimite.toISOString()}, hoje: ${hoje.toISOString()}`);
+      console.log(`🔍 Filtro período: ${periodo} dias, dataLimite: ${dataLimite.toISOString()}, dataMaisRecente: ${hoje.toISOString()}`);
 
       filtered = filtered.filter((c) => {
         try {
@@ -225,14 +255,12 @@ const Index = () => {
           
           // Verificar se a data é válida
           if (isNaN(dataAbertura.getTime())) {
-            console.warn("Data inválida:", dataString);
             return false;
           }
           
           return dataAbertura >= dataLimite;
         } catch (e) {
-          console.error("Erro ao parsear data:", c["Data de Abertura"], e);
-          return false; // Excluir em caso de erro
+          return false;
         }
       });
       
@@ -255,7 +283,7 @@ const Index = () => {
     }
 
     return filtered;
-  }, [chamados, status, urgencia, setor, periodo]);
+  }, [chamados, status, urgencia, setor, periodo, dataMaisRecente]);
 
   // Calcular KPIs com useMemo
   const kpis = useMemo(() => {
