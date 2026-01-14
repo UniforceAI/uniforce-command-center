@@ -289,7 +289,18 @@ export const ClientesTable = memo(({ chamados, onClienteClick }: ClientesTablePr
         const dataCompleta = (info.getValue() as string) || "";
         if (!dataCompleta) return <span className="text-sm text-muted-foreground">—</span>;
         const [datePart] = dataCompleta.split(" ");
-        return <span className="text-sm text-muted-foreground">{datePart}</span>;
+        // Converter para DD/MM/AA
+        let formatted = datePart;
+        if (datePart.includes("-")) {
+          // Formato YYYY-MM-DD
+          const [ano, mes, dia] = datePart.split("-");
+          formatted = `${dia}/${mes}/${ano?.slice(-2) || ""}`;
+        } else if (datePart.includes("/") && datePart.length === 10) {
+          // Formato DD/MM/YYYY - converter para DD/MM/AA
+          const [dia, mes, ano] = datePart.split("/");
+          formatted = `${dia}/${mes}/${ano?.slice(-2) || ""}`;
+        }
+        return <span className="text-sm text-muted-foreground">{formatted}</span>;
       },
       size: 120,
       sortingFn: (rowA, rowB) => {
