@@ -197,9 +197,17 @@ const Index = () => {
         dataLimite.setDate(dataLimite.getDate() - diasAtras);
       }
 
+      console.log(`🔍 Filtro período: ${periodo} dias, dataLimite: ${dataLimite.toISOString()}, hoje: ${hoje.toISOString()}`);
+
       filtered = filtered.filter((c) => {
         try {
           const dataString = c["Data de Abertura"];
+          
+          // Se não tem data, excluir do filtro por data
+          if (!dataString || dataString.trim() === "") {
+            return false;
+          }
+          
           let dataAbertura: Date;
           
           // Detectar formato da data: YYYY-MM-DD ou DD/MM/YYYY
@@ -215,14 +223,21 @@ const Index = () => {
             dataAbertura = new Date(parseInt(ano), parseInt(mes) - 1, parseInt(dia), 0, 0, 0);
           }
           
+          // Verificar se a data é válida
+          if (isNaN(dataAbertura.getTime())) {
+            console.warn("Data inválida:", dataString);
+            return false;
+          }
+          
           return dataAbertura >= dataLimite;
         } catch (e) {
           console.error("Erro ao parsear data:", c["Data de Abertura"], e);
-          return true; // Incluir em caso de erro
+          return false; // Excluir em caso de erro
         }
       });
+      
+      console.log(`📊 Após filtro de período: ${filtered.length} de ${chamados.length} chamados`);
     }
-
     if (status !== "todos") {
       filtered = filtered.filter((c) => c.Status === status);
     }
