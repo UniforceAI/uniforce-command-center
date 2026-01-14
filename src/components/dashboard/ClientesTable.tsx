@@ -35,7 +35,7 @@ interface ClientesTableProps {
 }
 
 // Funções utilitárias fora do componente
-const formatTempo = (tempo: string | number) => {
+const formatTempo = (tempo: string | number | null) => {
   if (!tempo && tempo !== 0) {
     return "—";
   }
@@ -53,22 +53,46 @@ const formatTempo = (tempo: string | number) => {
   } 
   // Se for string, verificar o formato
   else if (typeof tempo === "string") {
+    // Formato "Aberto há X.Xd" - extrair os dias
+    const abertoMatch = tempo.match(/Aberto há ([\d.]+)d/i);
+    if (abertoMatch) {
+      const dias = parseFloat(abertoMatch[1]);
+      if (!isNaN(dias)) {
+        return `${dias.toFixed(1)}d`;
+      }
+    }
+    
     // Se for um número em formato string (ex: "9.3", "0", "1.5")
     const numeroFloat = parseFloat(tempo);
     if (!isNaN(numeroFloat) && !tempo.includes("d") && !tempo.includes("h") && !tempo.includes("min")) {
       totalHoras = numeroFloat;
     }
-    // Formatos com sufixos
+    // Formatos com sufixos simples
     else if (tempo.includes("d")) {
-      const dias = parseFloat(tempo.split("d")[0]);
-      totalHoras = dias * 24;
+      // Extrair número antes de "d"
+      const match = tempo.match(/([\d.]+)d/);
+      if (match) {
+        totalHoras = parseFloat(match[1]) * 24;
+      }
     } else if (tempo.includes("h")) {
-      totalHoras = parseFloat(tempo.split("h")[0]);
+      const match = tempo.match(/([\d.]+)h/);
+      if (match) {
+        totalHoras = parseFloat(match[1]);
+      }
     } else if (tempo.includes("min")) {
-      totalHoras = parseFloat(tempo.split("min")[0]) / 60;
+      const match = tempo.match(/([\d.]+)min/);
+      if (match) {
+        totalHoras = parseFloat(match[1]) / 60;
+      }
     } else {
+      // Formato não reconhecido, retornar como está
       return tempo;
     }
+  }
+  
+  // Verificar se conseguimos um número válido
+  if (isNaN(totalHoras)) {
+    return "—";
   }
   
   // Formatação da saída
