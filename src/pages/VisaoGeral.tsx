@@ -134,6 +134,7 @@ const MapTabs = ({ activeTab, onTabChange, availableTabs }: MapTabsProps) => {
   const allTabs = [
     { id: "vencido", label: "Vencido" },
     { id: "sinal", label: "Sinal" },
+    { id: "chamados", label: "Chamados" },
   ];
 
   const tabs = allTabs.filter(t => availableTabs.includes(t.id));
@@ -862,8 +863,12 @@ const VisaoGeral = () => {
   };
 
   // Map data - COM FALLBACK para bairro quando não tem geo_lat/geo_lng
+  // Agora também inclui dados de chamados
   const mapData = useMemo(() => {
     const clientesMap = new Map<number, any>();
+    
+    // Obter dados de chamados por cliente
+    const chamadosPorCliente = getChamadosPorCliente(parseInt(periodo) || undefined);
     
     filteredEventos.forEach(e => {
       // Determinar coordenadas: usar geo_lat/geo_lng se existir, senão usar bairro
@@ -884,6 +889,10 @@ const VisaoGeral = () => {
       // Só incluir se tiver coordenadas válidas
       if (!lat || !lng || isNaN(lat) || isNaN(lng)) return;
       
+      // Obter quantidade de chamados do cliente
+      const chamadosCliente = chamadosPorCliente.get(e.cliente_id);
+      const qtdChamados = chamadosCliente?.total_chamados || 0;
+      
       const existing = clientesMap.get(e.cliente_id);
       // Keep the record with more risk data, or add if not exists
       if (!existing || (e.dias_atraso && e.dias_atraso > (existing.dias_atraso || 0))) {
@@ -899,15 +908,33 @@ const VisaoGeral = () => {
           vencido: e.vencido,
           alerta_tipo: e.alerta_tipo,
           downtime_min_24h: e.downtime_min_24h,
+          qtd_chamados: qtdChamados,
         });
       }
     });
     return Array.from(clientesMap.values());
-  }, [filteredEventos]);
+  }, [filteredEventos, getChamadosPorCliente, periodo]);
 
-  // Calculate which map tabs have data - only vencido and sinal (churn removed)
+  // Estatísticas de chamados para o mapa
+  const chamadosMapStats = useMemo(() => {
+    const clientesComChamados = mapData.filter(c => c.qtd_chamados && c.qtd_chamados > 0);
+    const totalChamados = clientesComChamados.reduce((sum, c) => sum + (c.qtd_chamados || 0), 0);
+    const clientesCriticos = clientesComChamados.filter(c => c.qtd_chamados >= 5).length;
+    const clientesAtencao = clientesComChamados.filter(c => c.qtd_chamados >= 2 && c.qtd_chamados < 5).length;
+    const clientesNormal = clientesComChamados.filter(c => c.qtd_chamados === 1).length;
+    
+    return {
+      totalClientes: clientesComChamados.length,
+      totalChamados,
+      clientesCriticos,
+      clientesAtencao,
+      clientesNormal,
+    };
+  }, [mapData]);
+
+  // Calculate which map tabs have data
   const availableMapTabs = useMemo(() => {
-    return ["vencido", "sinal"];
+    return ["vencido", "sinal", "chamados"];
   }, []);
 
   // Estatísticas de clientes vencidos para debug
@@ -1470,6 +1497,13 @@ const VisaoGeral = () => {
                           <span className="text-muted-foreground ml-1">({vencidosStats.comGeoExata} geo + {vencidosStats.comBairroFallback} bairro)</span> | 
                           <span className="font-medium text-orange-500 ml-1">{vencidosStats.semCoordenadas}</span> sem localização
                         </>
+                      ) : mapTab === "chamados" ? (
+                        <>
+                          <span className="font-medium text-foreground">{chamadosMapStats.totalClientes}</span> clientes com chamados | 
+                          <span className="font-medium text-foreground ml-1">{chamadosMapStats.totalChamados}</span> total | 
+                          <span className="font-medium text-red-500 ml-1">{chamadosMapStats.clientesCriticos}</span> críticos (5+) | 
+                          <span className="font-medium text-orange-500 ml-1">{chamadosMapStats.clientesAtencao}</span> atenção (2-4)
+                        </>
                       ) : (
                         <>{mapData.length} clientes em {new Set(mapData.map(e => e.cliente_cidade)).size} cidades</>
                       )}
@@ -1483,7 +1517,7 @@ const VisaoGeral = () => {
               <CardContent className="p-0">
                 <AlertasMapa 
                   data={mapData} 
-                  activeFilter={mapTab as "churn" | "vencido" | "sinal"} 
+                  activeFilter={mapTab as "churn" | "vencido" | "sinal" | "chamados"} 
                 />
               </CardContent>
             </Card>
