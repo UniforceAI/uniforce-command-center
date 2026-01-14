@@ -24,7 +24,7 @@ export const PerformanceCharts = memo(({ chamados }: PerformanceChartsProps) => 
     const motivosData = Array.from(motivosMap.entries())
       .map(([name, value]) => ({ name, value }))
       .sort((a, b) => b.value - a.value)
-      .slice(0, 5);
+      .slice(0, 10);
 
     // Dados para tempo de atendimento por responsável
     const responsaveisMap = new Map<string, { total: number; count: number }>();
@@ -133,10 +133,15 @@ export const PerformanceCharts = memo(({ chamados }: PerformanceChartsProps) => 
 
   const coresMotivos = [
     "hsl(var(--destructive))",
+    "hsl(142, 76%, 36%)",
     "hsl(var(--warning))",
-    "hsl(var(--success))",
     "hsl(var(--primary))",
+    "hsl(217, 91%, 60%)",
+    "hsl(280, 65%, 60%)",
     "hsl(var(--secondary))",
+    "hsl(25, 95%, 53%)",
+    "hsl(173, 58%, 39%)",
+    "hsl(47, 96%, 53%)",
   ];
 
   return (
@@ -153,11 +158,15 @@ export const PerformanceCharts = memo(({ chamados }: PerformanceChartsProps) => 
                 data={motivosData}
                 cx="50%"
                 cy="50%"
-                innerRadius={60}
-                outerRadius={100}
-                paddingAngle={5}
+                innerRadius={50}
+                outerRadius={90}
+                paddingAngle={3}
                 dataKey="value"
-                label={({ name, value }) => `${name}: ${value}`}
+                label={({ name, value, percent }) => {
+                  const shortName = name.length > 25 ? name.substring(0, 22) + "..." : name;
+                  return percent > 0.05 ? `${shortName}: ${value}` : "";
+                }}
+                labelLine={{ strokeWidth: 1 }}
               >
                 {motivosData.map((entry, index) => (
                   <Cell key={`cell-${index}`} fill={coresMotivos[index % coresMotivos.length]} />
