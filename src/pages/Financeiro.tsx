@@ -21,7 +21,8 @@ import {
   Calendar,
   Percent,
   Clock,
-  Users
+  Users,
+  ArrowUpDown
 } from "lucide-react";
 import {
   BarChart,
@@ -46,6 +47,7 @@ const Financeiro = () => {
   const [periodo, setPeriodo] = useState("30");
   const [plano, setPlano] = useState("todos");
   const [metodo, setMetodo] = useState("todos");
+  const [ordemPlanoDecrescente, setOrdemPlanoDecrescente] = useState(true);
 
   // Verificar autenticação
   useEffect(() => {
@@ -216,8 +218,8 @@ const Financeiro = () => {
     return faixas.filter(f => f.quantidade > 0);
   }, [filteredEventos]);
 
-  // Vencido por plano
-  const vencidoPorPlano = useMemo(() => {
+  // Vencido por plano - base sem limite
+  const vencidoPorPlanoBase = useMemo(() => {
     const porPlano: Record<string, { quantidade: number; valor: number }> = {};
 
     filteredEventos
@@ -232,10 +234,15 @@ const Financeiro = () => {
       });
 
     return Object.entries(porPlano)
-      .map(([plano, data]) => ({ plano, ...data }))
-      .sort((a, b) => b.valor - a.valor)
-      .slice(0, 8);
+      .map(([plano, data]) => ({ plano, ...data }));
   }, [filteredEventos]);
+
+  // Ordenar vencido por plano com base no estado
+  const vencidoPorPlano = useMemo(() => {
+    return [...vencidoPorPlanoBase].sort((a, b) => 
+      ordemPlanoDecrescente ? b.valor - a.valor : a.valor - b.valor
+    );
+  }, [vencidoPorPlanoBase, ordemPlanoDecrescente]);
 
   // Por método de cobrança
   const porMetodo = useMemo(() => {
@@ -488,20 +495,37 @@ const Financeiro = () => {
 
               {/* Vencido por Plano */}
               <Card>
-                <CardHeader>
-                  <CardTitle>📊 Vencido por Plano (Top 8)</CardTitle>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-base font-medium">📊 Vencido por Plano</CardTitle>
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => setOrdemPlanoDecrescente(!ordemPlanoDecrescente)}
+                    className="h-8 gap-1 text-xs"
+                  >
+                    <ArrowUpDown className="h-3 w-3" />
+                    {ordemPlanoDecrescente ? "Maior valor" : "Menor valor"}
+                  </Button>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="overflow-y-auto max-h-[320px]">
                   {vencidoPorPlano.length > 0 ? (
-                    <ResponsiveContainer width="100%" height={250}>
-                      <BarChart data={vencidoPorPlano} layout="vertical">
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis type="number" fontSize={12} tickFormatter={(v) => `R$ ${v.toLocaleString()}`} />
-                        <YAxis dataKey="plano" type="category" fontSize={10} width={150} />
-                        <Tooltip formatter={(v) => `R$ ${Number(v).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`} />
-                        <Bar dataKey="valor" fill="#f97316" name="Valor Vencido" />
-                      </BarChart>
-                    </ResponsiveContainer>
+                    <div style={{ height: Math.max(250, vencidoPorPlano.length * 32) }}>
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={vencidoPorPlano} layout="vertical" margin={{ right: 50 }}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis 
+                            type="number" 
+                            fontSize={12} 
+                            tickFormatter={(v) => `R$ ${(v / 1000).toFixed(0)}k`} 
+                          />
+                          <YAxis dataKey="plano" type="category" fontSize={10} width={150} tick={{ fontSize: 10 }} />
+                          <Tooltip 
+                            formatter={(v) => [`R$ ${Number(v).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`, 'Valor Vencido']}
+                          />
+                          <Bar dataKey="valor" fill="#f97316" name="Valor Vencido" radius={[0, 4, 4, 0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
                   ) : (
                     <p className="text-center text-muted-foreground py-8">
                       Nenhuma cobrança vencida
