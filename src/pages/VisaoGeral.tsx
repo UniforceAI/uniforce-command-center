@@ -474,6 +474,15 @@ const VisaoGeral = () => {
       }
     });
 
+    console.log("🔍 DEBUG CHAMADOS:", {
+      totalChamadosRaw: chamados.length,
+      totalChamadosPeriodo: totalChamados,
+      totalReincidentes,
+      clientesComChamados: clientesComChamados.size,
+      diasPeriodo,
+      amostra: Array.from(chamadosPorCliente.entries()).slice(0, 3),
+    });
+
     return {
       totalChamados,
       totalReincidentes,

@@ -6,7 +6,7 @@ import { useToast } from "@/hooks/use-toast";
 const CHAMADOS_ISP_ID = "d-kiros";
 
 export interface ChamadoData {
-  id_cliente: number;
+  id_cliente: string | number; // Pode vir como string do banco
   qtd_chamados: number;
   protocolo: string;
   data_abertura: string;
@@ -85,21 +85,30 @@ export function useChamados() {
       : null;
 
     chamados.forEach(c => {
-      // Parse data DD/MM/YYYY HH:MM:SS
+      // Converter id_cliente para número (pode vir como string do banco)
+      const clienteId = typeof c.id_cliente === 'string' ? parseInt(c.id_cliente, 10) : c.id_cliente;
+      if (isNaN(clienteId)) return; // Skip if invalid
+
+      // Parse data DD/MM/YYYY HH:MM:SS ou YYYY-MM-DD HH:MM:SS
       let dataAbertura: Date | null = null;
       try {
-        const [datePart] = c.data_abertura.split(" ");
-        const [dia, mes, ano] = datePart.split("/");
-        dataAbertura = new Date(parseInt(ano), parseInt(mes) - 1, parseInt(dia));
+        if (c.data_abertura.includes("/")) {
+          const [datePart] = c.data_abertura.split(" ");
+          const [dia, mes, ano] = datePart.split("/");
+          dataAbertura = new Date(parseInt(ano), parseInt(mes) - 1, parseInt(dia));
+        } else {
+          // Formato YYYY-MM-DD HH:MM:SS
+          dataAbertura = new Date(c.data_abertura);
+        }
       } catch (e) {
         // Keep null if parse fails
       }
 
       const dentroPeriodo = !dataLimite || (dataAbertura && dataAbertura >= dataLimite);
 
-      if (!clientesMap.has(c.id_cliente)) {
-        clientesMap.set(c.id_cliente, {
-          cliente_id: c.id_cliente,
+      if (!clientesMap.has(clienteId)) {
+        clientesMap.set(clienteId, {
+          cliente_id: clienteId,
           total_chamados: 0,
           chamados_periodo: 0,
           reincidente: false,
@@ -109,7 +118,7 @@ export function useChamados() {
         });
       }
 
-      const cliente = clientesMap.get(c.id_cliente)!;
+      const cliente = clientesMap.get(clienteId)!;
       cliente.total_chamados++;
       
       if (dentroPeriodo) {
