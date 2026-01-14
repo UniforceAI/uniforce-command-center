@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Chamado } from "@/types/chamado";
 import { supabase } from "@/integrations/supabase/client";
 import { externalSupabase } from "@/integrations/supabase/external-client";
+import { getCategoriaName } from "@/lib/categoriasMap";
 
 // ISP ID para chamados - d-kiros tem os dados
 const CHAMADOS_ISP_ID = "d-kiros";
@@ -117,14 +118,11 @@ const Index = () => {
         console.log(`✅ Total de registros buscados: ${allData.length}`);
 
         // Transformar dados do banco para o formato esperado
-        // Se motivo_contato é "Não informado" ou vazio, usar o ID da categoria
+        // Usar mapeamento de categorias para converter ID para nome
         const chamadosTransformados: Chamado[] = allData.map((item: any) => {
-          const motivoOriginal = item.motivo_contato || "";
           const categoria = item.categoria || "";
-          // Se motivo está vazio ou é "Não informado", mostrar o ID da categoria
-          const motivoFinal = (!motivoOriginal || motivoOriginal === "Não informado" || motivoOriginal.trim() === "") 
-            ? (categoria ? `ID: ${categoria}` : "—") 
-            : motivoOriginal;
+          // Usar o mapeamento de categorias para obter o nome
+          const motivoFinal = getCategoriaName(categoria);
           
           return {
             "ID Cliente": item.id_cliente || "",
