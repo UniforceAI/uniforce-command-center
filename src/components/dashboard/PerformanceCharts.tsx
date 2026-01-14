@@ -89,10 +89,10 @@ export const PerformanceCharts = memo(({ chamados }: PerformanceChartsProps) => 
       .map(([nome, data]) => ({
         nome,
         media: data.count > 0 ? parseFloat((data.total / data.count).toFixed(1)) : 0,
+        count: data.count,
       }))
-      .filter(item => item.media > 0)
-      .sort((a, b) => b.media - a.media)
-      .slice(0, 6);
+      .filter(item => item.media > 0 && item.count >= 3) // Mínimo 3 chamados para ser relevante
+      .sort((a, b) => a.media - b.media); // Ordenar do mais rápido ao mais lento
 
     // Dados de classificação por setor
     const setorClassificacaoMap = new Map<string, Record<string, number>>();
@@ -163,8 +163,8 @@ export const PerformanceCharts = memo(({ chamados }: PerformanceChartsProps) => 
           <CardTitle>Tempo Médio de Atendimento</CardTitle>
         </CardHeader>
         <CardContent>
-          <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={responsaveisData} layout="vertical">
+          <ResponsiveContainer width="100%" height={Math.max(300, responsaveisData.length * 40)}>
+            <BarChart data={responsaveisData} layout="vertical" margin={{ right: 60 }}>
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis 
                 type="number" 
