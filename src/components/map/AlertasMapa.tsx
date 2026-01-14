@@ -14,11 +14,12 @@ interface MapPoint {
   churn_risk_score?: number;
   vencido?: boolean;
   downtime_min_24h?: number;
+  qtd_chamados?: number; // Quantidade de chamados do cliente
 }
 
 interface AlertasMapaProps {
   data: MapPoint[];
-  activeFilter: "churn" | "vencido" | "sinal";
+  activeFilter: "churn" | "vencido" | "sinal" | "chamados";
 }
 
 // Component to auto-fit bounds when data changes
@@ -63,6 +64,14 @@ const getColorByRisk = (point: MapPoint, filter: string): string => {
     return "#22c55e"; // green - no issues
   }
   
+  if (filter === "chamados") {
+    const qtd = point.qtd_chamados ?? 0;
+    // Faixas: 1 (verde), 2-4 (laranja), 5+ (vermelho)
+    if (qtd >= 5) return "#ef4444"; // vermelho - crítico (5+ chamados)
+    if (qtd >= 2) return "#f97316"; // laranja - atenção (2-4 chamados)
+    return "#22c55e"; // verde - normal (1 chamado)
+  }
+  
   return "#22c55e"; // default green
 };
 
@@ -79,6 +88,14 @@ const getRadiusByRisk = (point: MapPoint, filter: string): number => {
     if (point.alerta_tipo) return 10;
     if (point.downtime_min_24h && point.downtime_min_24h > 60) return 8;
     return 6;
+  }
+  
+  if (filter === "chamados") {
+    const qtd = point.qtd_chamados ?? 0;
+    if (qtd >= 5) return 10; // 5+ chamados - maior
+    if (qtd >= 3) return 8; // 3-4 chamados
+    if (qtd >= 2) return 7; // 2 chamados
+    return 6; // 1 chamado
   }
   
   return 5;
@@ -111,7 +128,11 @@ export function AlertasMapa({ data, activeFilter }: AlertasMapaProps) {
         return p.alerta_tipo || (p.downtime_min_24h && p.downtime_min_24h > 0);
       }
       
-      // Churn filter removed - only vencido and sinal available
+      if (activeFilter === "chamados") {
+        // Show clients with at least 1 call
+        return p.qtd_chamados !== undefined && p.qtd_chamados > 0;
+      }
+      
       return true;
     });
   }, [data, activeFilter]);
@@ -179,6 +200,9 @@ export function AlertasMapa({ data, activeFilter }: AlertasMapaProps) {
                 {activeFilter === "sinal" && point.alerta_tipo && (
                   <p>Alerta: <span className="font-medium">{point.alerta_tipo}</span></p>
                 )}
+                {activeFilter === "chamados" && point.qtd_chamados !== undefined && (
+                  <p>Chamados: <span className="font-medium">{point.qtd_chamados}</span></p>
+                )}
               </div>
             </Popup>
           </CircleMarker>
@@ -201,6 +225,13 @@ export function AlertasMapa({ data, activeFilter }: AlertasMapaProps) {
             <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500"></span> Alerta ativo</span>
             <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-orange-500"></span> Downtime</span>
             <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-500"></span> OK</span>
+          </>
+        )}
+        {activeFilter === "chamados" && (
+          <>
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-500"></span> 1 chamado</span>
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-orange-500"></span> 2-4 chamados</span>
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500"></span> 5+ chamados</span>
           </>
         )}
       </div>
