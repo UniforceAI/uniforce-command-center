@@ -1140,47 +1140,26 @@ const VisaoGeral = () => {
 
           <IspActions className="ml-auto" />
           {snapshotDate && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span className="text-[9px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded border cursor-help">
-                  📅 Snapshot: {snapshotDate.toLocaleDateString("pt-BR")} {snapshotDate.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
-                </span>
-              </TooltipTrigger>
-              <TooltipContent side="bottom" className="max-w-[280px]">
-                <p className="text-xs font-semibold mb-1">ℹ️ Sobre os dados</p>
-                <p className="text-xs"><strong>Dados financeiros/cadastrais</strong> são snapshot do dia — não variam com o filtro de período.</p>
-                <p className="text-xs mt-1"><strong>Chamados</strong> e <strong>Novos Clientes</strong> variam conforme o período selecionado.</p>
-                <p className="text-xs mt-1 text-muted-foreground">Chamados atualizados até: <strong>{maxChamadosDate.toLocaleDateString("pt-BR")}</strong></p>
-              </TooltipContent>
-            </Tooltip>
+            <span className="text-[9px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded border">
+              Atualizado: {snapshotDate.toLocaleDateString("pt-BR")} {snapshotDate.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+            </span>
           )}
         </div>
 
-        {/* Linha 2: Indicador do que o período atual afeta */}
-        <div className="flex items-center gap-3 px-3 py-1 text-[10px]">
-          <span className="text-muted-foreground">
-            <span className="font-semibold text-primary">{periodoLabel}</span>
-            {periodoInicio && (
-              <span className="text-muted-foreground ml-1">
-                ({periodoInicio.toLocaleDateString("pt-BR")} → {maxChamadosDate.toLocaleDateString("pt-BR")})
-              </span>
-            )}
-            <span className="ml-2 text-muted-foreground/70">
-              — afeta: <span className="text-foreground font-medium">🎫 Chamados ({chamadosStats.totalChamados.toLocaleString()})</span>
-              {kpis.novosClientes > 0 && <span className="text-foreground font-medium ml-2">👤 Novos Clientes ({kpis.novosClientes})</span>}
-            </span>
-          </span>
-          <span className="text-muted-foreground/50">|</span>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <span className="text-muted-foreground/70 cursor-help">
-                🔒 <span className="border-b border-dashed border-muted-foreground/40">Fixos (snapshot)</span>: Inadimplência, MRR, Clientes Ativos
-              </span>
-            </TooltipTrigger>
-            <TooltipContent side="bottom" className="max-w-[260px]">
-              <p className="text-xs">Estes dados refletem o estado atual da base de clientes (snapshot). Não há histórico de datas disponível no banco — para análise temporal, contate o suporte do ISP para habilitar eventos históricos.</p>
-            </TooltipContent>
-          </Tooltip>
+        {/* Linha 2: Período selecionado — afeta chamados e novos clientes */}
+        <div className="flex items-center gap-2 px-3 py-1 text-[10px] text-muted-foreground">
+          <span className="font-semibold text-primary">{periodoLabel}</span>
+          {periodoInicio && (
+            <span>({periodoInicio.toLocaleDateString("pt-BR")} → {maxChamadosDate.toLocaleDateString("pt-BR")})</span>
+          )}
+          <span className="text-muted-foreground/40">·</span>
+          <span>Chamados no período: <strong className="text-foreground">{chamadosStats.totalChamados.toLocaleString()}</strong></span>
+          {kpis.novosClientes > 0 && (
+            <>
+              <span className="text-muted-foreground/40">·</span>
+              <span>Novos clientes: <strong className="text-foreground">{kpis.novosClientes}</strong></span>
+            </>
+          )}
         </div>
       </header>
 
@@ -1265,8 +1244,7 @@ const VisaoGeral = () => {
                 value={formatCurrency(kpis.rrVencido)}
                 icon={Clock}
                 variant="warning"
-                subtitle="snapshot atual"
-                tooltip="Valor total em atraso (dias_atraso > 0). Dado fixo — não varia com filtro de período."
+                subtitle={`${kpis.pctInadimplencia}% de inadimplência`}
               />
               <RiskKPICard
                 title={`Chamados`}
@@ -1274,8 +1252,6 @@ const VisaoGeral = () => {
                 icon={RefreshCcw}
                 variant={chamadosStats.totalChamados > 100 ? "warning" : "default"}
                 subtitle={`${periodoLabel} · ${chamadosStats.clientesComChamados} clientes`}
-                tooltip={`${chamadosStats.totalReincidentes} reincidentes no período. Dado dinâmico — muda com o filtro de período.`}
-                source="tabela chamados"
               />
               <RiskKPICard
                 title="Alertas Técnicos"
@@ -1334,21 +1310,10 @@ const VisaoGeral = () => {
                         <span className="text-sm font-medium text-muted-foreground">
                           {cohortMetricInfo.label}
                         </span>
-                        {cohortTab === "financeiro" && (
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <span className="text-[9px] bg-muted text-muted-foreground px-1.5 py-0.5 rounded border cursor-help">
-                                🔒 Snapshot — não varia com período
-                              </span>
-                            </TooltipTrigger>
-                            <TooltipContent side="top" className="max-w-[240px]">
-                              <p className="text-xs">Os dados de inadimplência refletem o estado atual da base (snapshot do dia). O banco externo não fornece histórico de cobranças por data — apenas o estado atual de cada cliente.</p>
-                            </TooltipContent>
-                          </Tooltip>
-                        )}
                         {cohortTab === "suporte" && (
                           <span className="text-[9px] bg-primary/10 text-primary px-1.5 py-0.5 rounded border border-primary/20">
                             🎫 {periodoLabel}: {chamadosStats.totalChamados} chamados
+
                           </span>
                         )}
                       </div>
