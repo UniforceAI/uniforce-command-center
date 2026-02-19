@@ -23,7 +23,7 @@ const NPS = () => {
   const [isLoading, setIsLoading] = useState(true);
 
   // Filtros
-  const [periodo, setPeriodo] = useState("7");
+  const [periodo, setPeriodo] = useState("todos");
   const [tipoNPS, setTipoNPS] = useState("todos");
   const [classificacao, setClassificacao] = useState("todos");
 
@@ -75,7 +75,9 @@ const NPS = () => {
 
         // Transformar dados do banco para o formato esperado
         const respostasTransformadas: RespostaNPS[] = (data || []).map((item: any) => {
-          const nota = item.nota_numerica ?? Number(item.nota) ?? 0;
+          // Garantir que nota é sempre um número válido entre 0-10
+          const rawNota = item.nota_numerica != null ? Number(item.nota_numerica) : Number(item.nota);
+          const nota = (!isNaN(rawNota) && rawNota >= 0 && rawNota <= 10) ? rawNota : 0;
           
           // Mapear classificação do banco (MAIÚSCULO) para formato esperado (Capitalizado)
           const mapClassificacao = (classif: string): "Promotor" | "Neutro" | "Detrator" => {
@@ -158,7 +160,7 @@ const NPS = () => {
   const kpis = useMemo(() => {
     const calcMedia = (respostas: RespostaNPS[]) => {
       if (respostas.length === 0) return 0;
-      const soma = respostas.reduce((acc, r) => acc + r.nota, 0);
+      const soma = respostas.reduce((acc, r) => acc + (typeof r.nota === 'number' ? r.nota : 0), 0);
       return Number((soma / respostas.length).toFixed(1));
     };
 
