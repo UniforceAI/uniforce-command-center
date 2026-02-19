@@ -86,7 +86,16 @@ const ChurnRetencao = () => {
 
     if (periodo !== "todos") {
       const diasAtras = parseInt(periodo);
-      const dataLimite = new Date();
+      
+      // Calcular data limite relativa ao registro mais recente
+      let maxDate = new Date(0);
+      filtered.forEach((e) => {
+        const d = e.event_datetime ? new Date(e.event_datetime) : null;
+        if (d && !isNaN(d.getTime()) && d > maxDate) maxDate = d;
+      });
+      if (maxDate.getTime() === 0) maxDate = new Date();
+      
+      const dataLimite = new Date(maxDate);
       dataLimite.setDate(dataLimite.getDate() - diasAtras);
 
       filtered = filtered.filter((e) => {
