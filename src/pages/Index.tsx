@@ -1,13 +1,12 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { Chamado } from "@/types/chamado";
-import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 import { externalSupabase } from "@/integrations/supabase/external-client";
 import { getCategoriaName } from "@/lib/categoriasMap";
 
 // ISP ID para chamados - d-kiros tem os dados
 const CHAMADOS_ISP_ID = "d-kiros";
-import type { User } from "@supabase/supabase-js";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { KPICard } from "@/components/dashboard/KPICard";
@@ -21,7 +20,7 @@ import { Phone, Clock, RefreshCcw, CheckCircle2, AlertCircle } from "lucide-reac
 const Index = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
-  const [user, setUser] = useState<User | null>(null);
+  const { signOut } = useAuth();
   const [chamados, setChamados] = useState<Chamado[]>([]);
   const [selectedCliente, setSelectedCliente] = useState<Chamado | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -33,28 +32,10 @@ const Index = () => {
   const [urgencia, setUrgencia] = useState("todas");
   const [setor, setSetor] = useState("todos");
 
-  // Verificar autenticação
-  useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-      if (!session) {
-        navigate("/auth");
-      }
-    });
-
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
-      if (!session) {
-        navigate("/auth");
-      }
-    });
-
-    return () => subscription.unsubscribe();
-  }, [navigate]);
 
   // Buscar dados do banco - em batches para superar limite de 1000
   useEffect(() => {
-    if (!user) return;
+    
     
     const fetchChamados = async () => {
       try {
@@ -178,7 +159,7 @@ const Index = () => {
 
     fetchChamados();
 
-  }, [user, toast]);
+  }, [toast]);
 
   // Encontrar a data mais recente dos dados
   const dataMaisRecente = useMemo(() => {
@@ -527,13 +508,10 @@ const Index = () => {
   }, [chamados, periodo, status, urgencia, setor, dataMaisRecente]);
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
+    await signOut();
     navigate("/auth");
   };
 
-  if (!user) {
-    return null;
-  }
 
   return (
     <div className="min-h-screen bg-background">
