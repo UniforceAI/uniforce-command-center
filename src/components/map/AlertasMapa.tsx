@@ -19,7 +19,7 @@ interface MapPoint {
 
 interface AlertasMapaProps {
   data: MapPoint[];
-  activeFilter: "churn" | "vencido" | "sinal" | "chamados" | "todos";
+  activeFilter: "churn" | "vencido" | "chamados";
 }
 
 // Component to auto-fit bounds when data changes
@@ -49,26 +49,11 @@ function FitBounds({ points }: { points: { lat: number; lng: number }[] }) {
 }
 
 const getColorByRisk = (point: MapPoint, filter: string): string => {
-  if (filter === "todos") {
-    // Color by general status: has issues = red/orange, ok = green
-    if (point.dias_atraso && point.dias_atraso > 0) return "#ef4444";
-    if (point.qtd_chamados && point.qtd_chamados >= 5) return "#ef4444";
-    if (point.qtd_chamados && point.qtd_chamados >= 2) return "#f97316";
-    if (point.alerta_tipo) return "#f97316";
-    return "#3b82f6"; // blue for normal clients
-  }
-  
   if (filter === "vencido") {
     const dias = point.dias_atraso ?? 0;
     if (dias >= 25) return "#ef4444";
     if (dias >= 15) return "#f97316";
     if (dias >= 8) return "#eab308";
-    return "#22c55e";
-  }
-  
-  if (filter === "sinal") {
-    if (point.alerta_tipo) return "#ef4444";
-    if (point.downtime_min_24h && point.downtime_min_24h > 0) return "#f97316";
     return "#22c55e";
   }
   
@@ -78,29 +63,24 @@ const getColorByRisk = (point: MapPoint, filter: string): string => {
     if (qtd >= 2) return "#f97316";
     return "#22c55e";
   }
+
+  if (filter === "churn") {
+    const score = point.churn_risk_score ?? 0;
+    if (score >= 75) return "#ef4444";
+    if (score >= 50) return "#f97316";
+    if (score >= 25) return "#eab308";
+    return "#3b82f6"; // sem score = azul neutro
+  }
   
   return "#22c55e";
 };
 
 const getRadiusByRisk = (point: MapPoint, filter: string): number => {
-  if (filter === "todos") {
-    if (point.dias_atraso && point.dias_atraso > 0) return 8;
-    if (point.qtd_chamados && point.qtd_chamados >= 5) return 8;
-    if (point.qtd_chamados && point.qtd_chamados >= 2) return 7;
-    return 4; // smaller for all clients view
-  }
-  
   if (filter === "vencido") {
     const dias = point.dias_atraso ?? 0;
     if (dias >= 25) return 10;
     if (dias >= 15) return 8;
     if (dias >= 8) return 7;
-    return 6;
-  }
-  
-  if (filter === "sinal") {
-    if (point.alerta_tipo) return 10;
-    if (point.downtime_min_24h && point.downtime_min_24h > 60) return 8;
     return 6;
   }
   
@@ -110,6 +90,14 @@ const getRadiusByRisk = (point: MapPoint, filter: string): number => {
     if (qtd >= 3) return 8;
     if (qtd >= 2) return 7;
     return 6;
+  }
+
+  if (filter === "churn") {
+    const score = point.churn_risk_score ?? 0;
+    if (score >= 75) return 10;
+    if (score >= 50) return 8;
+    if (score >= 25) return 6;
+    return 5;
   }
   
   return 5;
@@ -132,20 +120,18 @@ export function AlertasMapa({ data, activeFilter }: AlertasMapaProps) {
       }
 
       // Apply filter - only show relevant clients
-      if (activeFilter === "todos") {
-        return true; // Show all clients with coordinates
-      }
-      
       if (activeFilter === "vencido") {
-        return p.vencido === true || (p.dias_atraso !== undefined && p.dias_atraso > 0);
-      }
-      
-      if (activeFilter === "sinal") {
-        return p.alerta_tipo || (p.downtime_min_24h && p.downtime_min_24h > 0);
+        // vencido=false no banco, mas dias_atraso > 0 indica vencimento real
+        return (p.dias_atraso !== undefined && p.dias_atraso !== null && p.dias_atraso > 0);
       }
       
       if (activeFilter === "chamados") {
         return p.qtd_chamados !== undefined && p.qtd_chamados > 0;
+      }
+
+      if (activeFilter === "churn") {
+        // Mostrar todos os clientes no mapa churn (coloridos por score quando disponível)
+        return true;
       }
       
       return true;
@@ -212,7 +198,7 @@ export function AlertasMapa({ data, activeFilter }: AlertasMapaProps) {
                 {activeFilter === "vencido" && point.dias_atraso !== undefined && point.dias_atraso > 0 && (
                   <p>Dias em Atraso: <span className="font-medium">{point.dias_atraso}</span></p>
                 )}
-                {activeFilter === "sinal" && point.alerta_tipo && (
+                {activeFilter === "churn" && point.alerta_tipo && (
                   <p>Alerta: <span className="font-medium">{point.alerta_tipo}</span></p>
                 )}
                 {activeFilter === "chamados" && point.qtd_chamados !== undefined && (
@@ -226,13 +212,6 @@ export function AlertasMapa({ data, activeFilter }: AlertasMapaProps) {
       
       {/* Contextual Legend */}
       <div className="absolute bottom-3 left-3 flex gap-3 text-xs bg-background/80 backdrop-blur-sm px-2 py-1 rounded z-[1000]">
-        {activeFilter === "todos" && (
-          <>
-            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{background: "#3b82f6"}}></span> Normal</span>
-            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{background: "#f97316"}}></span> Atenção</span>
-            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{background: "#ef4444"}}></span> Crítico</span>
-          </>
-        )}
         {activeFilter === "vencido" && (
           <>
             <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{background: "#22c55e"}}></span> 1-7 dias</span>
@@ -241,18 +220,19 @@ export function AlertasMapa({ data, activeFilter }: AlertasMapaProps) {
             <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{background: "#ef4444"}}></span> +25 dias</span>
           </>
         )}
-        {activeFilter === "sinal" && (
-          <>
-            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{background: "#ef4444"}}></span> Alerta ativo</span>
-            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{background: "#f97316"}}></span> Downtime</span>
-            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{background: "#22c55e"}}></span> OK</span>
-          </>
-        )}
         {activeFilter === "chamados" && (
           <>
             <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{background: "#22c55e"}}></span> 1 chamado</span>
             <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{background: "#f97316"}}></span> 2-4 chamados</span>
             <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{background: "#ef4444"}}></span> 5+ chamados</span>
+          </>
+        )}
+        {activeFilter === "churn" && (
+          <>
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{background: "#3b82f6"}}></span> Sem score</span>
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{background: "#eab308"}}></span> Médio</span>
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{background: "#f97316"}}></span> Alto</span>
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{background: "#ef4444"}}></span> Crítico</span>
           </>
         )}
       </div>
