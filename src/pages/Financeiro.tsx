@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { useEventos } from "@/hooks/useEventos";
 import { GlobalFilters } from "@/components/shared/GlobalFilters";
+import { IspActions } from "@/components/shared/IspActions";
 import { KPICardNew } from "@/components/shared/KPICardNew";
 import { DataTable, StatusBadge, Column } from "@/components/shared/DataTable";
 import { ExpandableCobrancaTable, ClienteAgrupado, Cobranca } from "@/components/shared/ExpandableCobrancaTable";
@@ -389,13 +390,10 @@ const Financeiro = () => {
               <p className="text-muted-foreground mt-1">Inadimplência e Recuperação</p>
             </div>
             <div className="flex items-center gap-4">
-              <Badge variant="outline" className="text-xs font-medium">{ispNome}</Badge>
               <div className="text-sm text-muted-foreground">
                 {filteredEventos.length} eventos financeiros
               </div>
-              <Button variant="outline" onClick={handleLogout}>
-                Sair
-              </Button>
+              <IspActions />
             </div>
           </div>
         </div>
