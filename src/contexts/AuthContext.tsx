@@ -1,6 +1,5 @@
 import { createContext, useContext, useState, useEffect, ReactNode, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { externalSupabase } from "@/integrations/supabase/external-client";
 import type { User, Session } from "@supabase/supabase-js";
 
 export interface AuthProfile {
@@ -73,42 +72,8 @@ function isSuperAdminEmail(email: string): boolean {
 }
 
 async function fetchUserProfile(userId: string, email: string): Promise<AuthProfile | null> {
-  // 1. Tentar buscar profile no banco externo
-  const { data: profile } = await externalSupabase
-    .from("profiles")
-    .select("id, isp_id, full_name, email")
-    .eq("id", userId)
-    .maybeSingle();
-
-  // 2. Se profile existe E tem isp_id, buscar ISP e role
-  if (profile?.isp_id) {
-    const { data: isp } = await externalSupabase
-      .from("isps")
-      .select("isp_id, isp_nome, instancia_isp")
-      .eq("isp_id", profile.isp_id)
-      .maybeSingle();
-
-    const { data: roleData } = await externalSupabase
-      .from("user_roles")
-      .select("role")
-      .eq("user_id", userId)
-      .eq("isp_id", profile.isp_id)
-      .maybeSingle();
-
-    if (isp) {
-      return {
-        user_id: userId,
-        isp_id: isp.isp_id,
-        isp_nome: isp.isp_nome,
-        instancia_isp: isp.instancia_isp,
-        full_name: profile.full_name || email,
-        email: profile.email || email,
-        role: roleData?.role || "viewer",
-      };
-    }
-  }
-
-  // 3. Fallback: derivar ISP do domínio do email
+  // Derivar ISP diretamente do domínio do email — sem queries ao banco externo durante o auth
+  // Isso elimina o travamento causado por timeouts em queries ao Supabase externo
   const domain = email.split("@")[1]?.toLowerCase();
   const ispInfo = domain ? DOMAIN_ISP_MAP[domain] : null;
 
@@ -118,13 +83,13 @@ async function fetchUserProfile(userId: string, email: string): Promise<AuthProf
       isp_id: ispInfo.isp_id,
       isp_nome: ispInfo.isp_nome,
       instancia_isp: ispInfo.instancia_isp,
-      full_name: profile?.full_name || email.split("@")[0],
+      full_name: email.split("@")[0],
       email: email,
       role: isSuperAdminEmail(email) ? "super_admin" : "viewer",
     };
   }
 
-  console.warn("⚠️ Nenhum ISP encontrado para:", email);
+  console.warn("⚠️ Domínio não mapeado:", domain, "— email:", email);
   return null;
 }
 
