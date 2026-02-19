@@ -42,6 +42,16 @@ const GATILHOS: GatilhoField[] = [
     color: "bg-yellow-100 text-yellow-800 border-yellow-200",
   },
   {
+    key: "faturaAtrasada",
+    label: "Fatura atrasada",
+    description: "Peso máximo do pilar Financeiro — ativado quando o cliente possui faturas em atraso.",
+    example: "Ex: cliente inadimplente = até 25pts (padrão). Escalonado conforme dias de atraso.",
+    defaultVal: 25,
+    min: 0,
+    max: 50,
+    color: "bg-red-100 text-red-800 border-red-200",
+  },
+  {
     key: "npsDetrator",
     label: "NPS Detrator",
     description: "Pontuação adicionada quando o cliente possui avaliação NPS como Detrator (nota ≤ 6).",
@@ -49,7 +59,7 @@ const GATILHOS: GatilhoField[] = [
     defaultVal: 30,
     min: 0,
     max: 50,
-    color: "bg-red-100 text-red-800 border-red-200",
+    color: "bg-orange-100 text-orange-800 border-orange-200",
   },
   {
     key: "qualidade",
@@ -110,7 +120,7 @@ export default function ConfiguracaoChurnScore() {
   const exampleScore30d2 = form.chamados30dBase;
   const exampleScore30d3 = form.chamados30dBase + form.chamadoAdicional;
   const exampleScore30d4 = form.chamados30dBase + form.chamadoAdicional * 2;
-  const totalMax = form.chamados30dBase + form.chamadoAdicional * 4 + form.npsDetrator + form.qualidade + form.comportamental + 30;
+  const totalMax = form.chamados30dBase + form.chamadoAdicional * 4 + form.npsDetrator + form.qualidade + form.comportamental + form.faturaAtrasada;
 
   return (
     <div className="min-h-screen bg-background">
@@ -189,28 +199,32 @@ export default function ConfiguracaoChurnScore() {
           <CardContent>
             <div className="space-y-2 text-sm">
               <div className="flex justify-between items-center py-1.5 border-b">
+                <span className="text-muted-foreground">Fatura atrasada (pilar financeiro)</span>
+                <span className="font-mono font-bold">até {form.faturaAtrasada} pts</span>
+              </div>
+              <div className="flex justify-between items-center py-1.5 border-b">
                 <span className="text-muted-foreground">2 chamados em 30 dias</span>
-                <span className="font-mono font-bold text-orange-600">+{exampleScore30d2} pts</span>
+                <span className="font-mono font-bold">+{exampleScore30d2} pts</span>
               </div>
               <div className="flex justify-between items-center py-1.5 border-b">
                 <span className="text-muted-foreground">3 chamados em 30 dias</span>
-                <span className="font-mono font-bold text-orange-700">+{exampleScore30d3} pts</span>
+                <span className="font-mono font-bold">+{exampleScore30d3} pts</span>
               </div>
               <div className="flex justify-between items-center py-1.5 border-b">
                 <span className="text-muted-foreground">4 chamados em 30 dias</span>
-                <span className="font-mono font-bold text-red-600">+{exampleScore30d4} pts</span>
+                <span className="font-mono font-bold">+{exampleScore30d4} pts</span>
               </div>
               <div className="flex justify-between items-center py-1.5 border-b">
                 <span className="text-muted-foreground">NPS Detrator (nota ≤ 6)</span>
-                <span className="font-mono font-bold text-red-700">+{form.npsDetrator} pts</span>
+                <span className="font-mono font-bold">+{form.npsDetrator} pts</span>
               </div>
               <div className="flex justify-between items-center py-1.5 border-b">
                 <span className="text-muted-foreground">Qualidade (máx)</span>
-                <span className="font-mono font-bold text-purple-700">+{form.qualidade} pts</span>
+                <span className="font-mono font-bold">+{form.qualidade} pts</span>
               </div>
               <div className="flex justify-between items-center py-1.5">
                 <span className="text-muted-foreground">Comportamental (máx)</span>
-                <span className="font-mono font-bold text-blue-700">+{form.comportamental} pts</span>
+                <span className="font-mono font-bold">+{form.comportamental} pts</span>
               </div>
               <div className="flex justify-between items-center pt-2 border-t-2 mt-2">
                 <span className="font-semibold">Score máximo possível (estimado)</span>

@@ -10,6 +10,8 @@ export interface ChurnScoreConfig {
   qualidade: number;              // padrão: 20
   // Comportamental
   comportamental: number;         // padrão: 20
+  // Fatura atrasada (pilar financeiro)
+  faturaAtrasada: number;         // padrão: 25
 }
 
 export const CHURN_SCORE_DEFAULTS: ChurnScoreConfig = {
@@ -18,6 +20,7 @@ export const CHURN_SCORE_DEFAULTS: ChurnScoreConfig = {
   npsDetrator: 30,
   qualidade: 20,
   comportamental: 20,
+  faturaAtrasada: 25,
 };
 
 interface ChurnScoreConfigContextType {
