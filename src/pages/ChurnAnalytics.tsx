@@ -10,14 +10,6 @@ import {
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
 } from "recharts";
-import { cn } from "@/lib/utils";
-
-const BUCKET_COLORS: Record<string, string> = {
-  Baixo: "#22c55e",
-  Médio: "#eab308",
-  Alto: "#f97316",
-  Crítico: "#ef4444",
-};
 
 const ChurnAnalytics = () => {
   const { churnStatus, isLoading, error } = useChurnData();
@@ -65,7 +57,7 @@ const ChurnAnalytics = () => {
     const ltvRisco = emRisco.reduce((acc, c) => acc + (c.ltv_estimado || 0), 0);
     const scores = ativos.filter((c) => c.churn_risk_score != null).map((c) => c.churn_risk_score);
     const scoreMedioNum = scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : null;
-    const scoreMedio = scoreMedioNum != null ? scoreMedioNum.toFixed(1) : "N/A";
+    const scoreMedio = scoreMedioNum != null ? scoreMedioNum.toFixed(1) : "—";
     return { totalAtivos, totalRisco, pctRisco, scoreMedio, mrrRisco, ltvRisco };
   }, [ativos, emRisco]);
 
@@ -81,7 +73,7 @@ const ChurnAnalytics = () => {
       .slice(0, 10);
   }, [emRisco]);
 
-  // Risco por plano com chamados reais
+  // Cohort churn por plano
   const riscoPorPlano = useMemo(() => {
     const map: Record<string, { risco: number; total: number; mrr: number; chamados: number }> = {};
     ativos.forEach((c) => {
@@ -129,51 +121,69 @@ const ChurnAnalytics = () => {
       label: "Clientes Risco",
       value: kpis.totalRisco.toLocaleString(),
       sub: `${kpis.pctRisco}% da base`,
-      icon: AlertTriangle,
-      accent: "hsl(var(--destructive))",
-      bg: "hsl(var(--destructive) / 0.12)",
+      Icon: AlertTriangle,
+      iconBg: "bg-destructive/15",
+      iconColor: "text-destructive",
+      borderColor: "border-t-destructive",
     },
     {
       label: "% em Risco",
       value: `${kpis.pctRisco}%`,
       sub: "Churn Rate",
-      icon: Percent,
-      accent: "hsl(var(--warning))",
-      bg: "hsl(var(--warning) / 0.12)",
+      Icon: Percent,
+      iconBg: "bg-warning/15",
+      iconColor: "text-warning",
+      borderColor: "border-t-warning",
     },
     {
       label: "MRR Risco",
-      value: `R$ ${kpis.mrrRisco.toLocaleString("pt-BR", { minimumFractionDigits: 0 })}`,
+      value: `R$ ${kpis.mrrRisco.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`,
       sub: "Receita ameaçada",
-      icon: DollarSign,
-      accent: "hsl(var(--destructive))",
-      bg: "hsl(var(--destructive) / 0.12)",
+      Icon: DollarSign,
+      iconBg: "bg-destructive/15",
+      iconColor: "text-destructive",
+      borderColor: "border-t-destructive",
     },
     {
       label: "LTV Risco",
-      value: `R$ ${kpis.ltvRisco.toLocaleString("pt-BR", { minimumFractionDigits: 0 })}`,
+      value: `R$ ${kpis.ltvRisco.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`,
       sub: "Valor estimado perdido",
-      icon: TrendingDown,
-      accent: "hsl(var(--destructive))",
-      bg: "hsl(var(--destructive) / 0.12)",
+      Icon: TrendingDown,
+      iconBg: "bg-destructive/15",
+      iconColor: "text-destructive",
+      borderColor: "border-t-destructive",
     },
     {
       label: "Score Médio",
-      value: kpis.scoreMedio !== "N/A" ? kpis.scoreMedio : "—",
+      value: kpis.scoreMedio,
       sub: "Score de risco",
-      icon: Target,
-      accent: "hsl(var(--warning))",
-      bg: "hsl(var(--warning) / 0.12)",
+      Icon: Target,
+      iconBg: "bg-warning/15",
+      iconColor: "text-warning",
+      borderColor: "border-t-warning",
     },
     {
       label: "Total Clientes",
       value: kpis.totalAtivos.toLocaleString(),
       sub: "Base ativa",
-      icon: Users,
-      accent: "hsl(var(--primary))",
-      bg: "hsl(var(--primary) / 0.12)",
+      Icon: Users,
+      iconBg: "bg-primary/15",
+      iconColor: "text-primary",
+      borderColor: "border-t-primary",
     },
   ];
+
+  const getBarColor = (pct: number, idx: number) => {
+    if (pct >= 20) return "hsl(var(--destructive))";
+    if (pct >= 12) return "hsl(var(--warning))";
+    return "hsl(var(--primary))";
+  };
+
+  const getCidadeColor = (idx: number) => {
+    if (idx === 0) return "hsl(var(--destructive))";
+    if (idx <= 2) return "hsl(var(--warning))";
+    return "hsl(var(--primary))";
+  };
 
   if (isLoading) return (
     <div className="min-h-screen bg-background flex items-center justify-center">
@@ -186,20 +196,17 @@ const ChurnAnalytics = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
       <header className="border-b bg-card shadow-sm">
-        <div className="container mx-auto px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-bold bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent">
-                Churn Analytics
-              </h1>
-              <p className="text-muted-foreground text-sm mt-0.5">
-                {ativos.length.toLocaleString()} clientes ativos · {emRisco.length.toLocaleString()} em risco · base de {churnStatus.length.toLocaleString()} clientes
-              </p>
-            </div>
-            <IspActions />
+        <div className="container mx-auto px-6 py-4 flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent">
+              Churn Analytics
+            </h1>
+            <p className="text-muted-foreground text-sm mt-0.5">
+              {ativos.length.toLocaleString()} clientes ativos · {emRisco.length.toLocaleString()} em risco · base de {churnStatus.length.toLocaleString()} clientes
+            </p>
           </div>
+          <IspActions />
         </div>
       </header>
 
@@ -213,213 +220,173 @@ const ChurnAnalytics = () => {
 
         <GlobalFilters filters={filters} />
 
-        {/* KPI Cards — estilo escuro com ícone colorido */}
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+        {/* KPI Cards */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
           {kpiCards.map((kpi) => (
             <div
               key={kpi.label}
-              className="rounded-xl border bg-card p-4 flex flex-col gap-3 shadow-sm hover:shadow-md transition-shadow"
+              className={`bg-card border border-border border-t-4 ${kpi.borderColor} rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow`}
             >
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-medium text-muted-foreground leading-tight">{kpi.label}</span>
-                <div
-                  className="rounded-lg p-1.5 flex items-center justify-center"
-                  style={{ background: kpi.bg }}
-                >
-                  <kpi.icon className="h-3.5 w-3.5" style={{ color: kpi.accent }} />
+              <div className="flex items-start justify-between mb-3">
+                <p className="text-xs font-medium text-muted-foreground leading-snug">{kpi.label}</p>
+                <div className={`${kpi.iconBg} ${kpi.iconColor} p-1.5 rounded-lg`}>
+                  <kpi.Icon className="h-3.5 w-3.5" />
                 </div>
               </div>
-              <div>
-                <p className="text-2xl font-bold leading-none tracking-tight">{kpi.value}</p>
-                {kpi.sub && <p className="text-xs text-muted-foreground mt-1">{kpi.sub}</p>}
-              </div>
+              <p className="text-xl font-bold text-foreground leading-tight">{kpi.value}</p>
+              {kpi.sub && <p className="text-xs text-muted-foreground mt-1">{kpi.sub}</p>}
             </div>
           ))}
         </div>
 
-        {/* Dois gráficos principais */}
+        {/* Gráficos */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
           {/* Cohort Churn por Plano */}
-          <div className="rounded-xl border bg-card shadow-sm overflow-hidden">
-            <div className="px-5 pt-5 pb-3 border-b flex items-center gap-2">
-              <span className="text-sm font-semibold">Cohort Churn por Plano</span>
+          <div className="bg-card border border-border rounded-xl shadow-sm flex flex-col">
+            <div className="px-5 pt-5 pb-4 border-b border-border flex items-center gap-2">
+              <span className="text-sm font-semibold text-foreground">Cohort Churn por Plano</span>
               <Info className="h-3.5 w-3.5 text-muted-foreground" />
             </div>
-            <div className="p-5">
-              {riscoPorPlano.length > 0 ? (
-                <>
-                  <ResponsiveContainer width="100%" height={280}>
-                    <BarChart
-                      data={riscoPorPlano}
-                      margin={{ top: 8, right: 8, bottom: 60, left: -10 }}
-                    >
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
-                      <XAxis
-                        dataKey="plano"
-                        tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
-                        angle={-30}
-                        textAnchor="end"
-                        interval={0}
-                        tickLine={false}
-                        axisLine={false}
-                      />
-                      <YAxis
-                        tickFormatter={(v) => `${v}%`}
-                        tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
-                        tickLine={false}
-                        axisLine={false}
-                      />
-                      <Tooltip
-                        contentStyle={{
-                          background: "hsl(var(--card))",
-                          border: "1px solid hsl(var(--border))",
-                          borderRadius: "8px",
-                          fontSize: 12,
-                        }}
-                        formatter={(v: any, _name, props) => {
-                          const d = props.payload;
-                          return [`${d.risco} de ${d.total} (${d.pct}%) · ${d.chamados} chamados/90d`, "Em risco"];
-                        }}
-                      />
-                      <Bar dataKey="pct" radius={[4, 4, 0, 0]} maxBarSize={48}>
-                        {riscoPorPlano.map((entry, idx) => (
-                          <Cell
-                            key={idx}
-                            fill={
-                              entry.pct >= 20
-                                ? "hsl(var(--destructive))"
-                                : entry.pct >= 12
-                                ? "hsl(var(--warning))"
-                                : "hsl(var(--primary))"
-                            }
-                          />
-                        ))}
-                      </Bar>
-                    </BarChart>
-                  </ResponsiveContainer>
 
-                  {/* Legenda tabular */}
-                  <div className="mt-4 space-y-1.5 max-h-[160px] overflow-y-auto">
-                    {riscoPorPlano.map((d) => (
-                      <div key={d.plano} className="flex items-center justify-between text-xs px-1">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <span
-                            className="w-2 h-2 rounded-full shrink-0"
-                            style={{
-                              background:
-                                d.pct >= 20
-                                  ? "hsl(var(--destructive))"
-                                  : d.pct >= 12
-                                  ? "hsl(var(--warning))"
-                                  : "hsl(var(--primary))",
-                            }}
-                          />
-                          <span className="text-foreground font-medium truncate">{d.plano}</span>
-                        </div>
-                        <div className="flex items-center gap-3 shrink-0 text-muted-foreground">
-                          <span className="font-semibold text-foreground">{d.risco} clientes</span>
-                          <span>LTV: R$ {d.mrr.toLocaleString("pt-BR")}</span>
-                        </div>
+            {riscoPorPlano.length > 0 ? (
+              <div className="p-5 flex flex-col gap-4 flex-1">
+                <ResponsiveContainer width="100%" height={260}>
+                  <BarChart data={riscoPorPlano} margin={{ top: 8, right: 8, bottom: 70, left: -10 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
+                    <XAxis
+                      dataKey="plano"
+                      tick={{ fontSize: 9, fill: "hsl(var(--muted-foreground))" }}
+                      angle={-35}
+                      textAnchor="end"
+                      interval={0}
+                      tickLine={false}
+                      axisLine={false}
+                    />
+                    <YAxis
+                      tickFormatter={(v) => `${v}%`}
+                      tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
+                      tickLine={false}
+                      axisLine={false}
+                    />
+                    <Tooltip
+                      contentStyle={{
+                        background: "hsl(var(--card))",
+                        border: "1px solid hsl(var(--border))",
+                        borderRadius: 8,
+                        fontSize: 12,
+                        color: "hsl(var(--foreground))",
+                      }}
+                      formatter={(_v: any, _n: any, props: any) => {
+                        const d = props.payload;
+                        return [`${d.risco} de ${d.total} clientes (${d.pct}%)`, "Em risco"];
+                      }}
+                    />
+                    <Bar dataKey="pct" radius={[4, 4, 0, 0]} maxBarSize={44}>
+                      {riscoPorPlano.map((entry, idx) => (
+                        <Cell key={idx} fill={getBarColor(entry.pct, idx)} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+
+                {/* Legenda tabular */}
+                <div className="space-y-2 overflow-y-auto max-h-[180px] pr-1">
+                  {riscoPorPlano.map((d) => (
+                    <div key={d.plano} className="flex items-center justify-between py-1 border-b border-border/40 last:border-0">
+                      <div className="flex items-center gap-2 min-w-0 flex-1">
+                        <span
+                          className="w-2.5 h-2.5 rounded-full shrink-0"
+                          style={{ background: getBarColor(d.pct, 0) }}
+                        />
+                        <span className="text-xs text-foreground font-medium truncate">{d.plano}</span>
                       </div>
-                    ))}
-                  </div>
-                </>
-              ) : (
-                <div className="h-[280px] flex items-center justify-center text-muted-foreground text-sm">
-                  Sem dados de plano disponíveis
+                      <div className="flex items-center gap-4 shrink-0 text-xs">
+                        <span className="font-semibold text-foreground">{d.risco} clientes</span>
+                        <span className="text-muted-foreground">LTV: R$ {d.mrr.toLocaleString("pt-BR")}</span>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              )}
-            </div>
+              </div>
+            ) : (
+              <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm p-8">
+                Sem dados de plano disponíveis
+              </div>
+            )}
           </div>
 
           {/* Top 10 Cidades em Risco */}
-          <div className="rounded-xl border bg-card shadow-sm overflow-hidden">
-            <div className="px-5 pt-5 pb-3 border-b flex items-center gap-2">
-              <span className="text-sm font-semibold">Top Motivos de Contato por Cidade</span>
+          <div className="bg-card border border-border rounded-xl shadow-sm flex flex-col">
+            <div className="px-5 pt-5 pb-4 border-b border-border flex items-center gap-2">
+              <span className="text-sm font-semibold text-foreground">Top 10 Cidades em Risco</span>
               <Info className="h-3.5 w-3.5 text-muted-foreground" />
             </div>
-            <div className="p-5">
-              {topCidades.length > 0 ? (
-                <>
-                  <ResponsiveContainer width="100%" height={280}>
-                    <BarChart
-                      data={topCidades}
-                      layout="vertical"
-                      margin={{ top: 4, right: 24, bottom: 4, left: 8 }}
-                    >
-                      <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="hsl(var(--border))" />
-                      <XAxis
-                        type="number"
-                        tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
-                        tickLine={false}
-                        axisLine={false}
-                      />
-                      <YAxis
-                        type="category"
-                        dataKey="cidade"
-                        tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
-                        width={90}
-                        tickLine={false}
-                        axisLine={false}
-                      />
-                      <Tooltip
-                        contentStyle={{
-                          background: "hsl(var(--card))",
-                          border: "1px solid hsl(var(--border))",
-                          borderRadius: "8px",
-                          fontSize: 12,
-                        }}
-                        formatter={(v: any) => [v, "Clientes em risco"]}
-                      />
-                      <Bar dataKey="qtd" radius={[0, 4, 4, 0]} maxBarSize={20} fill="hsl(var(--primary))">
-                        {topCidades.map((_, idx) => (
-                          <Cell
-                            key={idx}
-                            fill={
-                              idx === 0
-                                ? "hsl(var(--destructive))"
-                                : idx <= 2
-                                ? "hsl(var(--warning))"
-                                : "hsl(var(--primary))"
-                            }
-                          />
-                        ))}
-                      </Bar>
-                    </BarChart>
-                  </ResponsiveContainer>
 
-                  {/* Legenda tabular */}
-                  <div className="mt-4 space-y-1.5 max-h-[160px] overflow-y-auto">
-                    {topCidades.map((d, idx) => (
-                      <div key={d.cidade} className="flex items-center justify-between text-xs px-1">
-                        <div className="flex items-center gap-2">
-                          <span
-                            className="w-2 h-2 rounded-full shrink-0"
-                            style={{
-                              background:
-                                idx === 0
-                                  ? "hsl(var(--destructive))"
-                                  : idx <= 2
-                                  ? "hsl(var(--warning))"
-                                  : "hsl(var(--primary))",
-                            }}
-                          />
-                          <span className="text-foreground font-medium">{d.cidade}</span>
-                        </div>
-                        <span className="font-semibold text-foreground">{d.qtd} em risco</span>
+            {topCidades.length > 0 ? (
+              <div className="p-5 flex flex-col gap-4 flex-1">
+                <ResponsiveContainer width="100%" height={260}>
+                  <BarChart
+                    data={topCidades}
+                    layout="vertical"
+                    margin={{ top: 4, right: 40, bottom: 4, left: 8 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="hsl(var(--border))" />
+                    <XAxis
+                      type="number"
+                      tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
+                      tickLine={false}
+                      axisLine={false}
+                    />
+                    <YAxis
+                      type="category"
+                      dataKey="cidade"
+                      tick={{ fontSize: 9, fill: "hsl(var(--muted-foreground))" }}
+                      width={95}
+                      tickLine={false}
+                      axisLine={false}
+                    />
+                    <Tooltip
+                      contentStyle={{
+                        background: "hsl(var(--card))",
+                        border: "1px solid hsl(var(--border))",
+                        borderRadius: 8,
+                        fontSize: 12,
+                        color: "hsl(var(--foreground))",
+                      }}
+                      formatter={(v: any) => [v, "Clientes em risco"]}
+                    />
+                    <Bar dataKey="qtd" radius={[0, 4, 4, 0]} maxBarSize={22} label={{ position: "right", fontSize: 10, fill: "hsl(var(--muted-foreground))" }}>
+                      {topCidades.map((_, idx) => (
+                        <Cell key={idx} fill={getCidadeColor(idx)} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+
+                {/* Legenda tabular */}
+                <div className="space-y-2 overflow-y-auto max-h-[180px] pr-1">
+                  {topCidades.map((d, idx) => (
+                    <div key={d.cidade} className="flex items-center justify-between py-1 border-b border-border/40 last:border-0">
+                      <div className="flex items-center gap-2">
+                        <span
+                          className="w-2.5 h-2.5 rounded-full shrink-0"
+                          style={{ background: getCidadeColor(idx) }}
+                        />
+                        <span className="text-xs text-foreground font-medium">{d.cidade}</span>
                       </div>
-                    ))}
-                  </div>
-                </>
-              ) : (
-                <div className="h-[280px] flex items-center justify-center text-muted-foreground text-sm">
-                  {emRisco.length === 0
-                    ? `Nenhum cliente em risco identificado (${ativos.length} ativos)`
-                    : "Sem dados de cidade"}
+                      <span className="text-xs font-semibold text-foreground">{d.qtd} em risco</span>
+                    </div>
+                  ))}
                 </div>
-              )}
-            </div>
+              </div>
+            ) : (
+              <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm p-8">
+                {emRisco.length === 0
+                  ? `Nenhum cliente em risco (${ativos.length} ativos)`
+                  : "Sem dados de cidade disponíveis"}
+              </div>
+            )}
           </div>
 
         </div>
