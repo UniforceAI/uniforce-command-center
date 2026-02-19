@@ -51,43 +51,57 @@ export const NPSCharts = memo(({ respostas }: NPSChartsProps) => {
     });
   };
 
-  // Evolução da média no tempo
+  // Evolução da média no tempo - agregado por semana para UX clean
   const evolucaoData = useMemo(() => {
-    const byDate: Record<string, { 
+    const byWeek: Record<string, { 
       contrato: { soma: number; total: number };
       os: { soma: number; total: number };
       atendimento: { soma: number; total: number };
       geral: { soma: number; total: number };
+      weekStart: Date;
     }> = {};
 
     respostas.forEach((r) => {
-      if (!byDate[r.data_resposta]) {
-        byDate[r.data_resposta] = {
+      const date = new Date(r.data_resposta);
+      // Agrupar por semana (início da semana = segunda-feira)
+      const day = date.getDay();
+      const diff = date.getDate() - day + (day === 0 ? -6 : 1);
+      const weekStart = new Date(date);
+      weekStart.setDate(diff);
+      weekStart.setHours(0, 0, 0, 0);
+      const weekKey = weekStart.toISOString().split('T')[0];
+
+      if (!byWeek[weekKey]) {
+        byWeek[weekKey] = {
           contrato: { soma: 0, total: 0 },
           os: { soma: 0, total: 0 },
           atendimento: { soma: 0, total: 0 },
           geral: { soma: 0, total: 0 },
+          weekStart,
         };
       }
       
-      const tipo = r.tipo_nps as keyof typeof byDate[string];
-      byDate[r.data_resposta][tipo].soma += r.nota;
-      byDate[r.data_resposta][tipo].total++;
-      byDate[r.data_resposta].geral.soma += r.nota;
-      byDate[r.data_resposta].geral.total++;
+      const tipo = r.tipo_nps as keyof Omit<typeof byWeek[string], 'weekStart'>;
+      if (byWeek[weekKey][tipo]) {
+        byWeek[weekKey][tipo].soma += r.nota;
+        byWeek[weekKey][tipo].total++;
+      }
+      byWeek[weekKey].geral.soma += r.nota;
+      byWeek[weekKey].geral.total++;
     });
 
     const calcMedia = (data: { soma: number; total: number }) => 
       data.total > 0 ? Number((data.soma / data.total).toFixed(1)) : null;
 
-    return Object.entries(byDate)
-      .map(([date, data]) => ({
-        date: new Date(date).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }),
-        dateSort: date,
+    return Object.entries(byWeek)
+      .map(([key, data]) => ({
+        date: data.weekStart.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" }),
+        dateSort: key,
         geral: calcMedia(data.geral),
         contrato: calcMedia(data.contrato),
         os: calcMedia(data.os),
         atendimento: calcMedia(data.atendimento),
+        respostas: data.geral.total,
       }))
       .sort((a, b) => a.dateSort.localeCompare(b.dateSort));
   }, [respostas]);
@@ -131,9 +145,9 @@ export const NPSCharts = memo(({ respostas }: NPSChartsProps) => {
       {/* Gráfico 1 - Evolução (Full Width) */}
       <Card>
         <CardHeader className="pb-2">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <CardTitle className="text-base">📈 Evolução do NPS</CardTitle>
-            <div className="flex flex-wrap gap-2">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <CardTitle className="text-base">Evolução do NPS (semanal)</CardTitle>
+            <div className="flex gap-1.5">
               {FILTER_OPTIONS.map((option) => {
                 const isSelected = selectedFilters.includes(option.id);
                 return (
@@ -141,10 +155,10 @@ export const NPSCharts = memo(({ respostas }: NPSChartsProps) => {
                     key={option.id}
                     onClick={() => toggleFilter(option.id)}
                     className={`
-                      text-xs px-3 py-1.5 rounded-full font-medium transition-all duration-200
+                      text-xs px-3 py-1 rounded-full font-medium transition-all
                       ${isSelected 
-                        ? 'text-white shadow-md' 
-                        : 'bg-muted/50 text-muted-foreground hover:bg-muted'
+                        ? 'text-white shadow-sm' 
+                        : 'bg-muted text-muted-foreground hover:bg-muted/80'
                       }
                     `}
                     style={{
@@ -159,87 +173,66 @@ export const NPSCharts = memo(({ respostas }: NPSChartsProps) => {
           </div>
         </CardHeader>
         <CardContent>
-          <ResponsiveContainer width="100%" height={280}>
-            <AreaChart data={evolucaoData}>
+          <ResponsiveContainer width="100%" height={260}>
+            <AreaChart data={evolucaoData} margin={{ top: 5, right: 10, left: -10, bottom: 0 }}>
               <defs>
                 <linearGradient id="gradientGeral" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor={COLORS.geral} stopOpacity={0.4}/>
-                  <stop offset="95%" stopColor={COLORS.geral} stopOpacity={0.05}/>
+                  <stop offset="5%" stopColor={COLORS.geral} stopOpacity={0.3}/>
+                  <stop offset="95%" stopColor={COLORS.geral} stopOpacity={0}/>
                 </linearGradient>
                 <linearGradient id="gradientContrato" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor={COLORS.contrato} stopOpacity={0.4}/>
-                  <stop offset="95%" stopColor={COLORS.contrato} stopOpacity={0.05}/>
+                  <stop offset="5%" stopColor={COLORS.contrato} stopOpacity={0.3}/>
+                  <stop offset="95%" stopColor={COLORS.contrato} stopOpacity={0}/>
                 </linearGradient>
                 <linearGradient id="gradientOs" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor={COLORS.os} stopOpacity={0.4}/>
-                  <stop offset="95%" stopColor={COLORS.os} stopOpacity={0.05}/>
+                  <stop offset="5%" stopColor={COLORS.os} stopOpacity={0.3}/>
+                  <stop offset="95%" stopColor={COLORS.os} stopOpacity={0}/>
                 </linearGradient>
                 <linearGradient id="gradientAtendimento" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor={COLORS.atendimento} stopOpacity={0.4}/>
-                  <stop offset="95%" stopColor={COLORS.atendimento} stopOpacity={0.05}/>
+                  <stop offset="5%" stopColor={COLORS.atendimento} stopOpacity={0.3}/>
+                  <stop offset="95%" stopColor={COLORS.atendimento} stopOpacity={0}/>
                 </linearGradient>
               </defs>
-              <CartesianGrid strokeDasharray="3 3" className="opacity-20" />
-              <XAxis dataKey="date" fontSize={11} tickLine={false} axisLine={false} />
-              <YAxis domain={[0, 10]} fontSize={11} tickLine={false} axisLine={false} />
+              <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" strokeOpacity={0.5} />
+              <XAxis 
+                dataKey="date" 
+                fontSize={10} 
+                tickLine={false} 
+                axisLine={false}
+                interval="preserveStartEnd"
+                tick={{ fill: 'hsl(var(--muted-foreground))' }}
+              />
+              <YAxis 
+                domain={[0, 10]} 
+                fontSize={10} 
+                tickLine={false} 
+                axisLine={false}
+                tick={{ fill: 'hsl(var(--muted-foreground))' }}
+                ticks={[0, 2.5, 5, 7.5, 10]}
+              />
               <Tooltip 
                 contentStyle={{ 
                   backgroundColor: 'hsl(var(--card))', 
                   border: '1px solid hsl(var(--border))',
                   borderRadius: '8px',
-                  boxShadow: '0 4px 12px rgba(0,0,0,0.15)'
+                  fontSize: '12px',
                 }}
+                labelFormatter={(label) => `Semana de ${label}`}
               />
               {selectedFilters.includes("geral") && (
-                <Area 
-                  type="monotone" 
-                  dataKey="geral" 
-                  name="Geral"
-                  stroke={COLORS.geral}
-                  strokeWidth={2}
-                  fill="url(#gradientGeral)"
-                  connectNulls
-                />
+                <Area type="monotone" dataKey="geral" name="Geral" stroke={COLORS.geral} strokeWidth={2} fill="url(#gradientGeral)" connectNulls dot={false} />
               )}
               {selectedFilters.includes("contrato") && (
-                <Area 
-                  type="monotone" 
-                  dataKey="contrato" 
-                  name="Contrato"
-                  stroke={COLORS.contrato}
-                  strokeWidth={2}
-                  fill="url(#gradientContrato)"
-                  connectNulls
-                />
+                <Area type="monotone" dataKey="contrato" name="Contrato" stroke={COLORS.contrato} strokeWidth={2} fill="url(#gradientContrato)" connectNulls dot={false} />
               )}
               {selectedFilters.includes("os") && (
-                <Area 
-                  type="monotone" 
-                  dataKey="os" 
-                  name="Pós-O.S"
-                  stroke={COLORS.os}
-                  strokeWidth={2}
-                  fill="url(#gradientOs)"
-                  connectNulls
-                />
+                <Area type="monotone" dataKey="os" name="Pós-O.S" stroke={COLORS.os} strokeWidth={2} fill="url(#gradientOs)" connectNulls dot={false} />
               )}
               {selectedFilters.includes("atendimento") && (
-                <Area 
-                  type="monotone" 
-                  dataKey="atendimento" 
-                  name="Atendimento"
-                  stroke={COLORS.atendimento}
-                  strokeWidth={2}
-                  fill="url(#gradientAtendimento)"
-                  connectNulls
-                />
+                <Area type="monotone" dataKey="atendimento" name="Atendimento" stroke={COLORS.atendimento} strokeWidth={2} fill="url(#gradientAtendimento)" connectNulls dot={false} />
               )}
               {selectedFilters.length > 1 && (
-                <Legend 
-                  verticalAlign="bottom" 
-                  height={36}
-                  formatter={(value) => <span className="text-xs">{value}</span>}
-                />
+                <Legend verticalAlign="bottom" height={30} formatter={(value) => <span className="text-xs">{value}</span>} />
               )}
             </AreaChart>
           </ResponsiveContainer>
