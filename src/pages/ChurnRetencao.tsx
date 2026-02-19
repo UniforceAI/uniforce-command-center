@@ -63,20 +63,24 @@ const ChurnRetencao = () => {
   const [uf, setUf] = useState("todos");
   const [plano, setPlano] = useState("todos");
   const [riscoBucket, setRiscoBucket] = useState("todos");
+  const [filial, setFilial] = useState("todos");
 
   // Extrair opções dinâmicas
   const filterOptions = useMemo(() => {
     const ufs = new Set<string>();
     const planos = new Set<string>();
+    const filiais = new Set<string>();
 
     eventos.forEach((e: Evento) => {
       if (e.cliente_uf) ufs.add(e.cliente_uf);
       if (e.plano_nome) planos.add(e.plano_nome);
+      if (e.filial_id !== null && e.filial_id !== undefined) filiais.add(String(e.filial_id));
     });
 
     return {
       ufs: Array.from(ufs).sort(),
       planos: Array.from(planos).sort(),
+      filiais: Array.from(filiais).sort((a, b) => Number(a) - Number(b)),
     };
   }, [eventos]);
 
@@ -112,8 +116,12 @@ const ChurnRetencao = () => {
       filtered = filtered.filter((e) => e.plano_nome === plano);
     }
 
+    if (filial !== "todos") {
+      filtered = filtered.filter((e) => String(e.filial_id) === filial);
+    }
+
     return filtered;
-  }, [eventos, periodo, uf, plano]);
+  }, [eventos, periodo, uf, plano, filial]);
 
   // Agrupar por cliente - pegar último registro de cada um
   const clientesUnicos = useMemo(() => {
@@ -383,6 +391,18 @@ const ChurnRetencao = () => {
         { value: "Alto", label: "Alto" },
         { value: "Médio", label: "Médio" },
         { value: "Baixo", label: "Baixo" },
+      ],
+    },
+    {
+      id: "filial",
+      label: "Filial",
+      value: filial,
+      onChange: setFilial,
+      disabled: filterOptions.filiais.length === 0,
+      tooltip: "Campo filial não encontrado nos dados",
+      options: [
+        { value: "todos", label: "Todas" },
+        ...filterOptions.filiais.map(f => ({ value: f, label: `Filial ${f}` })),
       ],
     },
   ];
