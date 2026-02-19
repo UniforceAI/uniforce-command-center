@@ -8,19 +8,15 @@ interface DomainValidationResult {
 }
 
 /**
- * Valida se o domínio do email está cadastrado na tabela isps do banco externo.
- * Compara o domínio extraído do email com os domínios associados aos ISPs.
- * 
- * Como a tabela isps não tem coluna de domínio explícita,
- * usamos um mapa estático baseado nos ISPs cadastrados.
- * 
- * TODO: Quando a tabela isps tiver coluna "allowed_domains",
- * substituir este mapa por query dinâmica.
+ * Mapa estático de domínios autorizados → ISP.
+ * A tabela isps no banco externo pode estar vazia,
+ * então usamos este mapa como fonte principal.
  */
-const ISP_DOMAIN_MAP: Record<string, string> = {
-  "agytelecom.com.br": "agy-telecom",
-  "d-kiros.com.br": "d-kiros",
-  "uniforce.com.br": "agy-telecom", // Uniforce pode acessar AGY
+const ISP_DOMAIN_MAP: Record<string, { isp_id: string; isp_nome: string }> = {
+  "agytelecom.com.br": { isp_id: "agy-telecom", isp_nome: "AGY Telecom" },
+  "d-kiros.com.br": { isp_id: "d-kiros", isp_nome: "D-Kiros" },
+  "dkiros.com.br": { isp_id: "d-kiros", isp_nome: "D-Kiros" },
+  "uniforce.com.br": { isp_id: "agy-telecom", isp_nome: "AGY Telecom" },
 };
 
 export async function validateEmailDomain(email: string): Promise<DomainValidationResult> {
@@ -30,40 +26,24 @@ export async function validateEmailDomain(email: string): Promise<DomainValidati
     return { valid: false, error: "Email inválido." };
   }
 
-  // 1. Verificar no mapa estático
-  const ispId = ISP_DOMAIN_MAP[domain];
-  
-  if (!ispId) {
+  const ispInfo = ISP_DOMAIN_MAP[domain];
+
+  if (!ispInfo) {
     return {
       valid: false,
       error: "Domínio não autorizado. Entre em contato com o administrador.",
     };
   }
 
-  // 2. Validar se o ISP existe na tabela isps
-  const { data: isp, error: ispErr } = await externalSupabase
-    .from("isps")
-    .select("isp_id, isp_nome")
-    .eq("isp_id", ispId)
-    .maybeSingle();
-
-  if (ispErr || !isp) {
-    return {
-      valid: false,
-      error: "ISP não encontrado na base de dados. Entre em contato com o administrador.",
-    };
-  }
-
   return {
     valid: true,
-    isp_id: isp.isp_id,
-    isp_nome: isp.isp_nome,
+    isp_id: ispInfo.isp_id,
+    isp_nome: ispInfo.isp_nome,
   };
 }
 
 /**
  * Após signup confirmado, cria o profile e role no banco externo.
- * Deve ser chamado após a confirmação do email.
  */
 export async function createUserProfileInExternal(
   userId: string,
@@ -71,7 +51,6 @@ export async function createUserProfileInExternal(
   fullName: string,
   ispId: string
 ): Promise<{ success: boolean; error?: string }> {
-  // Criar profile
   const { error: profileErr } = await externalSupabase
     .from("profiles")
     .upsert({
@@ -86,7 +65,6 @@ export async function createUserProfileInExternal(
     return { success: false, error: "Erro ao criar perfil: " + profileErr.message };
   }
 
-  // Criar role padrão
   const { error: roleErr } = await externalSupabase
     .from("user_roles")
     .upsert({
@@ -97,7 +75,6 @@ export async function createUserProfileInExternal(
 
   if (roleErr) {
     console.error("⚠️ Erro ao criar role (pode já existir):", roleErr);
-    // Não bloquear por erro de role
   }
 
   return { success: true };
