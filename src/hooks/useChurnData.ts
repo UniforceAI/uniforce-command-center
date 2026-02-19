@@ -55,6 +55,8 @@ export function useChurnData() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    let cancelled = false;
+
     const fetchData = async () => {
       try {
         setIsLoading(true);
@@ -62,13 +64,14 @@ export function useChurnData() {
 
         console.log(`🔄 Buscando churn_status (isp_id=${ispId})...`);
 
-        // Fetch churn_status in batches
+        // Fetch churn_status in sequential batches
         const BATCH_SIZE = 1000;
-        const MAX_BATCHES = 20;
+        const MAX_STATUS_BATCHES = 20;
         let allStatus: any[] = [];
         let hasMore = true;
 
-        for (let i = 0; i < MAX_BATCHES && hasMore; i++) {
+        for (let i = 0; i < MAX_STATUS_BATCHES && hasMore; i++) {
+          if (cancelled) return;
           const start = i * BATCH_SIZE;
           const end = start + BATCH_SIZE - 1;
 
@@ -88,17 +91,19 @@ export function useChurnData() {
           }
         }
 
+        if (cancelled) return;
         console.log(`✅ churn_status: ${allStatus.length}`);
         if (allStatus.length > 0) {
-          console.log("📋 Amostra churn_status:", JSON.stringify(allStatus[0]).substring(0, 600));
+          console.log("📋 Amostra churn_status colunas:", Object.keys(allStatus[0]).join(", "));
         }
         setChurnStatus(allStatus as ChurnStatus[]);
 
-        // Fetch churn_events in batches
+        // Fetch churn_events — apenas 3 batches (3k registros)
         let allEvents: any[] = [];
         hasMore = true;
 
-        for (let i = 0; i < 5 && hasMore; i++) {
+        for (let i = 0; i < 3 && hasMore; i++) {
+          if (cancelled) return;
           const start = i * BATCH_SIZE;
           const end = start + BATCH_SIZE - 1;
 
@@ -110,7 +115,7 @@ export function useChurnData() {
             .range(start, end);
 
           if (batchError) {
-            console.warn("churn_events error:", batchError);
+            console.warn("churn_events error (tabela pode não existir):", batchError.message);
             break;
           }
 
@@ -122,18 +127,21 @@ export function useChurnData() {
           }
         }
 
+        if (cancelled) return;
         console.log(`✅ churn_events: ${allEvents.length}`);
         setChurnEvents(allEvents as ChurnEvent[]);
 
       } catch (err: any) {
+        if (cancelled) return;
         console.error("❌ Erro useChurnData:", err);
         setError(err.message);
       } finally {
-        setIsLoading(false);
+        if (!cancelled) setIsLoading(false);
       }
     };
 
     fetchData();
+    return () => { cancelled = true; };
   }, [ispId]);
 
   return { churnStatus, churnEvents, isLoading, error };
