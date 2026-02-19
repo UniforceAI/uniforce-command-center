@@ -1293,11 +1293,29 @@ const VisaoGeral = () => {
                                     )}
                                     {cohortTab === "suporte" && (
                                       <>
-                                        <p><span className="text-warning font-medium">{value.toFixed(1)}%</span> com chamados</p>
+                                        <p>Chamados: <span className="text-warning font-medium">{data.chamados}</span></p>
+                                        <p>Total clientes: <span className="text-foreground font-medium">{data.total}</span></p>
+                                        <p>Reincidentes: <span className="text-foreground font-medium">{data.reincidentes || 0}</span></p>
+                                        <p>MRR: <span className="text-foreground font-medium">R$ {((data.mrrTotal || 0) / 1000).toFixed(1)}k</span></p>
+                                      </>
+                                    )}
+                                    {cohortTab === "contratos" && (
+                                      <>
+                                        <p>Bloqueados: <span className="text-destructive font-medium">{data.bloqueados}</span> ({data.total > 0 ? (data.bloqueados / data.total * 100).toFixed(1) : 0}%)</p>
+                                        <p>Ativos: <span className="text-foreground font-medium">{data.ativos}</span></p>
+                                        <p>Total clientes: <span className="text-foreground font-medium">{data.total}</span></p>
+                                        <p>MRR: <span className="text-foreground font-medium">R$ {((data.mrrTotal || 0) / 1000).toFixed(1)}k</span></p>
+                                      </>
+                                    )}
+                                    {cohortTab === "rede" && (
+                                      <>
+                                        <p>Com problemas: <span className="text-destructive font-medium">{(data.comDowntime || 0) + (data.comAlerta || 0)}</span> ({value.toFixed(1)}%)</p>
+                                        <p>Downtime: <span className="text-foreground font-medium">{data.comDowntime || 0}</span></p>
+                                        <p>Alertas: <span className="text-foreground font-medium">{data.comAlerta || 0}</span></p>
                                         <p>Total clientes: <span className="text-foreground font-medium">{data.total}</span></p>
                                       </>
                                     )}
-                                    {!["financeiro", "churn", "nps", "ltv", "suporte"].includes(cohortTab) && (
+                                    {!["financeiro", "churn", "nps", "ltv", "suporte", "contratos", "rede"].includes(cohortTab) && (
                                       <p>{cohortMetricInfo.format(value)}</p>
                                     )}
                                   </div>
