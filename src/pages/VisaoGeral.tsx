@@ -1244,7 +1244,7 @@ const VisaoGeral = () => {
                           <XAxis 
                             type="number" 
                             domain={[0, 'auto']}
-                            tickFormatter={(v) => cohortTab === "ltv" ? `R$${(v/1000).toFixed(0)}k` : `${v.toFixed(0)}%`}
+                            tickFormatter={(v) => (cohortTab === "ltv" || cohortTab === "financeiro") ? `R$${(v/1000).toFixed(0)}k` : cohortTab === "suporte" ? `${v}` : `${v.toFixed(0)}%`}
                             fontSize={11}
                           />
                           <YAxis 
@@ -1265,9 +1265,10 @@ const VisaoGeral = () => {
                                   <div className="space-y-1 text-muted-foreground">
                                     {cohortTab === "financeiro" && (
                                       <>
-                                        <p><span className="text-destructive font-medium">{value.toFixed(1)}%</span> dos clientes estão vencidos</p>
-                                        <p>Vencidos: <span className="text-foreground font-medium">{data.clientesVencidos}</span> de {data.total} clientes</p>
-                                        <p>Valor em atraso: <span className="text-foreground font-medium">R$ {(data.valorVencido / 1000).toFixed(1)}k</span></p>
+                                        <p>MRR: <span className="text-primary font-medium">R$ {(value / 1000).toFixed(1)}k</span></p>
+                                        <p>Total clientes: <span className="text-foreground font-medium">{data.total}</span></p>
+                                        <p>Vencidos: <span className="text-foreground font-medium">{data.clientesVencidos}</span> ({data.total > 0 ? (data.clientesVencidos / data.total * 100).toFixed(1) : 0}%)</p>
+                                        <p>Valor em atraso: <span className="text-foreground font-medium">R$ {((data.valorVencido || 0) / 1000).toFixed(1)}k</span></p>
                                       </>
                                     )}
                                     {cohortTab === "churn" && (
@@ -1311,9 +1312,7 @@ const VisaoGeral = () => {
                             {sortedCohortData.map((entry, index) => {
                               const value = (entry as any)[cohortMetricInfo.dataKey] || 0;
                               let color = "hsl(var(--primary))";
-                              if (cohortTab === "ltv") {
-                                // Para LTV, usar gradiente de cores baseado no valor relativo
-                                // Valores maiores = cores mais intensas (azul primary)
+                              if (cohortTab === "ltv" || cohortTab === "financeiro") {
                                 color = "hsl(var(--primary))";
                               } else {
                                 color = value > 30 ? "hsl(var(--destructive))" : value > 10 ? "hsl(var(--warning))" : "hsl(var(--success))";
