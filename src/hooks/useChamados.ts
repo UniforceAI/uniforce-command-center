@@ -50,17 +50,45 @@ export function useChamados() {
 
         console.log(`🔄 Buscando chamados (isp_id=${ispId})...`);
 
-        const { data, error } = await externalSupabase
-          .from("chamados")
-          .select("*")
-          .eq("isp_id", ispId)
-          .order("data_abertura", { ascending: false })
-          .limit(1000);
+        // Buscar em batches para pegar todos os chamados recentes
+        const BATCH_SIZE = 1000;
+        const MAX_BATCHES = 15;
+        let allData: any[] = [];
+        let hasMore = true;
 
-        if (error) throw error;
+        for (let i = 0; i < MAX_BATCHES && hasMore; i++) {
+          const start = i * BATCH_SIZE;
+          const end = start + BATCH_SIZE - 1;
+
+          const { data, error: batchError } = await externalSupabase
+            .from("chamados")
+            .select("*")
+            .eq("isp_id", ispId)
+            .order("data_abertura", { ascending: false })
+            .range(start, end);
+
+          if (batchError) throw batchError;
+
+          if (data && data.length > 0) {
+            allData = [...allData, ...data];
+            hasMore = data.length === BATCH_SIZE;
+          } else {
+            hasMore = false;
+          }
+        }
+
+        // Deduplicar por protocolo (manter o mais recente)
+        const uniqueMap = new Map<string, any>();
+        allData.forEach(c => {
+          const key = c.protocolo;
+          if (!uniqueMap.has(key)) {
+            uniqueMap.set(key, c);
+          }
+        });
+        const uniqueData = Array.from(uniqueMap.values());
         
-        setChamados((data || []) as ChamadoData[]);
-        console.log(`✅ ${data?.length || 0} chamados carregados para ${ispId}`);
+        setChamados(uniqueData as ChamadoData[]);
+        console.log(`✅ ${uniqueData.length} chamados únicos carregados para ${ispId} (de ${allData.length} registros)`);
         
       } catch (err: any) {
         setError(err.message);
@@ -81,9 +109,29 @@ export function useChamados() {
   const getChamadosPorCliente = useCallback((periodoFiltro?: number): Map<number, ChamadosPorCliente> => {
     const clientesMap = new Map<number, ChamadosPorCliente>();
     
+    // Calcular data limite RELATIVA ao chamado mais recente (não Date.now())
+    let maxDate = new Date(0);
+    chamados.forEach(c => {
+      try {
+        let d: Date | null = null;
+        if (c.data_abertura.includes("/")) {
+          const [datePart] = c.data_abertura.split(" ");
+          const [dia, mes, ano] = datePart.split("/");
+          d = new Date(parseInt(ano), parseInt(mes) - 1, parseInt(dia));
+        } else {
+          d = new Date(c.data_abertura);
+        }
+        if (d && !isNaN(d.getTime()) && d > maxDate) maxDate = d;
+      } catch (e) {}
+    });
+    
+    if (maxDate.getTime() === 0) maxDate = new Date();
+    
     const dataLimite = periodoFiltro 
-      ? new Date(Date.now() - periodoFiltro * 24 * 60 * 60 * 1000)
+      ? new Date(maxDate.getTime() - periodoFiltro * 24 * 60 * 60 * 1000)
       : null;
+
+    console.log(`🔍 Chamados: maxDate=${maxDate.toISOString()}, dataLimite=${dataLimite?.toISOString()}, total=${chamados.length}`);
 
     chamados.forEach(c => {
       const clienteId = typeof c.id_cliente === 'string' ? parseInt(c.id_cliente, 10) : c.id_cliente;

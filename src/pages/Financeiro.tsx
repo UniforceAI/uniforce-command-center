@@ -49,9 +49,12 @@ const Financeiro = () => {
   const [ordemPlanoDecrescente, setOrdemPlanoDecrescente] = useState(true);
 
 
-  // Filtrar eventos financeiros (COBRANCA)
+  // Filtrar eventos financeiros (COBRANCA ou SNAPSHOT com dados de cobrança)
   const eventosFinanceiros = useMemo(() => {
-    return eventos.filter(e => e.event_type === "COBRANCA");
+    return eventos.filter(e => 
+      e.event_type === "COBRANCA" || 
+      (e.event_type === "SNAPSHOT" && (e.cobranca_status || e.valor_cobranca || e.data_vencimento))
+    );
   }, [eventos]);
 
   // Extrair opções dinâmicas
@@ -79,23 +82,24 @@ const Financeiro = () => {
 
     if (periodo !== "todos") {
       const diasAtras = parseInt(periodo);
-      const dataLimite = new Date();
+      
+      // Calcular data limite relativa ao registro mais recente
+      let maxDate = new Date(0);
+      filtered.forEach((e) => {
+        const d = e.event_datetime ? new Date(e.event_datetime) : null;
+        if (d && !isNaN(d.getTime()) && d > maxDate) maxDate = d;
+      });
+      if (maxDate.getTime() === 0) maxDate = new Date();
+      
+      const dataLimite = new Date(maxDate);
       dataLimite.setDate(dataLimite.getDate() - diasAtras);
 
       filtered = filtered.filter((e) => {
-        // Para cobranças, usar data_vencimento como referência principal
-        // Incluir vencidos sempre (já que queremos ver inadimplência)
-        if (e.vencido === true || e.dias_atraso > 0) {
-          // Para vencidos, verificar se o vencimento caiu no período
-          const dataVenc = e.data_vencimento;
-          if (!dataVenc) return true;
-          return new Date(dataVenc) >= dataLimite;
-        }
-        
-        // Para não vencidos, usar data de criação/evento
-        const dataRef = e.created_at || e.event_datetime || e.data_vencimento;
-        if (!dataRef) return true;
-        return new Date(dataRef) >= dataLimite;
+        // Usar event_datetime como data principal
+        const dateToCheck = e.event_datetime ? new Date(e.event_datetime) : 
+                           e.created_at ? new Date(e.created_at) : null;
+        if (!dateToCheck || isNaN(dateToCheck.getTime())) return true;
+        return dateToCheck >= dataLimite;
       });
     }
 
