@@ -227,9 +227,9 @@ const VisaoGeral = () => {
     };
   }, [eventos]);
 
-  // Filtered events - dados SNAPSHOT (todos do mesmo dia), filtro de período NÃO se aplica a event_datetime.
-  // O filtro de período afeta SOMENTE chamados (via getChamadosPorCliente) que têm data_abertura real.
-  // Aqui filtramos apenas por dimensões geográficas, plano e status.
+  // Filtered events — aplica filtros geográficos/plano/status (sem filtro de período aqui,
+  // pois event_datetime é igual para todos os snapshots do mesmo dia).
+  // O filtro de período é calculado separadamente via dataLimitePeriodo e aplicado nas métricas.
   const filteredEventos = useMemo(() => {
     let filtered = [...eventos] as Evento[];
 
@@ -255,92 +255,131 @@ const VisaoGeral = () => {
     return filtered;
   }, [eventos, uf, cidade, bairro, plano, status, filial]);
 
+  // Calcula a data limite para o período selecionado — usada para filtrar métricas financeiras
+  // A data de referência é a data de vencimento (data_vencimento) dos clientes.
+  // 7 dias: clientes cujo vencimento caiu nos últimos 7 dias (já vencidos recentemente)
+  // 30/90 dias: janela maior, captura mais inadimplentes históricos
+  const dataLimitePeriodo = useMemo(() => {
+    if (periodo === "todos") return null;
+    const hoje = new Date();
+    const limite = new Date();
+    limite.setDate(hoje.getDate() - parseInt(periodo));
+    return limite;
+  }, [periodo]);
 
-  // KPIs calculation - FIXED: use actual data fields correctly
-  const kpis = useMemo(() => {
-    // Get unique clients (last event per client)
-    const clientesMap = new Map<number, Evento>();
-    filteredEventos.forEach(e => {
-      if (!clientesMap.has(e.cliente_id) || 
-          new Date(e.event_datetime) > new Date(clientesMap.get(e.cliente_id)!.event_datetime)) {
-        clientesMap.set(e.cliente_id, e);
+  // Eventos do período — filtra por data_vencimento dentro da janela selecionada.
+  // Isso faz 7d mostrar apenas quem venceu nos últimos 7 dias, 30d nos últimos 30, etc.
+  const filteredEventosPeriodo = useMemo(() => {
+    if (!dataLimitePeriodo) return filteredEventos;
+    return filteredEventos.filter(e => {
+      if (!e.data_vencimento) return false;
+      try {
+        const dv = new Date(e.data_vencimento);
+        if (isNaN(dv.getTime())) return false;
+        // Clientes cujo vencimento caiu dentro da janela do período (passado recente)
+        const hoje = new Date();
+        return dv >= dataLimitePeriodo && dv <= hoje;
+      } catch {
+        return false;
       }
     });
-    const clientesUnicos = Array.from(clientesMap.values());
-    
-    // Clientes ativos: status_contrato diferente de C (cancelado) ou servico_status diferente de C
+  }, [filteredEventos, dataLimitePeriodo]);
+
+
+  // KPIs calculation
+  const kpis = useMemo(() => {
+    // BASE TOTAL: todos os clientes (sem filtro de período) — para MRR, LTV, ticket médio
+    const clientesMapBase = new Map<number, Evento>();
+    filteredEventos.forEach(e => {
+      if (!clientesMapBase.has(e.cliente_id) || 
+          new Date(e.event_datetime) > new Date(clientesMapBase.get(e.cliente_id)!.event_datetime)) {
+        clientesMapBase.set(e.cliente_id, e);
+      }
+    });
+    const clientesUnicos = Array.from(clientesMapBase.values());
+    const totalClientes = clientesUnicos.length;
+
+    // Clientes ativos (base total)
     const clientesAtivos = clientesUnicos.filter(e => 
       e.status_contrato !== "C" && e.servico_status !== "C"
     ).length;
-    
-    // Total de clientes únicos
-    const totalClientes = clientesUnicos.length;
-    
+
+    // MRR Total (base total — não muda com período)
+    const mrrTotal = clientesUnicos
+      .filter(e => e.status_contrato !== "C" && e.servico_status !== "C")
+      .reduce((acc, e) => acc + (e.valor_mensalidade || 0), 0);
+
+    // Ticket Médio
+    const ticketMedio = clientesAtivos > 0 ? mrrTotal / clientesAtivos : 0;
+
+    // Churn (base total)
+    const churned = filteredEventos.filter(e => 
+      e.event_type === "CANCELAMENTO" || e.servico_status === "C" || e.status_contrato === "C"
+    );
+    const churnCount = new Set(churned.map(e => e.cliente_id)).size;
+
+    // Faturamento realizado (base total)
+    const faturamentoRealizado = clientesUnicos
+      .filter(e => e.cobranca_status === "Pago" || (e.valor_pago && e.valor_pago > 0))
+      .reduce((acc, e) => acc + (e.valor_pago || e.valor_cobranca || 0), 0);
+
+    // ---- MÉTRICAS DO PERÍODO (filtradas por data_vencimento) ----
+    // Clientes únicos com vencimento dentro do período selecionado
+    const clientesMapPeriodo = new Map<number, Evento>();
+    filteredEventosPeriodo.forEach(e => {
+      if (!clientesMapPeriodo.has(e.cliente_id) ||
+          new Date(e.event_datetime) > new Date(clientesMapPeriodo.get(e.cliente_id)!.event_datetime)) {
+        clientesMapPeriodo.set(e.cliente_id, e);
+      }
+    });
+    const clientesPeriodo = Array.from(clientesMapPeriodo.values());
+    const totalClientesPeriodo = clientesPeriodo.length;
+
     // Novos clientes (instalados no período)
     const hoje = new Date();
     const diasPeriodo = periodo === "todos" ? 365 : parseInt(periodo);
     const dataLimite = new Date();
     dataLimite.setDate(hoje.getDate() - diasPeriodo);
     const novosClientes = clientesUnicos.filter(e => {
-      const dataInstalacao = e.data_instalacao ? new Date(e.data_instalacao) : 
-                             e.created_at ? new Date(e.created_at) : null;
-      return dataInstalacao && dataInstalacao >= dataLimite;
+      const dataInstalacao = e.data_instalacao ? new Date(e.data_instalacao) : null;
+      return dataInstalacao && !isNaN(dataInstalacao.getTime()) && dataInstalacao >= dataLimite;
     }).length;
 
-    // Churn (cancelados)
-    const churned = filteredEventos.filter(e => 
-      e.event_type === "CANCELAMENTO" || e.servico_status === "C" || e.status_contrato === "C"
-    );
-    const churnCount = new Set(churned.map(e => e.cliente_id)).size;
+    // INADIMPLÊNCIA do período: clientes cujo vencimento caiu no período E têm dias_atraso > 0
+    const clientesVencidosPeriodo = clientesPeriodo.filter(e => isClienteVencido(e));
+    const rrVencido = clientesVencidosPeriodo.reduce((acc, e) => acc + (e.valor_cobranca || e.valor_mensalidade || 0), 0);
+    const clientesVencidosUnicos = clientesVencidosPeriodo.length;
 
-    // MRR Total - somar valor_mensalidade de todos clientes não cancelados
-    const mrrTotal = clientesUnicos
-      .filter(e => e.status_contrato !== "C" && e.servico_status !== "C")
-      .reduce((acc, e) => acc + (e.valor_mensalidade || 0), 0);
+    // % Inadimplência = vencidos no período / total de clientes com vencimento no período
+    const pctInadimplencia = totalClientesPeriodo > 0 
+      ? ((clientesVencidosUnicos / totalClientesPeriodo) * 100).toFixed(1)
+      : totalClientes > 0 
+        ? ((clientesUnicos.filter(e => isClienteVencido(e)).length / totalClientes) * 100).toFixed(1)
+        : "0.0";
 
-    // Faturamento realizado (cobranças pagas) - sem filtro de event_type para suportar SNAPSHOT
-    const faturamentoRealizado = clientesUnicos
-      .filter(e => e.cobranca_status === "Pago" || (e.valor_pago && e.valor_pago > 0))
-      .reduce((acc, e) => acc + (e.valor_pago || e.valor_cobranca || 0), 0);
+    // % Inadimplência Crítica (vencido > 30 dias) no período
+    const inadCritica = clientesVencidosPeriodo.filter(e => e.dias_atraso && e.dias_atraso > 30);
+    const pctInadCritica = totalClientesPeriodo > 0 
+      ? (inadCritica.length / totalClientesPeriodo * 100).toFixed(1)
+      : "0.0";
 
-    // MRR em Risco - clientes com alerta ou risco
+    // MRR em Risco — usa base total (não varia com período por ser snapshot)
     const clientesEmRisco = clientesUnicos.filter(e => 
-      e.churn_risk_score && e.churn_risk_score >= 50 ||
+      (e.churn_risk_score && e.churn_risk_score >= 50) ||
       e.alerta_tipo ||
-      e.downtime_min_24h > 60
+      (e.downtime_min_24h && e.downtime_min_24h > 60)
     );
     const mrrEmRisco = clientesEmRisco.reduce((acc, e) => acc + (e.valor_mensalidade || 0), 0);
+    const ltvEmRisco = clientesEmRisco.reduce((acc, e) => acc + (e.ltv_reais_estimado || (e.valor_mensalidade || 0) * 12), 0);
 
-    // LTV em Risco
-    const ltvEmRisco = clientesEmRisco.reduce((acc, e) => acc + (e.ltv_reais_estimado || e.valor_mensalidade * 12 || 0), 0);
-
-    // RR Vencido (receita recorrente vencida) - sem filtro de event_type para suportar SNAPSHOT
-    const clientesVencidosArr = clientesUnicos.filter(e => isClienteVencido(e));
-    const rrVencido = clientesVencidosArr.reduce((acc, e) => acc + (e.valor_cobranca || e.valor_mensalidade || 0), 0);
-
-    // Clientes vencidos únicos
-    const clientesVencidosUnicos = clientesVencidosArr.length;
-
-    // % Inadimplência = clientes com cobrança vencida / total de clientes
-    const pctInadimplencia = totalClientes > 0 
-      ? ((clientesVencidosUnicos / totalClientes) * 100).toFixed(1)
-      : "0.0";
-
-    // % Inadimplência Crítica (vencido > 30 dias)
-    const inadCritica = clientesVencidosArr.filter(e => e.dias_atraso && e.dias_atraso > 30);
-    const pctInadCritica = totalClientes > 0 
-      ? (inadCritica.length / totalClientes * 100).toFixed(1)
-      : "0.0";
-
-    // % Detratores (NPS < 7)
+    // % Detratores (NPS < 7) — base total
     const npsScores = filteredEventos.filter(e => e.nps_score !== undefined && e.nps_score !== null);
     const detratores = npsScores.filter(e => e.nps_score! < 7).length;
     const pctDetratores = npsScores.length > 0 
       ? ((detratores / npsScores.length) * 100).toFixed(1)
       : "N/A";
 
-    // LTV Médio GLOBAL - usar TODOS os eventos, não filtrados
-    // Isso garante que o LTV médio seja fixo independente dos filtros
+    // LTV Médio GLOBAL — usar TODOS os eventos
     const allClientesMap = new Map<number, Evento>();
     eventos.forEach(e => {
       if (!allClientesMap.has(e.cliente_id) || 
@@ -349,9 +388,6 @@ const VisaoGeral = () => {
       }
     });
     const allClientesUnicos = Array.from(allClientesMap.values());
-    
-    // LTV em meses - CALCULAR COM BASE NA DATA DE INSTALAÇÃO REAL
-    // Diferença entre hoje e data_instalacao em meses
     const hojeCalcLtv = new Date();
     const ltvMesesCalculados = allClientesUnicos
       .filter(e => e.data_instalacao && e.data_instalacao.length >= 10)
@@ -359,29 +395,23 @@ const VisaoGeral = () => {
         const dataInstalacao = new Date(e.data_instalacao);
         if (isNaN(dataInstalacao.getTime())) return null;
         const diffMs = hojeCalcLtv.getTime() - dataInstalacao.getTime();
-        const meses = diffMs / (1000 * 60 * 60 * 24 * 30.44); // Média de dias por mês
+        const meses = diffMs / (1000 * 60 * 60 * 24 * 30.44);
         return meses > 0 ? meses : 0;
       })
       .filter((m): m is number => m !== null && m > 0);
-    
-    // Calcular média dos meses desde instalação
     const ltvMesesCalculado = ltvMesesCalculados.length > 0 
       ? ltvMesesCalculados.reduce((a, b) => a + b, 0) / ltvMesesCalculados.length 
       : 0;
-    
-    // LTV calculado dinamicamente
     const ltvMeses = ltvMesesCalculado > 0 ? Math.round(ltvMesesCalculado) : 0;
     const ticketMedioGlobal = allClientesUnicos.length > 0 
       ? allClientesUnicos.reduce((acc, e) => acc + (e.valor_mensalidade || 0), 0) / allClientesUnicos.length 
       : 0;
     const ltvMedio = ltvMeses * ticketMedioGlobal;
 
-    // Ticket Médio
-    const ticketMedio = clientesAtivos > 0 ? mrrTotal / clientesAtivos : 0;
-
     return {
       clientesAtivos,
       totalClientes,
+      totalClientesPeriodo,
       novosClientes,
       churnCount,
       mrrTotal,
@@ -396,7 +426,7 @@ const VisaoGeral = () => {
       ltvMeses,
       ticketMedio,
     };
-  }, [filteredEventos, periodo]);
+  }, [filteredEventos, filteredEventosPeriodo, periodo, eventos]);
 
   // Chamados por cliente - memoizado para performance
   const chamadosStats = useMemo(() => {
@@ -451,7 +481,13 @@ const VisaoGeral = () => {
   }, [eventos]);
 
   // Generic function to calculate cohort data for any dimension
-  const calculateCohortData = (dimension: "plano" | "cidade" | "bairro") => {
+  // eventosBase: todos os eventos filtrados (para MRR, LTV, churn, etc.)
+  // eventosPeriodo: eventos filtrados pelo período (para inadimplência financeira)
+  const calculateCohortData = (
+    dimension: "plano" | "cidade" | "bairro",
+    eventosBase: Evento[],
+    eventosPeriodo: Evento[]
+  ) => {
     const stats: Record<string, { 
       key: string; 
       label: string;
@@ -462,7 +498,7 @@ const VisaoGeral = () => {
       // Contratos
       ativos: number;
       bloqueados: number;
-      // Financeiro - agora conta CLIENTES únicos vencidos
+      // Financeiro - conta CLIENTES ÚNICOS vencidos NO PERÍODO
       clientesVencidos: number;
       valorVencido: number;
       // Suporte (placeholder - aguardando dados)
@@ -485,7 +521,7 @@ const VisaoGeral = () => {
 
     const clientesPorKey = new Map<string, Set<number>>();
     const clienteContado = new Map<string, Set<number>>();
-    const clientesVencidosPorKey = new Map<string, Set<number>>(); // Track clientes vencidos separadamente
+    const clientesVencidosPorKey = new Map<string, Set<number>>();
     
     const getKey = (e: Evento): string | null => {
       switch (dimension) {
@@ -503,7 +539,8 @@ const VisaoGeral = () => {
       return key;
     };
     
-    filteredEventos.forEach(e => {
+    // Primeiro passo: processar base total para MRR, LTV, churn, NPS, etc.
+    eventosBase.forEach(e => {
       const key = getKey(e);
       if (!key) return;
       
@@ -543,8 +580,6 @@ const VisaoGeral = () => {
             if (meses > 0) {
               stats[key].mesesTotal += meses;
               stats[key].mesesCount++;
-              
-              // Guardar top 3 clientes com maior LTV para comprovação
               const clienteLtv = meses * (e.valor_mensalidade || 0);
               const clienteInfo = {
                 nome: e.cliente_nome || `Cliente ${e.cliente_id}`,
@@ -554,7 +589,6 @@ const VisaoGeral = () => {
                 ltv: clienteLtv,
               };
               stats[key].topClientes.push(clienteInfo);
-              // Manter apenas top 3 por LTV
               if (stats[key].topClientes.length > 3) {
                 stats[key].topClientes.sort((a, b) => b.ltv - a.ltv);
                 stats[key].topClientes = stats[key].topClientes.slice(0, 3);
@@ -578,42 +612,41 @@ const VisaoGeral = () => {
         }
         
         // Rede
-        if (e.downtime_min_24h && e.downtime_min_24h > 60) {
-          stats[key].comDowntime++;
-        }
-        if (e.alerta_tipo) {
-          stats[key].comAlerta++;
-        }
+        if (e.downtime_min_24h && e.downtime_min_24h > 60) stats[key].comDowntime++;
+        if (e.alerta_tipo) stats[key].comAlerta++;
         
         // NPS
         if (e.nps_score !== null && e.nps_score !== undefined) {
           stats[key].npsTotal += e.nps_score;
           stats[key].npsCount++;
-          if (e.nps_score < 7) {
-            stats[key].detratores++;
-          }
+          if (e.nps_score < 7) stats[key].detratores++;
         }
       }
-      
-      // Financeiro - contar CLIENTE ÚNICO vencido (não eventos)
-      if (isClienteVencido(e)) {
-        const vencidosSet = clientesVencidosPorKey.get(key)!;
-        if (!vencidosSet.has(e.cliente_id)) {
-          vencidosSet.add(e.cliente_id);
-        }
+    });
+
+    // Segundo passo: contar CLIENTES VENCIDOS NO PERÍODO (usa eventosPeriodo)
+    const clientesVencidosContados = new Map<string, Set<number>>();
+    eventosPeriodo.forEach(e => {
+      const key = getKey(e);
+      if (!key || !stats[key]) return;
+      if (!isClienteVencido(e)) return;
+      if (!clientesVencidosContados.has(key)) clientesVencidosContados.set(key, new Set());
+      const set = clientesVencidosContados.get(key)!;
+      if (!set.has(e.cliente_id)) {
+        set.add(e.cliente_id);
+        stats[key].clientesVencidos++;
         stats[key].valorVencido += e.valor_cobranca || 0;
       }
     });
 
-    // Add total count e clientes vencidos
+    // Add total count
     clientesPorKey.forEach((clientes, key) => {
       if (stats[key]) {
         stats[key].total = clientes.size;
-        stats[key].clientesVencidos = clientesVencidosPorKey.get(key)?.size || 0;
       }
     });
 
-    // Integrar dados de chamados - usando o mapa de chamados por cliente
+    // Integrar dados de chamados
     chamadosStats.chamadosPorCliente.forEach((dadosChamado, clienteId) => {
       const infoCliente = clientePlanoMap.get(clienteId);
       if (!infoCliente) return;
@@ -633,14 +666,14 @@ const VisaoGeral = () => {
       }
     });
 
-    // Calculate all percentages - CORRIGIDO: usar clientesVencidos (únicos)
+    // Calculate all percentages
     return Object.values(stats)
       .map(p => ({
         ...p,
-        plano: p.key, // For backward compatibility
+        plano: p.key,
         churnPct: p.total > 0 ? (p.cancelados / p.total * 100) : 0,
         contratosPct: p.total > 0 ? (p.bloqueados / p.total * 100) : 0,
-        financeiroPct: p.total > 0 ? (p.clientesVencidos / p.total * 100) : 0, // CORRIGIDO
+        financeiroPct: p.total > 0 ? (p.clientesVencidos / p.total * 100) : 0,
         suportePct: p.total > 0 ? (p.chamados / p.total * 100) : 0,
         redePct: p.total > 0 ? ((p.comDowntime + p.comAlerta) / p.total * 100) : 0,
         npsPct: p.npsCount > 0 ? (p.detratores / p.npsCount * 100) : 0,
@@ -653,8 +686,8 @@ const VisaoGeral = () => {
 
   // Cohort data based on selected dimension
   const cohortData = useMemo(() => {
-    return calculateCohortData(cohortDimension);
-  }, [filteredEventos, cohortDimension, chamadosStats, clientePlanoMap]);
+    return calculateCohortData(cohortDimension, filteredEventos, filteredEventosPeriodo);
+  }, [filteredEventos, filteredEventosPeriodo, cohortDimension, chamadosStats, clientePlanoMap]);
 
   // Sorted cohort data based on selected tab - FILTRAR planos com mínimo de clientes
   const sortedCohortData = useMemo(() => {
@@ -717,8 +750,8 @@ const VisaoGeral = () => {
 
   // Top 5 Data - calculado com sua própria dimensão independente
   const top5Data = useMemo(() => {
-    return calculateCohortData(top5Dimension);
-  }, [filteredEventos, top5Dimension, chamadosStats, clientePlanoMap]);
+    return calculateCohortData(top5Dimension, filteredEventos, filteredEventosPeriodo);
+  }, [filteredEventos, filteredEventosPeriodo, top5Dimension, chamadosStats, clientePlanoMap]);
 
   // Top 5 por métrica selecionada - mostra TAXA REAL (não distribuição)
   const top5Risco = useMemo(() => {
@@ -778,10 +811,18 @@ const VisaoGeral = () => {
       .slice(0, 8);
   }, [filteredEventos]);
 
-  // Cobrança Inteligente
+  // Cobrança Inteligente — usa eventos do PERÍODO para refletir vencidos na janela selecionada
   const cobrancaInteligente = useMemo(() => {
-    return filteredEventos
+    const source = filteredEventosPeriodo.length > 0 ? filteredEventosPeriodo : filteredEventos;
+    const clientesVencidosMap = new Map<number, Evento>();
+    source
       .filter(e => isClienteVencido(e))
+      .forEach(e => {
+        if (!clientesVencidosMap.has(e.cliente_id) || (e.dias_atraso || 0) > (clientesVencidosMap.get(e.cliente_id)?.dias_atraso || 0)) {
+          clientesVencidosMap.set(e.cliente_id, e);
+        }
+      });
+    return Array.from(clientesVencidosMap.values())
       .map(e => ({
         id: e.cliente_id,
         nome: e.cliente_nome || `Cliente ${e.cliente_id}`,
@@ -792,7 +833,7 @@ const VisaoGeral = () => {
       }))
       .sort((a, b) => b.atraso - a.atraso)
       .slice(0, 8);
-  }, [filteredEventos]);
+  }, [filteredEventos, filteredEventosPeriodo]);
 
   // Mapeamento de bairros para coordenadas aproximadas (região de Blumenau/Gaspar/Ilhota/Itajaí)
   const bairroCoords: Record<string, { lat: number; lng: number }> = {
