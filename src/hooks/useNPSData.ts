@@ -25,9 +25,10 @@ export function useNPSData(ispId: string) {
       try {
         const { data, error } = await externalSupabase
           .from("nps_check")
-          .select("id_cliente, cliente_id, nota_numerica, nota, classificacao_nps, nps_type, origem, data_resposta, celular, telefone, cpf, cnpj, cliente_celular, cliente_cpf, cliente_cnpj, phone, documento")
+          .select("id_cliente, nota_numerica, nota, classificacao_nps, nps_type, origem, data_resposta, celular, telefone, cpf_cnpj")
           .eq("isp_id", ispId)
           .not("data_resposta", "is", null)
+          .order("data_resposta", { ascending: false })
           .limit(5000);
 
         if (error) throw error;
@@ -63,19 +64,15 @@ export function useNPSData(ispId: string) {
           const rawNota = item.nota_numerica != null ? Number(item.nota_numerica) : Number(item.nota);
           const nota = (!isNaN(rawNota) && rawNota >= 0 && rawNota <= 10) ? rawNota : 0;
 
-          const phone = normalizePhone(item.celular) ||
-                        normalizePhone(item.telefone) ||
-                        normalizePhone(item.cliente_celular) ||
-                        normalizePhone(item.phone);
+          const phone = normalizePhone(item.celular) || normalizePhone(item.telefone);
+          const doc = normalizeCpfCnpj(item.cpf_cnpj);
 
-          const doc = normalizeCpfCnpj(item.cpf) ||
-                      normalizeCpfCnpj(item.cnpj) ||
-                      normalizeCpfCnpj(item.cliente_cpf) ||
-                      normalizeCpfCnpj(item.cliente_cnpj) ||
-                      normalizeCpfCnpj(item.documento);
+          // id_cliente vem como string UUID ou número — tentamos converter para número
+          const rawId = item.id_cliente;
+          const clienteIdNum = rawId != null ? Number(rawId) : NaN;
 
           return {
-            cliente_id: item.id_cliente || item.cliente_id || 0,
+            cliente_id: !isNaN(clienteIdNum) ? clienteIdNum : 0,
             nota,
             classificacao: mapClassificacao(item.classificacao_nps, nota),
             tipo_nps: item.nps_type || item.origem || "",
