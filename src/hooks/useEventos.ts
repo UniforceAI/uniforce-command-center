@@ -80,12 +80,51 @@ export function useEventos() {
 
         if (uniqueData.length > 0) {
           setColumns(Object.keys(uniqueData[0]));
-          console.log("📋 Amostra evento:", JSON.stringify(uniqueData[0]).substring(0, 200));
+          console.log("📋 Amostra evento:", JSON.stringify(uniqueData[0]).substring(0, 500));
           
-          const vencidos = uniqueData.filter((e: any) => 
-            e.vencido === true || String(e.vencido).toLowerCase() === "true"
-          );
-          console.log(`📊 Eventos vencidos: ${vencidos.length}`);
+          // DEBUG DETALHADO: campos financeiros
+          const cobrancaStatuses = new Map<string, number>();
+          const vencidoValues = new Map<string, number>();
+          const alertaTipos = new Map<string, number>();
+          let comValorCobranca = 0;
+          let comValorPago = 0;
+          let comDiasAtraso = 0;
+          let comChurnScore = 0;
+          let comGeoLat = 0;
+          let comNps = 0;
+          
+          uniqueData.forEach((e: any) => {
+            const cs = String(e.cobranca_status || "null");
+            cobrancaStatuses.set(cs, (cobrancaStatuses.get(cs) || 0) + 1);
+            const v = String(e.vencido);
+            vencidoValues.set(v, (vencidoValues.get(v) || 0) + 1);
+            if (e.alerta_tipo) alertaTipos.set(e.alerta_tipo, (alertaTipos.get(e.alerta_tipo) || 0) + 1);
+            if (e.valor_cobranca && e.valor_cobranca > 0) comValorCobranca++;
+            if (e.valor_pago && e.valor_pago > 0) comValorPago++;
+            if (e.dias_atraso && e.dias_atraso > 0) comDiasAtraso++;
+            if (e.churn_risk_score && e.churn_risk_score > 0) comChurnScore++;
+            if (e.geo_lat && e.geo_lat !== 0) comGeoLat++;
+            if (e.nps_score !== null && e.nps_score !== undefined) comNps++;
+          });
+          
+          console.log("📊 DIAGNÓSTICO COMPLETO:", {
+            total: uniqueData.length,
+            cobranca_status: Object.fromEntries(cobrancaStatuses),
+            vencido_values: Object.fromEntries(vencidoValues),
+            alerta_tipos: Object.fromEntries(alertaTipos),
+            comValorCobranca,
+            comValorPago,
+            comDiasAtraso,
+            comChurnScore,
+            comGeoLat,
+            comNps,
+          });
+          
+          // Amostra de 3 eventos com dados financeiros
+          const amostraFinanceira = uniqueData
+            .filter((e: any) => e.valor_cobranca || e.dias_atraso)
+            .slice(0, 3);
+          console.log("💰 Amostra financeira:", JSON.stringify(amostraFinanceira).substring(0, 1000));
           
           setEventos(uniqueData as Evento[]);
         } else {
