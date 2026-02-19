@@ -167,7 +167,7 @@ const VisaoGeral = () => {
   const { chamados, getChamadosPorCliente, isLoading: isLoadingChamados } = useChamados();
 
   // Filtros
-  const [periodo, setPeriodo] = useState("365");
+  const [periodo, setPeriodo] = useState("7");
   const [uf, setUf] = useState("todos");
   const [cidade, setCidade] = useState("todos");
   const [bairro, setBairro] = useState("todos");

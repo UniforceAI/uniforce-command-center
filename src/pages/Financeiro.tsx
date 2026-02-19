@@ -43,7 +43,7 @@ const Financeiro = () => {
   const { eventos, isLoading, error, columns } = useEventos();
 
   // Filtros
-  const [periodo, setPeriodo] = useState("30");
+  const [periodo, setPeriodo] = useState("7");
   const [plano, setPlano] = useState("todos");
   const [metodo, setMetodo] = useState("todos");
   const [ordemPlanoDecrescente, setOrdemPlanoDecrescente] = useState(true);

@@ -59,7 +59,7 @@ const ChurnRetencao = () => {
   const { eventos, isLoading, error } = useEventos();
 
   // Filtros
-  const [periodo, setPeriodo] = useState("30");
+  const [periodo, setPeriodo] = useState("7");
   const [uf, setUf] = useState("todos");
   const [plano, setPlano] = useState("todos");
   const [riscoBucket, setRiscoBucket] = useState("todos");
