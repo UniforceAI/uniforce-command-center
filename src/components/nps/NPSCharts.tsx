@@ -269,27 +269,30 @@ export const NPSCharts = memo(({ respostas }: NPSChartsProps) => {
             <CardTitle className="text-base">📉 Distribuição de Notas</CardTitle>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer width="100%" height={200}>
+            <ResponsiveContainer width="100%" height={240}>
               <PieChart>
                 <Pie
                   data={distribuicaoData}
                   cx="50%"
-                  cy="50%"
-                  innerRadius={40}
-                  outerRadius={70}
-                  paddingAngle={2}
+                  cy="45%"
+                  innerRadius={50}
+                  outerRadius={80}
+                  paddingAngle={3}
                   dataKey="value"
-                  label={({ percent }) => `${Math.round(percent * 100)}%`}
-                  labelLine={false}
+                  label={({ name, value, percent }) => `${value} (${Math.round(percent * 100)}%)`}
+                  labelLine={true}
+                  fontSize={11}
                 >
                   {distribuicaoData.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={entry.color} />
                   ))}
                 </Pie>
-                <Tooltip />
+                <Tooltip formatter={(value: number) => [value, "Respostas"]} />
                 <Legend 
                   verticalAlign="bottom" 
-                  height={36}
+                  height={30}
+                  iconType="circle"
+                  iconSize={8}
                   formatter={(value) => <span className="text-xs">{value}</span>}
                 />
               </PieChart>
