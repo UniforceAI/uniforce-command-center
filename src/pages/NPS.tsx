@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 import { externalSupabase, ISP_ID } from "@/integrations/supabase/external-client";
 import type { User } from "@supabase/supabase-js";
 import { Button } from "@/components/ui/button";
@@ -16,7 +16,7 @@ import { useToast } from "@/hooks/use-toast";
 const NPS = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
-  const [user, setUser] = useState<User | null>(null);
+  const { signOut } = useAuth();
   const [respostasNPS, setRespostasNPS] = useState<RespostaNPS[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -25,24 +25,6 @@ const NPS = () => {
   const [tipoNPS, setTipoNPS] = useState("todos");
   const [classificacao, setClassificacao] = useState("todos");
 
-  // Verificar autenticação
-  useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-      if (!session) {
-        navigate("/auth");
-      }
-    });
-
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
-      if (!session) {
-        navigate("/auth");
-      }
-    });
-
-    return () => subscription.unsubscribe();
-  }, [navigate]);
 
   // Função para mapear tipo_nps do banco para o formato esperado
   const mapTipoNPS = (tipo: string): TipoNPS => {
@@ -63,7 +45,7 @@ const NPS = () => {
 
   // Buscar dados do Supabase externo - tabela nps_check
   useEffect(() => {
-    if (!user) return;
+    
 
     const fetchNPSData = async () => {
       try {
@@ -128,7 +110,7 @@ const NPS = () => {
     };
 
     fetchNPSData();
-  }, [user, toast]);
+  }, [toast]);
 
   // Aplicar filtros
   const filteredRespostas = useMemo(() => {
@@ -185,13 +167,10 @@ const NPS = () => {
   }, [filteredRespostas]);
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
+    await signOut();
     navigate("/auth");
   };
 
-  if (!user) {
-    return null;
-  }
 
   return (
     <div className="min-h-screen bg-background">

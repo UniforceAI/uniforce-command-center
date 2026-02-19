@@ -1,7 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
-import type { User } from "@supabase/supabase-js";
+import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -163,7 +162,7 @@ const MapTabs = ({ activeTab, onTabChange, availableTabs }: MapTabsProps) => {
 const VisaoGeral = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
-  const [user, setUser] = useState<User | null>(null);
+  const { profile, signOut } = useAuth();
   const { eventos, isLoading, error } = useEventos();
   const { chamados, getChamadosPorCliente, isLoading: isLoadingChamados } = useChamados();
 
@@ -202,18 +201,6 @@ const VisaoGeral = () => {
            (e.dias_atraso !== null && e.dias_atraso !== undefined && Number(e.dias_atraso) > 0);
   };
 
-  // Auth
-  useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-      if (!session) navigate("/auth");
-    });
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
-      if (!session) navigate("/auth");
-    });
-    return () => subscription.unsubscribe();
-  }, [navigate]);
 
   // Filter options
   const filterOptions = useMemo(() => {
@@ -1008,11 +995,11 @@ const VisaoGeral = () => {
   }, [availableMapTabs, mapTab]);
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
+    await signOut();
     navigate("/auth");
   };
 
-  if (!user) return null;
+  const user = profile;
 
   const formatCurrency = (value: number) => {
     if (value >= 1000000) return `R$ ${(value / 1000000).toFixed(1)} mi`;

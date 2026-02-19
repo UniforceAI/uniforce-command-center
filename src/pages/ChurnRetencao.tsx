@@ -1,7 +1,6 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
-import type { User } from "@supabase/supabase-js";
+import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
@@ -56,7 +55,7 @@ const COLORS = ["#22c55e", "#eab308", "#f97316", "#ef4444"];
 const ChurnRetencao = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
-  const [user, setUser] = useState<User | null>(null);
+  const { signOut } = useAuth();
   const { eventos, isLoading, error } = useEventos();
 
   // Filtros
@@ -64,25 +63,6 @@ const ChurnRetencao = () => {
   const [uf, setUf] = useState("todos");
   const [plano, setPlano] = useState("todos");
   const [riscoBucket, setRiscoBucket] = useState("todos");
-
-  // Verificar autenticação
-  useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-      if (!session) {
-        navigate("/auth");
-      }
-    });
-
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
-      if (!session) {
-        navigate("/auth");
-      }
-    });
-
-    return () => subscription.unsubscribe();
-  }, [navigate]);
 
   // Extrair opções dinâmicas
   const filterOptions = useMemo(() => {
@@ -343,7 +323,7 @@ const ChurnRetencao = () => {
   ];
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
+    await signOut();
     navigate("/auth");
   };
 
@@ -398,7 +378,7 @@ const ChurnRetencao = () => {
     },
   ];
 
-  if (!user) return null;
+  
 
   return (
     <div className="min-h-screen bg-background">

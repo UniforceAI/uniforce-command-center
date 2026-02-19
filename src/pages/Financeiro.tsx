@@ -1,7 +1,6 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
-import type { User } from "@supabase/supabase-js";
+import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -40,7 +39,7 @@ import {
 const Financeiro = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
-  const [user, setUser] = useState<User | null>(null);
+  const { signOut } = useAuth();
   const { eventos, isLoading, error, columns } = useEventos();
 
   // Filtros
@@ -49,24 +48,6 @@ const Financeiro = () => {
   const [metodo, setMetodo] = useState("todos");
   const [ordemPlanoDecrescente, setOrdemPlanoDecrescente] = useState(true);
 
-  // Verificar autenticação
-  useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-      if (!session) {
-        navigate("/auth");
-      }
-    });
-
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
-      if (!session) {
-        navigate("/auth");
-      }
-    });
-
-    return () => subscription.unsubscribe();
-  }, [navigate]);
 
   // Filtrar eventos financeiros (COBRANCA)
   const eventosFinanceiros = useMemo(() => {
@@ -324,7 +305,7 @@ const Financeiro = () => {
   }, [filteredEventos]);
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
+    await signOut();
     navigate("/auth");
   };
 
@@ -368,7 +349,7 @@ const Financeiro = () => {
     },
   ];
 
-  if (!user) return null;
+  
 
   return (
     <div className="min-h-screen bg-background">
