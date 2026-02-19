@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
-import { externalSupabase, EVENTOS_ISP_ID } from "@/integrations/supabase/eventos-client";
+import { externalSupabase } from "@/integrations/supabase/external-client";
 import { Evento } from "@/types/evento";
 import { useToast } from "@/hooks/use-toast";
+import { useActiveIsp } from "@/hooks/useActiveIsp";
 
 // Colunas essenciais - evitar select("*") que causa timeout em tabelas grandes
 const ESSENTIAL_COLUMNS = [
@@ -26,6 +27,7 @@ const ESSENTIAL_COLUMNS = [
 
 export function useEventos() {
   const { toast } = useToast();
+  const { ispId } = useActiveIsp();
   const [eventos, setEventos] = useState<Evento[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -37,11 +39,10 @@ export function useEventos() {
         setIsLoading(true);
         setError(null);
 
-        console.log(`🔄 Buscando eventos (isp_id=${EVENTOS_ISP_ID})...`);
+        console.log(`🔄 Buscando eventos (isp_id=${ispId})...`);
 
-        // Buscar em batches com colunas específicas para evitar timeout
         const BATCH_SIZE = 1000;
-        const MAX_BATCHES = 5; // Máximo 5000 registros
+        const MAX_BATCHES = 5;
         let allData: any[] = [];
         let hasMore = true;
 
@@ -54,7 +55,7 @@ export function useEventos() {
           const { data, error: batchError } = await externalSupabase
             .from("eventos")
             .select(ESSENTIAL_COLUMNS)
-            .eq("isp_id", EVENTOS_ISP_ID)
+            .eq("isp_id", ispId)
             .order("event_datetime", { ascending: false })
             .range(start, end);
 
@@ -73,7 +74,6 @@ export function useEventos() {
 
         console.log(`✅ Total eventos: ${allData.length}`);
 
-        // Remover duplicatas por ID
         const uniqueData = Array.from(
           new Map(allData.map(item => [item.id, item])).values()
         );
@@ -107,7 +107,7 @@ export function useEventos() {
     };
 
     fetchEventos();
-  }, [toast]);
+  }, [toast, ispId]);
 
   return { eventos, isLoading, error, columns };
 }
