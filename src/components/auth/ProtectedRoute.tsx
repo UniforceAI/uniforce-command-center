@@ -4,12 +4,12 @@ import { useAuth } from "@/contexts/AuthContext";
 
 interface ProtectedRouteProps {
   children: ReactNode;
+  requireSelectedIsp?: boolean;
 }
 
-export function ProtectedRoute({ children }: ProtectedRouteProps) {
-  const { user, profile, isLoading, error } = useAuth();
+export function ProtectedRoute({ children, requireSelectedIsp = true }: ProtectedRouteProps) {
+  const { user, profile, isLoading, error, isSuperAdmin, selectedIsp } = useAuth();
 
-  // Still loading auth state
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
@@ -21,12 +21,10 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
     );
   }
 
-  // Not logged in
   if (!user) {
     return <Navigate to="/auth" replace />;
   }
 
-  // Logged in but no profile/ISP linked
   if (error || !profile) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background p-4">
@@ -38,8 +36,6 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
           </p>
           <button
             onClick={async () => {
-              const { useAuth } = await import("@/contexts/AuthContext");
-              // Fallback: sign out via supabase directly
               const { supabase } = await import("@/integrations/supabase/client");
               await supabase.auth.signOut();
               window.location.href = "/auth";
@@ -51,6 +47,11 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
         </div>
       </div>
     );
+  }
+
+  // Super admins must select an ISP before accessing dashboard
+  if (requireSelectedIsp && isSuperAdmin && !selectedIsp) {
+    return <Navigate to="/selecionar-cliente" replace />;
   }
 
   return <>{children}</>;
