@@ -124,7 +124,7 @@ const CohortTabs = ({ activeTab, onTabChange }: CohortTabsProps) => {
   );
 };
 
-// Map Filter Tabs - only shows tabs with available data
+// Map Filter Tabs
 interface MapTabsProps {
   activeTab: string;
   onTabChange: (tab: string) => void;
@@ -133,10 +133,9 @@ interface MapTabsProps {
 
 const MapTabs = ({ activeTab, onTabChange, availableTabs }: MapTabsProps) => {
   const allTabs = [
-    { id: "todos", label: "Todos" },
     { id: "chamados", label: "Chamados" },
     { id: "vencido", label: "Vencido" },
-    { id: "sinal", label: "Sinal" },
+    { id: "churn", label: "Churn" },
   ];
 
   const tabs = allTabs.filter(t => availableTabs.includes(t.id));
@@ -178,7 +177,7 @@ const VisaoGeral = () => {
   const [plano, setPlano] = useState("todos");
   const [status, setStatus] = useState("todos");
   const [cohortTab, setCohortTab] = useState("financeiro");
-  const [mapTab, setMapTab] = useState("todos");
+  const [mapTab, setMapTab] = useState("chamados");
   const [cohortDimension, setCohortDimension] = useState<"plano" | "cidade" | "bairro">("plano");
   const [filial, setFilial] = useState("todos");
   const [top5Dimension, setTop5Dimension] = useState<"plano" | "cidade" | "bairro">("cidade");
@@ -199,11 +198,9 @@ const VisaoGeral = () => {
     return cidadeIdMap[cidadeKey] || cidadeKey; // Usa valor raw como fallback
   };
 
-  // Helper function para verificar se cliente está vencido - CONSISTENTE em todo código
+  // Helper function para verificar se cliente está vencido - usa dias_atraso pois vencido=false no banco
   const isClienteVencido = (e: Evento): boolean => {
-    return e.vencido === true || 
-           String(e.vencido).toLowerCase() === "true" || 
-           (e.dias_atraso !== null && e.dias_atraso !== undefined && Number(e.dias_atraso) > 0);
+    return (e.dias_atraso !== null && e.dias_atraso !== undefined && Number(e.dias_atraso) > 0);
   };
 
 
@@ -882,15 +879,25 @@ const VisaoGeral = () => {
     "Fazenda": { lat: -26.9200, lng: -48.6600 },
   };
 
-  // Map data - COM FALLBACK para bairro quando não tem geo_lat/geo_lng
-  // Agora também inclui dados de chamados
+  // Map data - usa TODOS os eventos sem filtro de período para mostrar todos os clientes no mapa
+  // Aplica apenas filtros de UF/cidade/bairro/plano/filial
+  const mapEventos = useMemo(() => {
+    let filtered = [...eventos] as Evento[];
+    if (uf !== "todos") filtered = filtered.filter((e) => e.cliente_uf === uf);
+    if (cidade !== "todos") filtered = filtered.filter((e) => e.cliente_cidade === cidade);
+    if (bairro !== "todos") filtered = filtered.filter((e) => e.cliente_bairro === bairro);
+    if (plano !== "todos") filtered = filtered.filter((e) => e.plano_nome === plano);
+    if (filial !== "todos") filtered = filtered.filter((e) => String(e.filial_id) === filial);
+    return filtered;
+  }, [eventos, uf, cidade, bairro, plano, filial]);
+
   const mapData = useMemo(() => {
     const clientesMap = new Map<number, any>();
     
-    // Obter dados de chamados por cliente
-    const chamadosPorCliente = getChamadosPorCliente(parseInt(periodo) || undefined);
+    // Chamados sem filtro de período para mostrar todos
+    const chamadosPorCliente = getChamadosPorCliente(undefined);
     
-    filteredEventos.forEach(e => {
+    mapEventos.forEach(e => {
       // Determinar coordenadas: usar geo_lat/geo_lng se existir, senão usar bairro
       let lat = e.geo_lat;
       let lng = e.geo_lng;
@@ -933,7 +940,7 @@ const VisaoGeral = () => {
       }
     });
     return Array.from(clientesMap.values());
-  }, [filteredEventos, getChamadosPorCliente, periodo]);
+  }, [mapEventos, getChamadosPorCliente]);
 
   // Estatísticas de chamados para o mapa
   const chamadosMapStats = useMemo(() => {
@@ -952,48 +959,22 @@ const VisaoGeral = () => {
     };
   }, [mapData]);
 
-  // Calculate which map tabs have data
+  // Calculate which map tabs have data - sem "todos" e "sinal", com "churn"
   const availableMapTabs = useMemo(() => {
-    return ["todos", "chamados", "vencido", "sinal"];
+    return ["chamados", "vencido", "churn"];
   }, []);
 
-  // Estatísticas de clientes vencidos para debug
+  // Estatísticas de clientes vencidos - usa mapEventos (sem filtro de período) para contagem real
+  // NOTA: no banco, vencido=false mas dias_atraso > 0 indica vencimento real
   const vencidosStats = useMemo(() => {
-    // DEBUG: Contar registros por critério
-    const comVencidoTrue = eventos.filter(e => e.vencido === true);
-    const comDiasAtrasoPositivo = eventos.filter(e => e.dias_atraso && e.dias_atraso > 0);
-    
-    console.log("🔍 DEBUG VENCIDOS:", {
-      totalEventos: eventos.length,
-      comVencidoTrue: comVencidoTrue.length,
-      clientesComVencidoTrue: new Set(comVencidoTrue.map(e => e.cliente_id)).size,
-      comDiasAtrasoPositivo: comDiasAtrasoPositivo.length,
-      clientesComDiasAtraso: new Set(comDiasAtrasoPositivo.map(e => e.cliente_id)).size,
-      amostraVencidoTrue: comVencidoTrue.slice(0, 3).map(e => ({
-        cliente_id: e.cliente_id,
-        vencido: e.vencido,
-        dias_atraso: e.dias_atraso,
-        data_vencimento: e.data_vencimento
-      })),
-      amostraDiasAtraso: comDiasAtrasoPositivo.slice(0, 3).map(e => ({
-        cliente_id: e.cliente_id,
-        vencido: e.vencido,
-        dias_atraso: e.dias_atraso,
-        data_vencimento: e.data_vencimento
-      }))
-    });
-    
-    // Clientes únicos com vencido=true OU dias_atraso > 0
     const clientesVencidosMap = new Map<number, any>();
-    filteredEventos.filter(e => e.vencido === true || (e.dias_atraso && e.dias_atraso > 0)).forEach(e => {
+    mapEventos.filter(e => (e.dias_atraso !== null && e.dias_atraso !== undefined && Number(e.dias_atraso) > 0)).forEach(e => {
       if (!clientesVencidosMap.has(e.cliente_id)) {
         clientesVencidosMap.set(e.cliente_id, e);
       }
     });
     
     const totalVencidos = clientesVencidosMap.size;
-    
-    // Quantos têm coordenadas (geo_lat/geo_lng ou bairro mapeado)
     let comCoordenadas = 0;
     let comGeoExata = 0;
     let comBairroFallback = 0;
@@ -1001,24 +982,12 @@ const VisaoGeral = () => {
     clientesVencidosMap.forEach(e => {
       const temGeo = e.geo_lat && e.geo_lng && e.geo_lat !== 0 && e.geo_lng !== 0;
       const temBairro = e.cliente_bairro && bairroCoords[e.cliente_bairro];
-      
-      if (temGeo) {
-        comGeoExata++;
-        comCoordenadas++;
-      } else if (temBairro) {
-        comBairroFallback++;
-        comCoordenadas++;
-      }
+      if (temGeo) { comGeoExata++; comCoordenadas++; }
+      else if (temBairro) { comBairroFallback++; comCoordenadas++; }
     });
     
-    return {
-      totalVencidos,
-      comCoordenadas,
-      comGeoExata,
-      comBairroFallback,
-      semCoordenadas: totalVencidos - comCoordenadas,
-    };
-  }, [eventos, filteredEventos, bairroCoords]);
+    return { totalVencidos, comCoordenadas, comGeoExata, comBairroFallback, semCoordenadas: totalVencidos - comCoordenadas };
+  }, [mapEventos, bairroCoords]);
 
   // Auto-select first available tab if current is not available
   useEffect(() => {
@@ -1607,7 +1576,7 @@ const VisaoGeral = () => {
               <CardContent className="p-0">
                 <AlertasMapa 
                   data={mapData} 
-                  activeFilter={mapTab as "churn" | "vencido" | "sinal" | "chamados" | "todos"} 
+                  activeFilter={mapTab as "churn" | "vencido" | "chamados"} 
                 />
               </CardContent>
             </Card>
