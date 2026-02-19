@@ -244,19 +244,16 @@ export const NPSCharts = memo(({ respostas }: NPSChartsProps) => {
         {/* Comparação por Tipo */}
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-base">Comparação por Tipo</CardTitle>
+            <CardTitle className="text-base">📊 Comparação por Tipo</CardTitle>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={comparacaoData} margin={{ top: 5, right: 20, left: -10, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" strokeOpacity={0.5} />
-                <XAxis dataKey="name" fontSize={11} tickLine={false} axisLine={false} tick={{ fill: 'hsl(var(--muted-foreground))' }} />
-                <YAxis domain={[0, 10]} fontSize={10} tickLine={false} axisLine={false} tick={{ fill: 'hsl(var(--muted-foreground))' }} />
-                <Tooltip 
-                  contentStyle={{ backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '8px', fontSize: '12px' }}
-                  formatter={(value: number, _name: string, props: any) => [`${value} (${props.payload.total} respostas)`, "Média"]}
-                />
-                <Bar dataKey="media" name="Média" radius={[6, 6, 0, 0]} barSize={60}>
+            <ResponsiveContainer width="100%" height={200}>
+              <BarChart data={comparacaoData}>
+                <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
+                <XAxis dataKey="name" fontSize={10} />
+                <YAxis domain={[0, 10]} fontSize={11} />
+                <Tooltip />
+                <Bar dataKey="media" name="Média" radius={[4, 4, 0, 0]}>
                   {comparacaoData.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={entry.fill} />
                   ))}
@@ -266,43 +263,32 @@ export const NPSCharts = memo(({ respostas }: NPSChartsProps) => {
           </CardContent>
         </Card>
 
-        {/* Distribuição de Notas */}
+        {/* Distribuição de Notas - layout horizontal clean */}
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-base">Distribuição de Notas</CardTitle>
+            <CardTitle className="text-base">📉 Distribuição de Notas</CardTitle>
           </CardHeader>
-          <CardContent className="flex flex-col items-center">
-            <ResponsiveContainer width="100%" height={220}>
-              <PieChart>
-                <Pie
-                  data={distribuicaoData}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={55}
-                  outerRadius={85}
-                  paddingAngle={3}
-                  dataKey="value"
-                  label={({ value, percent }) => `${value} (${Math.round(percent * 100)}%)`}
-                  labelLine={{ stroke: 'hsl(var(--muted-foreground))', strokeWidth: 1 }}
-                  fontSize={11}
-                >
-                  {distribuicaoData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                </Pie>
-                <Tooltip 
-                  contentStyle={{ backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '8px', fontSize: '12px' }}
-                  formatter={(value: number) => [value, "Respostas"]}
-                />
-                <Legend 
-                  verticalAlign="bottom" 
-                  height={24}
-                  iconType="circle"
-                  iconSize={8}
-                  formatter={(value) => <span className="text-xs text-muted-foreground">{value}</span>}
-                />
-              </PieChart>
-            </ResponsiveContainer>
+          <CardContent>
+            <div className="space-y-3">
+              {distribuicaoData.map((item) => {
+                const total = distribuicaoData.reduce((acc, d) => acc + d.value, 0);
+                const percent = total > 0 ? Math.round((item.value / total) * 100) : 0;
+                return (
+                  <div key={item.name} className="space-y-1">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">{item.name}</span>
+                      <span className="font-medium">{item.value} ({percent}%)</span>
+                    </div>
+                    <div className="h-2.5 rounded-full bg-muted overflow-hidden">
+                      <div
+                        className="h-full rounded-full transition-all"
+                        style={{ width: `${percent}%`, backgroundColor: item.color }}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </CardContent>
         </Card>
       </div>
