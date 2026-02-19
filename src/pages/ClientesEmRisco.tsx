@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
 import { useChurnData, ChurnStatus } from "@/hooks/useChurnData";
+import { useChamados } from "@/hooks/useChamados";
 import { IspActions } from "@/components/shared/IspActions";
 import { KPICardNew } from "@/components/shared/KPICardNew";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -76,6 +77,13 @@ function ScoreBadge({ score, bucket }: { score?: number; bucket?: string }) {
 
 const ClientesEmRisco = () => {
   const { churnStatus, churnEvents, isLoading, error } = useChurnData();
+  const { getChamadosPorCliente } = useChamados();
+
+  // Mapa de chamados reais por cliente_id (30d e 90d) vindo da tabela chamados
+  const chamadosPorClienteMap = useMemo(() => ({
+    d30: getChamadosPorCliente(30),
+    d90: getChamadosPorCliente(90),
+  }), [getChamadosPorCliente]);
 
   const [scoreMin, setScoreMin] = useState(0);
   const [bucket, setBucket] = useState("todos");
@@ -398,7 +406,14 @@ const ClientesEmRisco = () => {
                       <Badge variant="outline" className="text-xs">{selectedCliente.desbloqueio_confianca}</Badge>
                     </div>
                   )}
-                  <div className="flex justify-between"><span className="text-muted-foreground">Chamados 30d / 90d</span><span>{selectedCliente.qtd_chamados_30d ?? "—"} / {selectedCliente.qtd_chamados_90d ?? "—"}</span></div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Chamados 30d / 90d</span>
+                    <span>
+                      {chamadosPorClienteMap.d30.get(selectedCliente.cliente_id)?.chamados_periodo ?? 0}
+                      {" / "}
+                      {chamadosPorClienteMap.d90.get(selectedCliente.cliente_id)?.chamados_periodo ?? 0}
+                    </span>
+                  </div>
                   {selectedCliente.ultimo_atendimento_data && (
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Último Atendimento</span>

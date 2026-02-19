@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import { useChurnData } from "@/hooks/useChurnData";
 import { useActiveIsp } from "@/hooks/useActiveIsp";
+import { useChamados } from "@/hooks/useChamados";
 import { IspActions } from "@/components/shared/IspActions";
 import { KPICardNew } from "@/components/shared/KPICardNew";
 import { GlobalFilters } from "@/components/shared/GlobalFilters";
@@ -37,6 +38,10 @@ const STATUS_LABELS: Record<string, string> = {
 const ChurnAnalytics = () => {
   const { churnStatus, isLoading, error } = useChurnData();
   const { ispId } = useActiveIsp();
+  const { getChamadosPorCliente } = useChamados();
+
+  // Mapa de chamados reais (90d) para correlação por plano/cidade
+  const chamadosMap90d = useMemo(() => getChamadosPorCliente(90), [getChamadosPorCliente]);
 
   const [plano, setPlano] = useState("todos");
   const [cidade, setCidade] = useState("todos");
@@ -131,13 +136,15 @@ const ChurnAnalytics = () => {
       .slice(0, 10);
   }, [emRisco]);
 
-  // Risco por plano
+  // Risco por plano com chamados reais
   const riscoPorPlano = useMemo(() => {
-    const map: Record<string, { risco: number; total: number; mrr: number }> = {};
+    const map: Record<string, { risco: number; total: number; mrr: number; chamados: number }> = {};
     ativos.forEach((c) => {
       if (!c.plano_nome) return;
-      if (!map[c.plano_nome]) map[c.plano_nome] = { risco: 0, total: 0, mrr: 0 };
+      if (!map[c.plano_nome]) map[c.plano_nome] = { risco: 0, total: 0, mrr: 0, chamados: 0 };
       map[c.plano_nome].total++;
+      const chamadosCliente = chamadosMap90d.get(c.cliente_id)?.chamados_periodo ?? 0;
+      map[c.plano_nome].chamados += chamadosCliente;
       if (c.status_churn === "risco") {
         map[c.plano_nome].risco++;
         map[c.plano_nome].mrr += c.valor_mensalidade || 0;
@@ -150,11 +157,12 @@ const ChurnAnalytics = () => {
         total: d.total,
         pct: d.total > 0 ? Math.round((d.risco / d.total) * 100) : 0,
         mrr: Math.round(d.mrr),
+        chamados: d.chamados,
       }))
       .filter(d => d.total >= 3)
       .sort((a, b) => b.risco - a.risco)
       .slice(0, 10);
-  }, [ativos]);
+  }, [ativos, chamadosMap90d]);
 
   // Distribuição de dias em atraso
   const distribuicaoAtraso = useMemo(() => {
@@ -375,7 +383,7 @@ const ChurnAnalytics = () => {
                       <Tooltip
                         formatter={(v: any, name, props) => {
                           const d = props.payload;
-                          if (name === "risco") return [`${v} de ${d.total} (${d.pct}%)`, "Em risco"];
+                          if (name === "risco") return [`${v} de ${d.total} (${d.pct}%) · ${d.chamados} chamados/90d`, "Em risco"];
                           return [v, name];
                         }}
                       />
