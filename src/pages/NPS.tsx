@@ -33,8 +33,7 @@ const NPS = () => {
     const tipoLower = tipo?.toLowerCase().trim() || "";
     if (tipoLower === "contrato") return "contrato";
     if (tipoLower === "atendimento") return "atendimento";
-    if (tipoLower.includes("os") || tipoLower.includes("o.s") || tipoLower.includes("ordem") || tipoLower.includes("pós")) return "os";
-    // Default baseado no valor exato
+    if (tipoLower === "ordem_servico" || tipoLower.includes("os") || tipoLower.includes("o.s") || tipoLower.includes("ordem") || tipoLower.includes("pós")) return "os";
     return tipoLower as TipoNPS || "atendimento";
   };
 
@@ -114,29 +113,32 @@ const NPS = () => {
     fetchNPSData();
   }, [toast, ispId]);
 
+  // Encontrar a data mais recente nos dados para usar como referência
+  const dataReferencia = useMemo(() => {
+    if (respostasNPS.length === 0) return new Date();
+    const datas = respostasNPS.map(r => new Date(r.data_resposta).getTime());
+    return new Date(Math.max(...datas));
+  }, [respostasNPS]);
+
   // Aplicar filtros
   const filteredRespostas = useMemo(() => {
     let filtered = [...respostasNPS];
 
-    console.log("🔍 Filtro período:", periodo, "| Total antes:", filtered.length);
+    console.log("🔍 Filtro período:", periodo, "| Total antes:", filtered.length, "| Data ref:", dataReferencia.toISOString());
     
-    // Filtro por período
+    // Filtro por período - relativo à data mais recente dos dados
     if (periodo !== "todos") {
       const diasAtras = parseInt(periodo);
-      const dataLimite = new Date();
+      const dataLimite = new Date(dataReferencia);
       dataLimite.setDate(dataLimite.getDate() - diasAtras);
-      dataLimite.setHours(0, 0, 0, 0); // Início do dia
-      
-      console.log("📅 Data limite:", dataLimite.toISOString());
-      console.log("📅 Exemplos de datas nos dados:", filtered.slice(0, 3).map(r => r.data_resposta));
+      dataLimite.setHours(0, 0, 0, 0);
       
       filtered = filtered.filter(r => {
         const dataResposta = new Date(r.data_resposta);
-        const passou = dataResposta >= dataLimite;
-        return passou;
+        return dataResposta >= dataLimite;
       });
       
-      console.log("📅 Após filtro de período:", filtered.length);
+      console.log("📅 Data limite:", dataLimite.toISOString(), "| Após filtro:", filtered.length);
     }
 
     // Filtro por tipo
@@ -150,7 +152,7 @@ const NPS = () => {
     }
 
     return filtered;
-  }, [respostasNPS, periodo, tipoNPS, classificacao]);
+  }, [respostasNPS, periodo, tipoNPS, classificacao, dataReferencia]);
 
   // Calcular KPIs - Média das notas (0-10)
   const kpis = useMemo(() => {
