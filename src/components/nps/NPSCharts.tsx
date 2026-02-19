@@ -111,7 +111,6 @@ export const NPSCharts = memo(({ respostas }: NPSChartsProps) => {
     const tipos = [
       { id: "contrato", name: "Contrato", color: COLORS.contrato },
       { id: "os", name: "Pós-O.S", color: COLORS.os },
-      { id: "atendimento", name: "Atendimento", color: COLORS.atendimento },
     ];
     return tipos.map((tipo) => {
       const filtradas = respostas.filter((r) => r.tipo_nps === tipo.id);
@@ -121,6 +120,7 @@ export const NPSCharts = memo(({ respostas }: NPSChartsProps) => {
       return {
         name: tipo.name,
         media: total > 0 ? Number((soma / total).toFixed(1)) : 0,
+        total,
         fill: tipo.color,
       };
     });
@@ -241,19 +241,22 @@ export const NPSCharts = memo(({ respostas }: NPSChartsProps) => {
 
       {/* Gráficos 2 e 3 lado a lado */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* Gráfico 2 - Comparação */}
+        {/* Comparação por Tipo */}
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-base">📊 Comparação por Tipo</CardTitle>
+            <CardTitle className="text-base">Comparação por Tipo</CardTitle>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer width="100%" height={200}>
-              <BarChart data={comparacaoData}>
-                <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
-                <XAxis dataKey="name" fontSize={10} />
-                <YAxis domain={[0, 10]} fontSize={11} />
-                <Tooltip />
-                <Bar dataKey="media" name="Média" radius={[4, 4, 0, 0]}>
+            <ResponsiveContainer width="100%" height={220}>
+              <BarChart data={comparacaoData} margin={{ top: 5, right: 20, left: -10, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" strokeOpacity={0.5} />
+                <XAxis dataKey="name" fontSize={11} tickLine={false} axisLine={false} tick={{ fill: 'hsl(var(--muted-foreground))' }} />
+                <YAxis domain={[0, 10]} fontSize={10} tickLine={false} axisLine={false} tick={{ fill: 'hsl(var(--muted-foreground))' }} />
+                <Tooltip 
+                  contentStyle={{ backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '8px', fontSize: '12px' }}
+                  formatter={(value: number, _name: string, props: any) => [`${value} (${props.payload.total} respostas)`, "Média"]}
+                />
+                <Bar dataKey="media" name="Média" radius={[6, 6, 0, 0]} barSize={60}>
                   {comparacaoData.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={entry.fill} />
                   ))}
@@ -263,37 +266,40 @@ export const NPSCharts = memo(({ respostas }: NPSChartsProps) => {
           </CardContent>
         </Card>
 
-        {/* Gráfico 3 - Distribuição */}
+        {/* Distribuição de Notas */}
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-base">📉 Distribuição de Notas</CardTitle>
+            <CardTitle className="text-base">Distribuição de Notas</CardTitle>
           </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={240}>
+          <CardContent className="flex flex-col items-center">
+            <ResponsiveContainer width="100%" height={220}>
               <PieChart>
                 <Pie
                   data={distribuicaoData}
                   cx="50%"
-                  cy="45%"
-                  innerRadius={50}
-                  outerRadius={80}
+                  cy="50%"
+                  innerRadius={55}
+                  outerRadius={85}
                   paddingAngle={3}
                   dataKey="value"
-                  label={({ name, value, percent }) => `${value} (${Math.round(percent * 100)}%)`}
-                  labelLine={true}
+                  label={({ value, percent }) => `${value} (${Math.round(percent * 100)}%)`}
+                  labelLine={{ stroke: 'hsl(var(--muted-foreground))', strokeWidth: 1 }}
                   fontSize={11}
                 >
                   {distribuicaoData.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={entry.color} />
                   ))}
                 </Pie>
-                <Tooltip formatter={(value: number) => [value, "Respostas"]} />
+                <Tooltip 
+                  contentStyle={{ backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '8px', fontSize: '12px' }}
+                  formatter={(value: number) => [value, "Respostas"]}
+                />
                 <Legend 
                   verticalAlign="bottom" 
-                  height={30}
+                  height={24}
                   iconType="circle"
                   iconSize={8}
-                  formatter={(value) => <span className="text-xs">{value}</span>}
+                  formatter={(value) => <span className="text-xs text-muted-foreground">{value}</span>}
                 />
               </PieChart>
             </ResponsiveContainer>
