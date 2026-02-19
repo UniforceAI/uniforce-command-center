@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { useChurnData, ChurnStatus } from "@/hooks/useChurnData";
 import { useChamados } from "@/hooks/useChamados";
 import { IspActions } from "@/components/shared/IspActions";
@@ -107,53 +107,115 @@ const ClientesEmRisco = () => {
     return { cidades: Array.from(cidades).sort(), planos: Array.from(planos).sort() };
   }, [clientesRisco]);
 
+  // Recalcula score_suporte localmente usando chamados REAIS da tabela chamados
+  // para corrigir o valor salvo no banco (que usa qtd_chamados_30d incorreto da churn_status)
+  const getScoreSuporteReal = useCallback((cliente: ChurnStatus): number => {
+    const ch30 = chamadosPorClienteMap.d30.get(cliente.cliente_id)?.chamados_periodo ?? 0;
+    const ch90 = chamadosPorClienteMap.d90.get(cliente.cliente_id)?.chamados_periodo ?? 0;
+    // >=3 chamados 30d = 25pts | >=2 chamados 30d = 15pts | >=1 chamado 30d = 8pts
+    // >=3 chamados 90d = 10pts | >=1 chamado 90d = 5pts (cap 25)
+    let score = 0;
+    if (ch30 >= 3) score = 25;
+    else if (ch30 >= 2) score = 15;
+    else if (ch30 >= 1) score = 8;
+    else if (ch90 >= 3) score = 10;
+    else if (ch90 >= 1) score = 5;
+    return Math.min(score, 25);
+  }, [chamadosPorClienteMap]);
+
+  // Score total recalculado (substitui score_suporte pelo valor real)
+  const getScoreTotalReal = useCallback((cliente: ChurnStatus): number => {
+    const suporteOriginal = cliente.score_suporte ?? 0;
+    const suporteReal = getScoreSuporteReal(cliente);
+    const diff = suporteReal - suporteOriginal;
+    return Math.max(0, Math.min(100, (cliente.churn_risk_score ?? 0) + diff));
+  }, [getScoreSuporteReal]);
+
   const filtered = useMemo(() => {
     let f = [...clientesRisco];
-    if (scoreMin > 0) f = f.filter((c) => (c.churn_risk_score || 0) >= scoreMin);
+    if (scoreMin > 0) f = f.filter((c) => getScoreTotalReal(c) >= scoreMin);
     if (bucket !== "todos") f = f.filter((c) => getBucketLabel(c) === bucket);
     if (cidade !== "todos") f = f.filter((c) => c.cliente_cidade === cidade);
     if (plano !== "todos") f = f.filter((c) => c.plano_nome === plano);
     return f.sort((a, b) => {
-      const scoreA = a.churn_risk_score ?? 0;
-      const scoreB = b.churn_risk_score ?? 0;
+      const scoreA = getScoreTotalReal(a);
+      const scoreB = getScoreTotalReal(b);
       if (scoreB !== scoreA) return scoreB - scoreA;
       return (b.dias_atraso || 0) - (a.dias_atraso || 0);
     });
-  }, [clientesRisco, scoreMin, bucket, cidade, plano]);
+  }, [clientesRisco, scoreMin, bucket, cidade, plano, getScoreTotalReal]);
 
   const kpis = useMemo(() => {
     const totalRisco = filtered.length;
     const mrrRisco = filtered.reduce((acc, c) => acc + (c.valor_mensalidade || 0), 0);
     const ltvRisco = filtered.reduce((acc, c) => acc + (c.ltv_estimado || 0), 0);
-    const scores = filtered.filter((c) => c.churn_risk_score != null).map((c) => c.churn_risk_score);
+    const scores = filtered.filter((c) => c.churn_risk_score != null).map((c) => getScoreTotalReal(c));
     const scoreMedio = scores.length > 0 ? (scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(1) : "—";
     const diasRisco = filtered.filter((c) => c.dias_atraso != null && c.dias_atraso > 0).map((c) => c.dias_atraso!);
     const diasMedio = diasRisco.length > 0 ? Math.round(diasRisco.reduce((a, b) => a + b, 0) / diasRisco.length) : 0;
     const bloqueadosCobranca = filtered.filter(c => ["CA", "CM", "B"].includes(c.status_internet || "")).length;
     return { totalRisco, mrrRisco, ltvRisco, scoreMedio, diasMedio, bloqueadosCobranca };
-  }, [filtered]);
+  }, [filtered, getScoreTotalReal]);
 
   // Eventos do cliente selecionado (churn_events)
+  // Filtra eventos do tipo chamado_reincidente gerados com dados antigos (qtd_chamados_30d da churn_status)
+  // Substitui por avaliação real baseada na tabela chamados
   const clienteEvents = useMemo(() => {
     if (!selectedCliente) return [];
-    return churnEvents
+    const eventos = churnEvents
       .filter((e) => e.cliente_id === selectedCliente.cliente_id)
+      .filter((e) => e.tipo_evento !== "chamado_reincidente") // remove eventos gerados com dados incorretos
       .slice(0, 15);
-  }, [selectedCliente, churnEvents]);
+
+    // Adiciona evento de chamado reincidente REAL se aplicável
+    const ch30Real = chamadosPorClienteMap.d30.get(selectedCliente.cliente_id)?.chamados_periodo ?? 0;
+    if (ch30Real >= 3) {
+      eventos.unshift({
+        id: "real-reincidente",
+        isp_id: selectedCliente.isp_id,
+        cliente_id: selectedCliente.cliente_id,
+        id_contrato: null,
+        tipo_evento: "chamado_reincidente",
+        peso_evento: 3,
+        impacto_score: 25,
+        descricao: `Cliente acumulou ${ch30Real} chamados nos últimos 30 dias (dados reais da tabela chamados)`,
+        dados_evento: { qtd_chamados_30d_real: ch30Real },
+        data_evento: new Date().toISOString(),
+        created_at: new Date().toISOString(),
+      });
+    } else if (ch30Real >= 2) {
+      eventos.unshift({
+        id: "real-reincidente",
+        isp_id: selectedCliente.isp_id,
+        cliente_id: selectedCliente.cliente_id,
+        id_contrato: null,
+        tipo_evento: "chamado_reincidente",
+        peso_evento: 2,
+        impacto_score: 15,
+        descricao: `Cliente com ${ch30Real} chamados nos últimos 30 dias (dados reais da tabela chamados)`,
+        dados_evento: { qtd_chamados_30d_real: ch30Real },
+        data_evento: new Date().toISOString(),
+        created_at: new Date().toISOString(),
+      });
+    }
+
+    return eventos;
+  }, [selectedCliente, churnEvents, chamadosPorClienteMap]);
 
   // Score por componente normalizado 0-100%
   const scoreComponentes = useMemo(() => {
     if (!selectedCliente) return [];
+    const suporteReal = getScoreSuporteReal(selectedCliente);
     return [
       { nome: "Financeiro (0-30)", valor: selectedCliente.score_financeiro ?? 0, max: 30 },
-      { nome: "Suporte (0-25)", valor: selectedCliente.score_suporte ?? 0, max: 25 },
+      { nome: "Suporte (0-25)", valor: suporteReal, max: 25 },
       { nome: "Comportamental (0-20)", valor: selectedCliente.score_comportamental ?? 0, max: 20 },
       { nome: "Qualidade (0-25)", valor: selectedCliente.score_qualidade ?? 0, max: 25 },
       { nome: "NPS (0-20)", valor: selectedCliente.score_nps ?? 0, max: 20 },
     ]
       .map(c => ({ ...c, pct: Math.round((c.valor / c.max) * 100) }))
       .filter(c => c.max > 0);
-  }, [selectedCliente]);
+  }, [selectedCliente, getScoreSuporteReal]);
 
   if (isLoading) return (
     <div className="min-h-screen bg-background flex items-center justify-center">
@@ -306,7 +368,7 @@ const ClientesEmRisco = () => {
                           </TableCell>
                           <TableCell className="text-xs font-medium max-w-[140px] truncate">{c.cliente_nome}</TableCell>
                           <TableCell className="text-center">
-                            <ScoreBadge score={c.churn_risk_score} bucket={derivedBucket} />
+                            <ScoreBadge score={getScoreTotalReal(c)} bucket={derivedBucket} />
                           </TableCell>
                           <TableCell className="text-xs">{c.status_contrato || "—"}</TableCell>
                           <TableCell className="text-center text-xs">
@@ -350,7 +412,7 @@ const ClientesEmRisco = () => {
             <div className="mt-4 space-y-5">
               {/* Score/bucket + prioridade */}
               <div className="flex items-center gap-3 flex-wrap">
-                <ScoreBadge score={selectedCliente.churn_risk_score} bucket={getBucketLabel(selectedCliente)} />
+                <ScoreBadge score={getScoreTotalReal(selectedCliente)} bucket={getBucketLabel(selectedCliente)} />
                 <Badge className={`${PRIORIDADE_COLORS[getPrioridade(selectedCliente)]} border text-xs font-mono`}>
                   {getPrioridade(selectedCliente)}
                 </Badge>
