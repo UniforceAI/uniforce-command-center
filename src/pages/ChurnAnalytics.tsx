@@ -3,15 +3,14 @@ import { useChurnData } from "@/hooks/useChurnData";
 import { useActiveIsp } from "@/hooks/useActiveIsp";
 import { useChamados } from "@/hooks/useChamados";
 import { IspActions } from "@/components/shared/IspActions";
-import { KPICardNew } from "@/components/shared/KPICardNew";
 import { GlobalFilters } from "@/components/shared/GlobalFilters";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { AlertTriangle, Users, Percent, Target, DollarSign, TrendingDown, AlertCircle } from "lucide-react";
 import {
-  PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend,
-  BarChart, Bar, XAxis, YAxis, CartesianGrid,
-  ScatterChart, Scatter, ZAxis,
+  AlertTriangle, Users, Percent, Target, DollarSign, TrendingDown, AlertCircle, Info,
+} from "lucide-react";
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
 } from "recharts";
+import { cn } from "@/lib/utils";
 
 const BUCKET_COLORS: Record<string, string> = {
   Baixo: "#22c55e",
@@ -19,35 +18,16 @@ const BUCKET_COLORS: Record<string, string> = {
   Alto: "#f97316",
   Crítico: "#ef4444",
 };
-const COLORS = ["#ef4444", "#f97316", "#eab308", "#22c55e", "#3b82f6", "#8b5cf6", "#ec4899", "#14b8a6"];
-
-const STATUS_LABELS: Record<string, string> = {
-  "A": "Ativo",
-  "CA": "Bloqueado (Cob. Auto)",
-  "CM": "Bloqueado (Cob. Manual)",
-  "B": "Bloqueado",
-  "D": "Desativado/Cancelado",
-  "FA": "Férias",
-  "S": "Suspenso",
-  "Ativo": "Ativo",
-  "Bloqueado": "Bloqueado",
-  "Suspenso": "Suspenso",
-  "Cancelado": "Cancelado",
-};
 
 const ChurnAnalytics = () => {
   const { churnStatus, isLoading, error } = useChurnData();
-  const { ispId } = useActiveIsp();
   const { getChamadosPorCliente } = useChamados();
-
-  // Mapa de chamados reais (90d) para correlação por plano/cidade
   const chamadosMap90d = useMemo(() => getChamadosPorCliente(90), [getChamadosPorCliente]);
 
   const [plano, setPlano] = useState("todos");
   const [cidade, setCidade] = useState("todos");
   const [bairro, setBairro] = useState("todos");
   const [bucket, setBucket] = useState("todos");
-  const [atraso, setAtraso] = useState("todos");
 
   const filterOptions = useMemo(() => {
     const planos = new Set<string>();
@@ -71,9 +51,8 @@ const ChurnAnalytics = () => {
     if (cidade !== "todos") f = f.filter((c) => c.cliente_cidade === cidade);
     if (bairro !== "todos") f = f.filter((c) => c.cliente_bairro === bairro);
     if (bucket !== "todos") f = f.filter((c) => c.churn_risk_bucket === bucket);
-    if (atraso !== "todos") f = f.filter((c) => c.faixa_atraso === atraso);
     return f;
-  }, [churnStatus, plano, cidade, bairro, bucket, atraso]);
+  }, [churnStatus, plano, cidade, bairro, bucket]);
 
   const ativos = useMemo(() => filtered.filter((c) => c.status_churn !== "cancelado"), [filtered]);
   const emRisco = useMemo(() => filtered.filter((c) => c.status_churn === "risco"), [filtered]);
@@ -87,42 +66,8 @@ const ChurnAnalytics = () => {
     const scores = ativos.filter((c) => c.churn_risk_score != null).map((c) => c.churn_risk_score);
     const scoreMedioNum = scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : null;
     const scoreMedio = scoreMedioNum != null ? scoreMedioNum.toFixed(1) : "N/A";
-    const scoreVariant = scoreMedioNum == null ? "default"
-      : scoreMedioNum > 80 ? "danger"
-      : scoreMedioNum > 25 ? "warning"
-      : scoreMedioNum > 10 ? "info"
-      : "default";
-    return { totalAtivos, totalRisco, pctRisco, scoreMedio, mrrRisco, ltvRisco, scoreVariant };
+    return { totalAtivos, totalRisco, pctRisco, scoreMedio, mrrRisco, ltvRisco };
   }, [ativos, emRisco]);
-
-  // Distribuição por bucket
-  const distribuicaoBucket = useMemo(() => {
-    const map: Record<string, number> = {};
-    ativos.forEach((c) => {
-      const b = c.churn_risk_bucket || "Sem Score";
-      map[b] = (map[b] || 0) + 1;
-    });
-    return Object.entries(map)
-      .map(([name, value]) => ({ name, value, color: BUCKET_COLORS[name] || "#6b7280" }))
-      .filter((d) => d.value > 0)
-      .sort((a, b) => b.value - a.value);
-  }, [ativos]);
-
-  const bucketTotal = distribuicaoBucket.reduce((s, d) => s + d.value, 0);
-
-  // Distribuição por status de contrato
-  const distribuicaoStatus = useMemo(() => {
-    const map: Record<string, number> = {};
-    filtered.forEach((c) => {
-      const raw = c.status_internet || c.status_contrato || "N/A";
-      const label = STATUS_LABELS[raw] || raw;
-      map[label] = (map[label] || 0) + 1;
-    });
-    return Object.entries(map)
-      .map(([name, value]) => ({ name, value }))
-      .sort((a, b) => b.value - a.value)
-      .slice(0, 8);
-  }, [filtered]);
 
   // Top 10 cidades por clientes em risco
   const topCidades = useMemo(() => {
@@ -159,62 +104,75 @@ const ChurnAnalytics = () => {
         mrr: Math.round(d.mrr),
         chamados: d.chamados,
       }))
-      .filter(d => d.total >= 3)
-      .sort((a, b) => b.risco - a.risco)
+      .filter((d) => d.total >= 3)
+      .sort((a, b) => b.pct - a.pct)
       .slice(0, 10);
   }, [ativos, chamadosMap90d]);
-
-  // Distribuição de dias em atraso
-  const distribuicaoAtraso = useMemo(() => {
-    const faixas = [
-      { label: "0 dias", min: 0, max: 0 },
-      { label: "1-15 dias", min: 1, max: 15 },
-      { label: "16-30 dias", min: 16, max: 30 },
-      { label: "31-60 dias", min: 31, max: 60 },
-      { label: "60+ dias", min: 61, max: Infinity },
-    ];
-    return faixas.map(f => ({
-      label: f.label,
-      qtd: ativos.filter(c => {
-        const d = c.dias_atraso || 0;
-        return d >= f.min && d <= f.max;
-      }).length,
-    }));
-  }, [ativos]);
-
-  // Correlação dias_atraso vs valor_mensalidade
-  const corrAtrasoMrr = useMemo(() =>
-    ativos
-      .filter((c) => c.dias_atraso != null && c.valor_mensalidade != null && c.dias_atraso > 0)
-      .map((c) => ({ x: Math.min(c.dias_atraso!, 120), y: c.valor_mensalidade!, z: 4 }))
-      .slice(0, 400),
-    [ativos]);
-
-  // MRR em risco por cidade
-  const mrrPorCidade = useMemo(() => {
-    const map: Record<string, number> = {};
-    emRisco.forEach((c) => {
-      if (c.cliente_cidade) map[c.cliente_cidade] = (map[c.cliente_cidade] || 0) + (c.valor_mensalidade || 0);
-    });
-    return Object.entries(map)
-      .map(([cidade, mrr]) => ({ cidade, mrr: Math.round(mrr) }))
-      .sort((a, b) => b.mrr - a.mrr)
-      .slice(0, 10);
-  }, [emRisco]);
 
   const filters = [
     { id: "plano", label: "Plano", value: plano, onChange: setPlano, options: [{ value: "todos", label: "Todos" }, ...filterOptions.planos.map((p) => ({ value: p, label: p }))] },
     { id: "cidade", label: "Cidade", value: cidade, onChange: setCidade, options: [{ value: "todos", label: "Todas" }, ...filterOptions.cidades.map((c) => ({ value: c, label: c }))] },
     { id: "bairro", label: "Bairro", value: bairro, onChange: setBairro, options: [{ value: "todos", label: "Todos" }, ...filterOptions.bairros.map((b) => ({ value: b, label: b }))] },
-    { id: "bucket", label: "Bucket Risco", value: bucket, onChange: setBucket, options: [{ value: "todos", label: "Todos" }, { value: "Crítico", label: "🔴 Crítico" }, { value: "Alto", label: "🟠 Alto" }, { value: "Médio", label: "🟡 Médio" }, { value: "Baixo", label: "🟢 Baixo" }] },
-    { id: "atraso", label: "Faixa Atraso", value: atraso, onChange: setAtraso, options: [
-      { value: "todos", label: "Todas" },
-      { value: "0-0", label: "Em dia" },
-      { value: "1-7", label: "1-7 dias" },
-      { value: "8-15", label: "8-15 dias" },
-      { value: "16-30", label: "16-30 dias" },
-      { value: "30+", label: "30+ dias" },
-    ]},
+    {
+      id: "bucket", label: "Bucket Risco", value: bucket, onChange: setBucket, options: [
+        { value: "todos", label: "Todos" },
+        { value: "Crítico", label: "🔴 Crítico" },
+        { value: "Alto", label: "🟠 Alto" },
+        { value: "Médio", label: "🟡 Médio" },
+        { value: "Baixo", label: "🟢 Baixo" },
+      ]
+    },
+  ];
+
+  const kpiCards = [
+    {
+      label: "Clientes Risco",
+      value: kpis.totalRisco.toLocaleString(),
+      sub: `${kpis.pctRisco}% da base`,
+      icon: AlertTriangle,
+      accent: "hsl(var(--destructive))",
+      bg: "hsl(var(--destructive) / 0.12)",
+    },
+    {
+      label: "% em Risco",
+      value: `${kpis.pctRisco}%`,
+      sub: "Churn Rate",
+      icon: Percent,
+      accent: "hsl(var(--warning))",
+      bg: "hsl(var(--warning) / 0.12)",
+    },
+    {
+      label: "MRR Risco",
+      value: `R$ ${kpis.mrrRisco.toLocaleString("pt-BR", { minimumFractionDigits: 0 })}`,
+      sub: "Receita ameaçada",
+      icon: DollarSign,
+      accent: "hsl(var(--destructive))",
+      bg: "hsl(var(--destructive) / 0.12)",
+    },
+    {
+      label: "LTV Risco",
+      value: `R$ ${kpis.ltvRisco.toLocaleString("pt-BR", { minimumFractionDigits: 0 })}`,
+      sub: "Valor estimado perdido",
+      icon: TrendingDown,
+      accent: "hsl(var(--destructive))",
+      bg: "hsl(var(--destructive) / 0.12)",
+    },
+    {
+      label: "Score Médio",
+      value: kpis.scoreMedio !== "N/A" ? kpis.scoreMedio : "—",
+      sub: "Score de risco",
+      icon: Target,
+      accent: "hsl(var(--warning))",
+      bg: "hsl(var(--warning) / 0.12)",
+    },
+    {
+      label: "Total Clientes",
+      value: kpis.totalAtivos.toLocaleString(),
+      sub: "Base ativa",
+      icon: Users,
+      accent: "hsl(var(--primary))",
+      bg: "hsl(var(--primary) / 0.12)",
+    },
   ];
 
   if (isLoading) return (
@@ -228,6 +186,7 @@ const ChurnAnalytics = () => {
 
   return (
     <div className="min-h-screen bg-background">
+      {/* Header */}
       <header className="border-b bg-card shadow-sm">
         <div className="container mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
@@ -254,221 +213,215 @@ const ChurnAnalytics = () => {
 
         <GlobalFilters filters={filters} />
 
-        {/* KPIs */}
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-          <KPICardNew title="Clientes Ativos" value={kpis.totalAtivos.toLocaleString()} icon={Users} variant="default" />
-          <KPICardNew title="Em Risco" value={kpis.totalRisco.toLocaleString()} icon={AlertTriangle} variant="danger" />
-          <KPICardNew title="% em Risco" value={`${kpis.pctRisco}%`} icon={Percent} variant="warning" />
-          <KPICardNew title="Score Médio" value={kpis.scoreMedio !== "N/A" ? kpis.scoreMedio : "—"} icon={Target} variant={kpis.scoreVariant as any} />
-          <KPICardNew title="MRR em Risco" value={`R$ ${kpis.mrrRisco.toLocaleString("pt-BR", { minimumFractionDigits: 0 })}`} icon={DollarSign} variant="danger" />
-          <KPICardNew title="LTV em Risco" value={`R$ ${kpis.ltvRisco.toLocaleString("pt-BR", { minimumFractionDigits: 0 })}`} icon={TrendingDown} variant="danger" />
+        {/* KPI Cards — estilo escuro com ícone colorido */}
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+          {kpiCards.map((kpi) => (
+            <div
+              key={kpi.label}
+              className="rounded-xl border bg-card p-4 flex flex-col gap-3 shadow-sm hover:shadow-md transition-shadow"
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium text-muted-foreground leading-tight">{kpi.label}</span>
+                <div
+                  className="rounded-lg p-1.5 flex items-center justify-center"
+                  style={{ background: kpi.bg }}
+                >
+                  <kpi.icon className="h-3.5 w-3.5" style={{ color: kpi.accent }} />
+                </div>
+              </div>
+              <div>
+                <p className="text-2xl font-bold leading-none tracking-tight">{kpi.value}</p>
+                {kpi.sub && <p className="text-xs text-muted-foreground mt-1">{kpi.sub}</p>}
+              </div>
+            </div>
+          ))}
         </div>
 
-        {/* Linha 2: Bucket + Status Contrato */}
+        {/* Dois gráficos principais */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Distribuição por Bucket de Risco</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {distribuicaoBucket.length > 0 ? (
-                <div>
-                  <ResponsiveContainer width="100%" height={220}>
-                    <PieChart>
-                      <Pie data={distribuicaoBucket} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={85} innerRadius={45} paddingAngle={3}>
-                        {distribuicaoBucket.map((entry, idx) => (
-                          <Cell key={idx} fill={entry.color} />
-                        ))}
-                      </Pie>
-                      <Tooltip formatter={(v: any, n) => [`${v.toLocaleString()} clientes`, n]} />
-                    </PieChart>
-                  </ResponsiveContainer>
-                  {/* Legenda com contagem e % */}
-                  <div className="grid grid-cols-2 gap-2 mt-2">
-                    {[
-                      { key: "Baixo", emoji: "🟢" },
-                      { key: "Médio", emoji: "🟡" },
-                      { key: "Alto", emoji: "🟠" },
-                      { key: "Crítico", emoji: "🔴" },
-                    ].map(({ key, emoji }) => {
-                      const entry = distribuicaoBucket.find(d => d.name === key);
-                      if (!entry) return null;
-                      const pct = bucketTotal > 0 ? ((entry.value / bucketTotal) * 100).toFixed(1) : "0";
-                      return (
-                        <div key={key} className="flex items-center gap-1.5 text-xs">
-                          <span>{emoji}</span>
-                          <span className="text-muted-foreground">{key}:</span>
-                          <span className="font-medium">{entry.value.toLocaleString()}</span>
-                          <span className="text-muted-foreground">({pct}%)</span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              ) : (
-                <div className="h-[260px] flex flex-col items-center justify-center text-muted-foreground text-sm gap-2">
-                  <AlertTriangle className="h-8 w-8 opacity-30" />
-                  <span>Sem clientes com bucket de risco definido</span>
-                  <span className="text-xs">({ativos.length} clientes ativos carregados)</span>
-                </div>
-              )}
-            </CardContent>
-          </Card>
 
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Status de Contrato — Distribuição</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {distribuicaoStatus.length > 0 ? (
-                <ResponsiveContainer width="100%" height={260}>
-                  <BarChart data={distribuicaoStatus} layout="vertical" margin={{ left: 8 }}>
-                    <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                    <XAxis type="number" tick={{ fontSize: 11 }} />
-                    <YAxis type="category" dataKey="name" tick={{ fontSize: 10 }} width={130} />
-                    <Tooltip formatter={(v: any) => [v.toLocaleString(), "Clientes"]} />
-                    <Bar dataKey="value" radius={[0, 4, 4, 0]}>
-                      {distribuicaoStatus.map((_, idx) => (
-                        <Cell key={idx} fill={COLORS[idx % COLORS.length]} />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              ) : (
-                <div className="h-[260px] flex items-center justify-center text-muted-foreground text-sm">Sem dados disponíveis</div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Linha 3: Top cidades em risco + Risco por plano */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Top 10 Cidades — Clientes em Risco</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {topCidades.length > 0 ? (
-                <div className="max-h-[320px] overflow-y-auto">
-                  <ResponsiveContainer width="100%" height={topCidades.length * 34 + 20}>
-                    <BarChart data={topCidades} layout="vertical" margin={{ left: 8 }}>
-                      <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                      <XAxis type="number" tick={{ fontSize: 10 }} />
-                      <YAxis type="category" dataKey="cidade" tick={{ fontSize: 10 }} width={100} />
-                      <Tooltip formatter={(v: any) => [v, "Em risco"]} />
-                      <Bar dataKey="qtd" fill="hsl(var(--destructive) / 0.7)" radius={[0, 4, 4, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              ) : (
-                <div className="h-[240px] flex items-center justify-center text-muted-foreground text-sm">
-                  {emRisco.length === 0 ? `Nenhum cliente em risco identificado (${ativos.length} ativos)` : "Sem dados de cidade"}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Risco por Plano — qtd e % de risco</CardTitle>
-            </CardHeader>
-            <CardContent>
+          {/* Cohort Churn por Plano */}
+          <div className="rounded-xl border bg-card shadow-sm overflow-hidden">
+            <div className="px-5 pt-5 pb-3 border-b flex items-center gap-2">
+              <span className="text-sm font-semibold">Cohort Churn por Plano</span>
+              <Info className="h-3.5 w-3.5 text-muted-foreground" />
+            </div>
+            <div className="p-5">
               {riscoPorPlano.length > 0 ? (
-                <div className="max-h-[320px] overflow-y-auto">
-                  <ResponsiveContainer width="100%" height={riscoPorPlano.length * 34 + 20}>
-                    <BarChart data={riscoPorPlano} layout="vertical" margin={{ left: 8 }}>
-                      <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                      <XAxis type="number" tick={{ fontSize: 10 }} />
-                      <YAxis type="category" dataKey="plano" tick={{ fontSize: 10 }} width={130} />
+                <>
+                  <ResponsiveContainer width="100%" height={280}>
+                    <BarChart
+                      data={riscoPorPlano}
+                      margin={{ top: 8, right: 8, bottom: 60, left: -10 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
+                      <XAxis
+                        dataKey="plano"
+                        tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
+                        angle={-30}
+                        textAnchor="end"
+                        interval={0}
+                        tickLine={false}
+                        axisLine={false}
+                      />
+                      <YAxis
+                        tickFormatter={(v) => `${v}%`}
+                        tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
+                        tickLine={false}
+                        axisLine={false}
+                      />
                       <Tooltip
-                        formatter={(v: any, name, props) => {
+                        contentStyle={{
+                          background: "hsl(var(--card))",
+                          border: "1px solid hsl(var(--border))",
+                          borderRadius: "8px",
+                          fontSize: 12,
+                        }}
+                        formatter={(v: any, _name, props) => {
                           const d = props.payload;
-                          if (name === "risco") return [`${v} de ${d.total} (${d.pct}%) · ${d.chamados} chamados/90d`, "Em risco"];
-                          return [v, name];
+                          return [`${d.risco} de ${d.total} (${d.pct}%) · ${d.chamados} chamados/90d`, "Em risco"];
                         }}
                       />
-                      <Bar dataKey="risco" fill="hsl(38 92% 50% / 0.8)" radius={[0, 4, 4, 0]} name="risco" />
+                      <Bar dataKey="pct" radius={[4, 4, 0, 0]} maxBarSize={48}>
+                        {riscoPorPlano.map((entry, idx) => (
+                          <Cell
+                            key={idx}
+                            fill={
+                              entry.pct >= 20
+                                ? "hsl(var(--destructive))"
+                                : entry.pct >= 12
+                                ? "hsl(var(--warning))"
+                                : "hsl(var(--primary))"
+                            }
+                          />
+                        ))}
+                      </Bar>
                     </BarChart>
                   </ResponsiveContainer>
+
+                  {/* Legenda tabular */}
+                  <div className="mt-4 space-y-1.5 max-h-[160px] overflow-y-auto">
+                    {riscoPorPlano.map((d) => (
+                      <div key={d.plano} className="flex items-center justify-between text-xs px-1">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span
+                            className="w-2 h-2 rounded-full shrink-0"
+                            style={{
+                              background:
+                                d.pct >= 20
+                                  ? "hsl(var(--destructive))"
+                                  : d.pct >= 12
+                                  ? "hsl(var(--warning))"
+                                  : "hsl(var(--primary))",
+                            }}
+                          />
+                          <span className="text-foreground font-medium truncate">{d.plano}</span>
+                        </div>
+                        <div className="flex items-center gap-3 shrink-0 text-muted-foreground">
+                          <span className="font-semibold text-foreground">{d.risco} clientes</span>
+                          <span>LTV: R$ {d.mrr.toLocaleString("pt-BR")}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <div className="h-[280px] flex items-center justify-center text-muted-foreground text-sm">
+                  Sem dados de plano disponíveis
                 </div>
-              ) : (
-                <div className="h-[240px] flex items-center justify-center text-muted-foreground text-sm">Sem dados de plano disponíveis</div>
               )}
-            </CardContent>
-          </Card>
-        </div>
+            </div>
+          </div>
 
-        {/* Linha 4: Distribuição atraso + MRR por cidade + Scatter */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-xs font-medium text-muted-foreground">Faixas de Dias em Atraso</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {distribuicaoAtraso.some(d => d.qtd > 0) ? (
-                <ResponsiveContainer width="100%" height={200}>
-                  <BarChart data={distribuicaoAtraso} margin={{ top: 4, right: 4, bottom: 20, left: -10 }}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="label" tick={{ fontSize: 9 }} angle={-20} textAnchor="end" />
-                    <YAxis tick={{ fontSize: 10 }} />
-                    <Tooltip formatter={(v: any) => [v.toLocaleString(), "Clientes"]} />
-                    <Bar dataKey="qtd" radius={[4, 4, 0, 0]}>
-                      {distribuicaoAtraso.map((entry, idx) => (
-                        <Cell key={idx} fill={idx === 0 ? "#22c55e" : idx === 1 ? "#eab308" : idx === 2 ? "#f97316" : "#ef4444"} />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              ) : (
-                <div className="h-[200px] flex items-center justify-center text-muted-foreground text-xs">Sem dados</div>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-xs font-medium text-muted-foreground">MRR em Risco por Cidade</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {mrrPorCidade.length > 0 ? (
-                <div className="max-h-[200px] overflow-y-auto">
-                  <ResponsiveContainer width="100%" height={mrrPorCidade.length * 24 + 20}>
-                    <BarChart data={mrrPorCidade} layout="vertical" margin={{ left: 4 }}>
-                      <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                      <XAxis type="number" tick={{ fontSize: 9 }} tickFormatter={v => `R$${(v/1000).toFixed(0)}k`} />
-                      <YAxis type="category" dataKey="cidade" tick={{ fontSize: 9 }} width={80} />
-                      <Tooltip formatter={(v: any) => [`R$ ${v.toLocaleString("pt-BR")}`, "MRR em risco"]} />
-                      <Bar dataKey="mrr" fill="hsl(var(--destructive) / 0.6)" radius={[0, 4, 4, 0]} />
+          {/* Top 10 Cidades em Risco */}
+          <div className="rounded-xl border bg-card shadow-sm overflow-hidden">
+            <div className="px-5 pt-5 pb-3 border-b flex items-center gap-2">
+              <span className="text-sm font-semibold">Top Motivos de Contato por Cidade</span>
+              <Info className="h-3.5 w-3.5 text-muted-foreground" />
+            </div>
+            <div className="p-5">
+              {topCidades.length > 0 ? (
+                <>
+                  <ResponsiveContainer width="100%" height={280}>
+                    <BarChart
+                      data={topCidades}
+                      layout="vertical"
+                      margin={{ top: 4, right: 24, bottom: 4, left: 8 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="hsl(var(--border))" />
+                      <XAxis
+                        type="number"
+                        tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
+                        tickLine={false}
+                        axisLine={false}
+                      />
+                      <YAxis
+                        type="category"
+                        dataKey="cidade"
+                        tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
+                        width={90}
+                        tickLine={false}
+                        axisLine={false}
+                      />
+                      <Tooltip
+                        contentStyle={{
+                          background: "hsl(var(--card))",
+                          border: "1px solid hsl(var(--border))",
+                          borderRadius: "8px",
+                          fontSize: 12,
+                        }}
+                        formatter={(v: any) => [v, "Clientes em risco"]}
+                      />
+                      <Bar dataKey="qtd" radius={[0, 4, 4, 0]} maxBarSize={20} fill="hsl(var(--primary))">
+                        {topCidades.map((_, idx) => (
+                          <Cell
+                            key={idx}
+                            fill={
+                              idx === 0
+                                ? "hsl(var(--destructive))"
+                                : idx <= 2
+                                ? "hsl(var(--warning))"
+                                : "hsl(var(--primary))"
+                            }
+                          />
+                        ))}
+                      </Bar>
                     </BarChart>
                   </ResponsiveContainer>
-                </div>
-              ) : (
-                <div className="h-[200px] flex items-center justify-center text-muted-foreground text-xs">Sem dados</div>
-              )}
-            </CardContent>
-          </Card>
 
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-xs font-medium text-muted-foreground">Dias Atraso × Mensalidade</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {corrAtrasoMrr.length > 0 ? (
-                <ResponsiveContainer width="100%" height={200}>
-                  <ScatterChart margin={{ top: 4, right: 4, bottom: 4, left: -10 }}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="x" name="Dias Atraso" tick={{ fontSize: 10 }} label={{ value: "Dias Atraso", position: "insideBottom", offset: -2, fontSize: 9 }} />
-                    <YAxis dataKey="y" name="Mensalidade" tick={{ fontSize: 10 }} tickFormatter={v => `R$${v}`} />
-                    <ZAxis dataKey="z" range={[20, 20]} />
-                    <Tooltip formatter={(v: any, n) => [n === "x" ? `${v} dias` : `R$ ${v}`, n === "x" ? "Atraso" : "Mensalidade"]} />
-                    <Scatter data={corrAtrasoMrr} fill="hsl(var(--destructive) / 0.5)" />
-                  </ScatterChart>
-                </ResponsiveContainer>
+                  {/* Legenda tabular */}
+                  <div className="mt-4 space-y-1.5 max-h-[160px] overflow-y-auto">
+                    {topCidades.map((d, idx) => (
+                      <div key={d.cidade} className="flex items-center justify-between text-xs px-1">
+                        <div className="flex items-center gap-2">
+                          <span
+                            className="w-2 h-2 rounded-full shrink-0"
+                            style={{
+                              background:
+                                idx === 0
+                                  ? "hsl(var(--destructive))"
+                                  : idx <= 2
+                                  ? "hsl(var(--warning))"
+                                  : "hsl(var(--primary))",
+                            }}
+                          />
+                          <span className="text-foreground font-medium">{d.cidade}</span>
+                        </div>
+                        <span className="font-semibold text-foreground">{d.qtd} em risco</span>
+                      </div>
+                    ))}
+                  </div>
+                </>
               ) : (
-                <div className="h-[200px] flex items-center justify-center text-muted-foreground text-xs">Sem dados de atraso</div>
+                <div className="h-[280px] flex items-center justify-center text-muted-foreground text-sm">
+                  {emRisco.length === 0
+                    ? `Nenhum cliente em risco identificado (${ativos.length} ativos)`
+                    : "Sem dados de cidade"}
+                </div>
               )}
-            </CardContent>
-          </Card>
+            </div>
+          </div>
+
         </div>
       </main>
     </div>
