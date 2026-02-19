@@ -1,7 +1,6 @@
 import { useState, useMemo, useCallback } from "react";
 import { useChurnData, ChurnStatus } from "@/hooks/useChurnData";
 import { useChamados } from "@/hooks/useChamados";
-import { useNPSData } from "@/hooks/useNPSData";
 import { useActiveIsp } from "@/hooks/useActiveIsp";
 import { useChurnScoreConfig, calcScoreSuporteConfiguravel } from "@/contexts/ChurnScoreConfigContext";
 import { IspActions } from "@/components/shared/IspActions";
@@ -114,7 +113,6 @@ const ClientesEmRisco = () => {
   const { churnStatus, churnEvents, isLoading, error } = useChurnData();
   const { getChamadosPorCliente } = useChamados();
   const { ispId } = useActiveIsp();
-  const { npsData } = useNPSData(ispId);
   const { config } = useChurnScoreConfig();
 
   // Mapa de chamados reais por cliente_id (30d e 90d)
@@ -123,19 +121,22 @@ const ClientesEmRisco = () => {
     d90: getChamadosPorCliente(90),
   }), [getChamadosPorCliente]);
 
-  // Mapa NPS: cliente_id -> { nota, classificacao }
+  // Mapa NPS: usa id_cliente string do nps_check para match via telefone/cpf
+  // MAS churn_status já tem nps_ultimo_score e nps_classificacao — usamos esses primeiro
+  // e complementamos com nps_check pelo campo id_cliente (string UUID) via user_id
   const npsMap = useMemo(() => {
     const m = new Map<number, { nota: number; classificacao: string }>();
-    npsData.forEach((n) => {
-      if (n.cliente_id) {
-        // Mantém o mais recente (o array já vem ordenado por data desc do hook)
-        if (!m.has(n.cliente_id)) {
-          m.set(n.cliente_id, { nota: n.nota, classificacao: n.classificacao });
-        }
+    // Primeiro: popula a partir do próprio churn_status (fonte mais confiável)
+    churnStatus.forEach((c) => {
+      if (c.nps_ultimo_score != null && c.nps_classificacao) {
+        m.set(c.cliente_id, {
+          nota: c.nps_ultimo_score,
+          classificacao: c.nps_classificacao,
+        });
       }
     });
     return m;
-  }, [npsData]);
+  }, [churnStatus]);
 
   const [scoreMin, setScoreMin] = useState(0);
   const [bucket, setBucket] = useState("todos");
