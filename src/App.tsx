@@ -13,6 +13,7 @@ import NotFound from "./pages/NotFound";
 import VisaoGeral from "./pages/VisaoGeral";
 import Financeiro from "./pages/Financeiro";
 import ChurnRetencao from "./pages/ChurnRetencao";
+import SelecionarCliente from "./pages/SelecionarCliente";
 
 const queryClient = new QueryClient();
 
@@ -25,6 +26,14 @@ const App = () => (
         <AuthProvider>
           <Routes>
             <Route path="/auth" element={<Auth />} />
+            <Route
+              path="/selecionar-cliente"
+              element={
+                <ProtectedRoute requireSelectedIsp={false}>
+                  <SelecionarCliente />
+                </ProtectedRoute>
+              }
+            />
             <Route
               path="/"
               element={
