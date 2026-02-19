@@ -668,7 +668,7 @@ const VisaoGeral = () => {
     const sortKey = {
       churn: "churnPct",
       contratos: "contratosPct", 
-      financeiro: "financeiroPct",
+      financeiro: "mrrTotal",
       suporte: "chamados", // Ordenar por total absoluto de chamados
       rede: "redePct",
       nps: "npsPct",
@@ -690,7 +690,7 @@ const VisaoGeral = () => {
     const info: Record<string, { dataKey: string; label: string; format: (v: number) => string }> = {
       churn: { dataKey: "churnPct", label: `% Churn por ${dimensionLabel}`, format: (v) => `${v.toFixed(1)}%` },
       contratos: { dataKey: "contratosPct", label: `% Bloqueados por ${dimensionLabel}`, format: (v) => `${v.toFixed(1)}%` },
-      financeiro: { dataKey: "financeiroPct", label: `% Vencido por ${dimensionLabel}`, format: (v) => `${v.toFixed(1)}%` },
+      financeiro: { dataKey: "mrrTotal", label: `MRR por ${dimensionLabel}`, format: (v) => `R$ ${(v/1000).toFixed(1)}k` },
       suporte: { dataKey: "chamados", label: `Total Chamados por ${dimensionLabel}`, format: (v) => `${v}` },
       rede: { dataKey: "redePct", label: `% Rede por ${dimensionLabel}`, format: (v) => `${v.toFixed(1)}%` },
       nps: { dataKey: "npsPct", label: `% Detratores por ${dimensionLabel}`, format: (v) => `${v.toFixed(1)}%` },
