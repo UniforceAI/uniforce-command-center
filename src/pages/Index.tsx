@@ -74,7 +74,7 @@ const Index = () => {
             .from("chamados")
             .select("*")
             .eq("isp_id", ispId)
-            .order("data_abertura", { ascending: false })
+            .order("created_at", { ascending: false })
             .range(start, end);
 
           if (error) throw error;
