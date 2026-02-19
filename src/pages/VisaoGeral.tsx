@@ -188,11 +188,11 @@ const VisaoGeral = () => {
   };
 
   // Helper function para converter ID de cidade para nome
-  // IMPORTANTE: retorna NULL se não encontrar no mapa (para não exibir IDs)
+  // Se tiver no mapa usa o nome, senão usa o valor raw (pode ser nome ou ID)
   const getCidadeNome = (cidadeValue: any): string | null => {
-    if (cidadeValue === null || cidadeValue === undefined) return null;
-    const cidadeKey = String(cidadeValue);
-    return cidadeIdMap[cidadeKey] || null; // NÃO retorna ID, retorna null
+    if (cidadeValue === null || cidadeValue === undefined || String(cidadeValue).trim() === "") return null;
+    const cidadeKey = String(cidadeValue).trim();
+    return cidadeIdMap[cidadeKey] || cidadeKey; // Usa valor raw como fallback
   };
 
   // Helper function para verificar se cliente está vencido - CONSISTENTE em todo código
