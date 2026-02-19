@@ -227,53 +227,11 @@ const VisaoGeral = () => {
     };
   }, [eventos]);
 
-  // Filtered events - CORRIGIDO: para SNAPSHOT, o filtro de período filtra por data_vencimento
-  // (quando a cobrança vence/venceu) para que a mudança de 7d → 30d reflita mais clientes em atraso.
-  // Para outros casos, usamos dias_atraso como proxy temporal.
+  // Filtered events - dados SNAPSHOT (todos do mesmo dia), filtro de período NÃO se aplica a event_datetime.
+  // O filtro de período afeta SOMENTE chamados (via getChamadosPorCliente) que têm data_abertura real.
+  // Aqui filtramos apenas por dimensões geográficas, plano e status.
   const filteredEventos = useMemo(() => {
     let filtered = [...eventos] as Evento[];
-
-    if (periodo !== "todos") {
-      const diasPeriodo = parseInt(periodo);
-
-      // Para cada cliente, pegamos o snapshot mais recente (event_datetime desc, já ordenado pelo backend)
-      // O filtro de período para dados SNAPSHOT funciona assim:
-      // - Mostra clientes cuja data_vencimento cai dentro dos últimos X dias
-      //   OU clientes com dias_atraso <= diasPeriodo (atraso acumulado dentro do período)
-      // Isso garante que 7d mostra menos vencidos que 30d.
-      filtered = filtered.filter((e) => {
-        // Se tem data_vencimento, filtrar por ela
-        if (e.data_vencimento) {
-          // Suporte a DD/MM/YYYY e YYYY-MM-DD
-          let dvDate: Date | null = null;
-          const dvStr = String(e.data_vencimento).trim();
-          if (/^\d{4}-\d{2}-\d{2}/.test(dvStr)) {
-            dvDate = new Date(dvStr);
-          } else if (/^\d{2}\/\d{2}\/\d{4}/.test(dvStr)) {
-            const [d, m, y] = dvStr.split("/");
-            dvDate = new Date(`${y}-${m}-${d}`);
-          }
-
-          if (dvDate && !isNaN(dvDate.getTime())) {
-            const hoje = new Date();
-            const dataLimite = new Date();
-            dataLimite.setDate(hoje.getDate() - diasPeriodo);
-            dataLimite.setHours(0, 0, 0, 0);
-            // Incluir vencimentos que caíram dentro do período (já vencidos ou vencendo)
-            return dvDate >= dataLimite;
-          }
-        }
-
-        // Fallback: se não tem data_vencimento, filtrar por dias_atraso <= diasPeriodo
-        // (assim 7d mostra apenas quem atrasou nos últimos 7 dias)
-        if (e.dias_atraso !== null && e.dias_atraso !== undefined) {
-          return Number(e.dias_atraso) <= diasPeriodo;
-        }
-
-        // Se não tem nem data_vencimento nem dias_atraso, manter (cliente ativo sem cobrança pendente)
-        return true;
-      });
-    }
 
     if (uf !== "todos") {
       filtered = filtered.filter((e) => e.cliente_uf === uf);
@@ -295,7 +253,7 @@ const VisaoGeral = () => {
     }
 
     return filtered;
-  }, [eventos, periodo, uf, cidade, bairro, plano, status, filial]);
+  }, [eventos, uf, cidade, bairro, plano, status, filial]);
 
 
   // KPIs calculation - FIXED: use actual data fields correctly
@@ -703,14 +661,13 @@ const VisaoGeral = () => {
     const sortKey = {
       churn: "churnPct",
       contratos: "contratosPct", 
-      financeiro: "valorVencido", // ← ordenar por valor em atraso, não MRR
+      financeiro: "financeiroPct", // % inadimplência - valorVencido fica quase 0 em snapshot
       suporte: "chamados",
       rede: "redePct",
       nps: "npsPct",
       ltv: "ltvMedio",
     }[cohortTab] || "churnPct";
 
-    // Filtrar itens com pelo menos 3 clientes para evitar distorções estatísticas
     const minClientes = 3;
     const filtered = cohortData.filter(item => item.total >= minClientes);
 
@@ -725,7 +682,7 @@ const VisaoGeral = () => {
     const info: Record<string, { dataKey: string; label: string; format: (v: number) => string }> = {
       churn: { dataKey: "churnPct", label: `% Churn por ${dimensionLabel}`, format: (v) => `${v.toFixed(1)}%` },
       contratos: { dataKey: "contratosPct", label: `% Bloqueados por ${dimensionLabel}`, format: (v) => `${v.toFixed(1)}%` },
-      financeiro: { dataKey: "valorVencido", label: `Valor em Atraso por ${dimensionLabel}`, format: (v) => `R$ ${(v/1000).toFixed(1)}k` },
+      financeiro: { dataKey: "financeiroPct", label: `% Inadimplência por ${dimensionLabel}`, format: (v) => `${v.toFixed(1)}%` },
       suporte: { dataKey: "chamados", label: `Total Chamados por ${dimensionLabel}`, format: (v) => `${v}` },
       rede: { dataKey: "redePct", label: `% Rede por ${dimensionLabel}`, format: (v) => `${v.toFixed(1)}%` },
       nps: { dataKey: "npsPct", label: `% Detratores por ${dimensionLabel}`, format: (v) => `${v.toFixed(1)}%` },
@@ -1282,7 +1239,7 @@ const VisaoGeral = () => {
                           <XAxis 
                             type="number" 
                             domain={[0, 'auto']}
-                            tickFormatter={(v) => (cohortTab === "ltv") ? `R$${(v/1000).toFixed(0)}k` : cohortTab === "financeiro" ? `R$${(v/1000).toFixed(0)}k` : cohortTab === "suporte" ? `${v}` : `${v.toFixed(0)}%`}
+                            tickFormatter={(v) => (cohortTab === "ltv") ? `R$${(v/1000).toFixed(0)}k` : cohortTab === "suporte" ? `${v}` : `${v.toFixed(1)}%`}
                             fontSize={11}
                           />
                           <YAxis 
@@ -1390,9 +1347,8 @@ const VisaoGeral = () => {
                               if (cohortTab === "ltv") {
                                 color = "hsl(var(--primary))";
                               } else if (cohortTab === "financeiro") {
-                                // Escala de vermelho: quanto maior o valor vencido, mais vermelho
-                                const pctInad = entry.total > 0 ? (entry.clientesVencidos / entry.total * 100) : 0;
-                                color = pctInad > 10 ? "hsl(var(--destructive))" : pctInad > 3 ? "hsl(var(--warning))" : "hsl(var(--primary))";
+                                // financeiroPct: % inadimplência por grupo
+                                color = value > 10 ? "hsl(var(--destructive))" : value > 3 ? "hsl(var(--warning))" : value > 0 ? "hsl(217, 91%, 60%)" : "hsl(var(--muted))";
                               } else {
                                 color = value > 30 ? "hsl(var(--destructive))" : value > 10 ? "hsl(var(--warning))" : "hsl(var(--success))";
                               }
