@@ -1,12 +1,10 @@
 import { useState, useEffect, useCallback } from "react";
 import { externalSupabase } from "@/integrations/supabase/external-client";
 import { useToast } from "@/hooks/use-toast";
-
-// ISP ID para chamados - d-kiros tem os dados de chamados
-const CHAMADOS_ISP_ID = "d-kiros";
+import { useActiveIsp } from "@/hooks/useActiveIsp";
 
 export interface ChamadoData {
-  id_cliente: string | number; // Pode vir como string do banco
+  id_cliente: string | number;
   qtd_chamados: number;
   protocolo: string;
   data_abertura: string;
@@ -39,6 +37,7 @@ export interface ChamadosPorCliente {
 
 export function useChamados() {
   const { toast } = useToast();
+  const { ispId } = useActiveIsp();
   const [chamados, setChamados] = useState<ChamadoData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -49,17 +48,19 @@ export function useChamados() {
         setIsLoading(true);
         setError(null);
 
-        // Query única limitada para performance
+        console.log(`🔄 Buscando chamados (isp_id=${ispId})...`);
+
         const { data, error } = await externalSupabase
           .from("chamados")
           .select("*")
-          .eq("isp_id", CHAMADOS_ISP_ID)
+          .eq("isp_id", ispId)
           .order("data_abertura", { ascending: false })
           .limit(1000);
 
         if (error) throw error;
         
         setChamados((data || []) as ChamadoData[]);
+        console.log(`✅ ${data?.length || 0} chamados carregados para ${ispId}`);
         
       } catch (err: any) {
         setError(err.message);
@@ -74,7 +75,7 @@ export function useChamados() {
     };
 
     fetchChamados();
-  }, [toast]);
+  }, [toast, ispId]);
 
   // Agregar chamados por cliente - memoized
   const getChamadosPorCliente = useCallback((periodoFiltro?: number): Map<number, ChamadosPorCliente> => {
@@ -85,11 +86,9 @@ export function useChamados() {
       : null;
 
     chamados.forEach(c => {
-      // Converter id_cliente para número (pode vir como string do banco)
       const clienteId = typeof c.id_cliente === 'string' ? parseInt(c.id_cliente, 10) : c.id_cliente;
-      if (isNaN(clienteId)) return; // Skip if invalid
+      if (isNaN(clienteId)) return;
 
-      // Parse data DD/MM/YYYY HH:MM:SS ou YYYY-MM-DD HH:MM:SS
       let dataAbertura: Date | null = null;
       try {
         if (c.data_abertura.includes("/")) {
@@ -97,12 +96,9 @@ export function useChamados() {
           const [dia, mes, ano] = datePart.split("/");
           dataAbertura = new Date(parseInt(ano), parseInt(mes) - 1, parseInt(dia));
         } else {
-          // Formato YYYY-MM-DD HH:MM:SS
           dataAbertura = new Date(c.data_abertura);
         }
-      } catch (e) {
-        // Keep null if parse fails
-      }
+      } catch (e) {}
 
       const dentroPeriodo = !dataLimite || (dataAbertura && dataAbertura >= dataLimite);
 
@@ -132,7 +128,6 @@ export function useChamados() {
         cliente.categorias.push(c.categoria);
       }
       
-      // Reincidente se tem mais de 1 chamado no período
       if (cliente.chamados_periodo > 1) {
         cliente.reincidente = true;
       }

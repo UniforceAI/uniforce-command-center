@@ -4,9 +4,7 @@ import { Chamado } from "@/types/chamado";
 import { useAuth } from "@/contexts/AuthContext";
 import { externalSupabase } from "@/integrations/supabase/external-client";
 import { getCategoriaName } from "@/lib/categoriasMap";
-
-// ISP ID para chamados - d-kiros tem os dados
-const CHAMADOS_ISP_ID = "d-kiros";
+import { useActiveIsp } from "@/hooks/useActiveIsp";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { KPICard } from "@/components/dashboard/KPICard";
@@ -20,7 +18,8 @@ import { Phone, Clock, RefreshCcw, CheckCircle2, AlertCircle } from "lucide-reac
 const Index = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { signOut } = useAuth();
+  const { signOut, isSuperAdmin, clearSelectedIsp } = useAuth();
+  const { ispId, ispNome } = useActiveIsp();
   const [chamados, setChamados] = useState<Chamado[]>([]);
   const [selectedCliente, setSelectedCliente] = useState<Chamado | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -41,7 +40,7 @@ const Index = () => {
       try {
         setIsLoading(true);
         console.log("🔄 Buscando chamados do Supabase externo...");
-        console.log(`🏢 Filtro multi-tenant: isp_id = ${CHAMADOS_ISP_ID}`);
+        console.log(`🏢 Filtro multi-tenant: isp_id = ${ispId}`);
 
         // Primeiro, verificar total sem filtro para debug
         const { count: totalSemFiltro } = await externalSupabase
@@ -62,14 +61,14 @@ const Index = () => {
         const { count: totalCount, error: countError } = await externalSupabase
           .from("chamados")
           .select("*", { count: "exact", head: true })
-          .eq("isp_id", CHAMADOS_ISP_ID);
+          .eq("isp_id", ispId);
 
         if (countError) {
           console.error("❌ Erro ao contar:", countError);
           throw countError;
         }
 
-        console.log(`📊 Total com filtro (${CHAMADOS_ISP_ID}): ${totalCount}`);
+        console.log(`📊 Total com filtro (${ispId}): ${totalCount}`);
 
         // Buscar em batches de 1000
         const BATCH_SIZE = 1000;
@@ -85,7 +84,7 @@ const Index = () => {
           const { data, error } = await externalSupabase
             .from("chamados")
             .select("*")
-            .eq("isp_id", CHAMADOS_ISP_ID)
+            .eq("isp_id", ispId)
             .order("data_abertura", { ascending: false })
             .range(start, end);
 
@@ -159,7 +158,7 @@ const Index = () => {
 
     fetchChamados();
 
-  }, [toast]);
+  }, [toast, ispId]);
 
   // Encontrar a data mais recente dos dados
   const dataMaisRecente = useMemo(() => {
@@ -521,11 +520,16 @@ const Index = () => {
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent">
-                Monitor de Atendimento e Reincidência
+                Painel Operacional
               </h1>
-              <p className="text-muted-foreground mt-1">Agy Telecom</p>
+              <p className="text-muted-foreground mt-1">{ispNome}</p>
             </div>
             <div className="flex items-center gap-4">
+              {isSuperAdmin && (
+                <Button variant="outline" size="sm" onClick={() => { clearSelectedIsp(); navigate("/selecionar-cliente"); }}>
+                  Trocar Cliente
+                </Button>
+              )}
               <Button variant="outline" onClick={handleLogout}>
                 Sair
               </Button>

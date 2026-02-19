@@ -1,7 +1,8 @@
 import { useState, useMemo, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import { externalSupabase, ISP_ID } from "@/integrations/supabase/external-client";
+import { useActiveIsp } from "@/hooks/useActiveIsp";
+import { externalSupabase } from "@/integrations/supabase/external-client";
 import type { User } from "@supabase/supabase-js";
 import { Button } from "@/components/ui/button";
 import { ThumbsUp, Gauge, Wrench, Headphones, AlertCircle } from "lucide-react";
@@ -17,6 +18,7 @@ const NPS = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const { signOut } = useAuth();
+  const { ispId, ispNome } = useActiveIsp();
   const [respostasNPS, setRespostasNPS] = useState<RespostaNPS[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -63,14 +65,14 @@ const NPS = () => {
         const { data, error } = await externalSupabase
           .from("nps_check")
           .select("*")
-          .eq("isp_id", ISP_ID)
+          .eq("isp_id", ispId)
           .not("data_resposta", "is", null) // Filtrar apenas respondidas
           .order("data_resposta", { ascending: false })
           .limit(1000);
 
         if (error) throw error;
 
-        console.log(`✅ ${data?.length || 0} respostas NPS respondidas para ${ISP_ID}`);
+        console.log(`✅ ${data?.length || 0} respostas NPS respondidas para ${ispId}`);
 
         // Transformar dados do banco para o formato esperado
         const respostasTransformadas: RespostaNPS[] = (data || []).map((item: any) => {
@@ -110,7 +112,7 @@ const NPS = () => {
     };
 
     fetchNPSData();
-  }, [toast]);
+  }, [toast, ispId]);
 
   // Aplicar filtros
   const filteredRespostas = useMemo(() => {
@@ -182,7 +184,7 @@ const NPS = () => {
               <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent">
                 Monitor de NPS
               </h1>
-              <p className="text-muted-foreground mt-1">Agy Telecom - Satisfação do Cliente</p>
+              <p className="text-muted-foreground mt-1">{ispNome} - Satisfação do Cliente</p>
             </div>
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
