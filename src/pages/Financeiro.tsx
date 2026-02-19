@@ -46,6 +46,7 @@ const Financeiro = () => {
   const [periodo, setPeriodo] = useState("7");
   const [plano, setPlano] = useState("todos");
   const [metodo, setMetodo] = useState("todos");
+  const [filial, setFilial] = useState("todos");
   const [ordemPlanoDecrescente, setOrdemPlanoDecrescente] = useState(true);
 
 
@@ -62,17 +63,20 @@ const Financeiro = () => {
     const planos = new Set<string>();
     const metodos = new Set<string>();
     const statusCobranca = new Set<string>();
+    const filiais = new Set<string>();
 
     eventosFinanceiros.forEach((e) => {
       if (e.plano_nome) planos.add(e.plano_nome);
       if (e.metodo_cobranca) metodos.add(e.metodo_cobranca);
       if (e.cobranca_status) statusCobranca.add(e.cobranca_status);
+      if (e.filial_id !== null && e.filial_id !== undefined) filiais.add(String(e.filial_id));
     });
 
     return {
       planos: Array.from(planos).sort(),
       metodos: Array.from(metodos).sort(),
       statusCobranca: Array.from(statusCobranca).sort(),
+      filiais: Array.from(filiais).sort((a, b) => Number(a) - Number(b)),
     };
   }, [eventosFinanceiros]);
 
@@ -111,8 +115,12 @@ const Financeiro = () => {
       filtered = filtered.filter((e) => e.metodo_cobranca === metodo);
     }
 
+    if (filial !== "todos") {
+      filtered = filtered.filter((e) => String(e.filial_id) === filial);
+    }
+
     return filtered;
-  }, [eventosFinanceiros, periodo, plano, metodo]);
+  }, [eventosFinanceiros, periodo, plano, metodo, filial]);
 
   // Calcular KPIs
   const kpis = useMemo(() => {
@@ -349,6 +357,18 @@ const Financeiro = () => {
       options: [
         { value: "todos", label: "Todos" },
         ...filterOptions.metodos.map(m => ({ value: m, label: m })),
+      ],
+    },
+    {
+      id: "filial",
+      label: "Filial",
+      value: filial,
+      onChange: setFilial,
+      disabled: filterOptions.filiais.length === 0,
+      tooltip: "Campo filial não encontrado nos dados",
+      options: [
+        { value: "todos", label: "Todas" },
+        ...filterOptions.filiais.map(f => ({ value: f, label: `Filial ${f}` })),
       ],
     },
   ];

@@ -177,6 +177,7 @@ const VisaoGeral = () => {
   const [cohortTab, setCohortTab] = useState("financeiro");
   const [mapTab, setMapTab] = useState("todos");
   const [cohortDimension, setCohortDimension] = useState<"plano" | "cidade" | "bairro">("plano");
+  const [filial, setFilial] = useState("todos");
   const [top5Dimension, setTop5Dimension] = useState<"plano" | "cidade" | "bairro">("cidade");
   const [top5Filter, setTop5Filter] = useState<"churn" | "vencido">("vencido");
 
@@ -209,17 +210,20 @@ const VisaoGeral = () => {
     const cidades = new Set<string>();
     const bairros = new Set<string>();
     const planos = new Set<string>();
+    const filiais = new Set<string>();
     eventos.forEach((e: Evento) => {
       if (e.cliente_uf) ufs.add(e.cliente_uf);
       if (e.cliente_cidade) cidades.add(e.cliente_cidade);
       if (e.cliente_bairro) bairros.add(e.cliente_bairro);
       if (e.plano_nome) planos.add(e.plano_nome);
+      if (e.filial_id !== null && e.filial_id !== undefined) filiais.add(String(e.filial_id));
     });
     return {
       ufs: Array.from(ufs).sort(),
       cidades: Array.from(cidades).sort(),
       bairros: Array.from(bairros).sort(),
       planos: Array.from(planos).sort(),
+      filiais: Array.from(filiais).sort((a, b) => Number(a) - Number(b)),
     };
   }, [eventos]);
 
@@ -291,9 +295,12 @@ const VisaoGeral = () => {
     if (status !== "todos") {
       filtered = filtered.filter((e) => e.servico_status === status || e.status_contrato === status);
     }
+    if (filial !== "todos") {
+      filtered = filtered.filter((e) => String(e.filial_id) === filial);
+    }
 
     return filtered;
-  }, [eventos, periodo, uf, cidade, bairro, plano, status]);
+  }, [eventos, periodo, uf, cidade, bairro, plano, status, filial]);
 
 
   // KPIs calculation - FIXED: use actual data fields correctly
@@ -1108,6 +1115,18 @@ const VisaoGeral = () => {
               <SelectItem value="D">Desativado</SelectItem>
               <SelectItem value="B">Bloqueado</SelectItem>
               <SelectItem value="C">Cancelado</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <Select value={filial} onValueChange={setFilial}>
+            <SelectTrigger className="w-[90px] h-6 text-xs bg-background">
+              <SelectValue placeholder="Filial" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="todos">Todas</SelectItem>
+              {filterOptions.filiais.map(f => (
+                <SelectItem key={f} value={f}>Filial {f}</SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </div>

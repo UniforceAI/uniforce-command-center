@@ -22,7 +22,8 @@ const ESSENTIAL_COLUMNS = [
   "geo_lat", "geo_lng",
   "downtime_min_24h",
   "rx_dbm", "tx_dbm", "snr_db",
-  "instancia_isp"
+  "instancia_isp",
+  "filial_id"
 ].join(",");
 
 export function useEventos() {
