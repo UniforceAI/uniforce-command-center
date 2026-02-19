@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
 import { useChurnData } from "@/hooks/useChurnData";
+import { useActiveIsp } from "@/hooks/useActiveIsp";
 import { IspActions } from "@/components/shared/IspActions";
 import { KPICardNew } from "@/components/shared/KPICardNew";
 import { GlobalFilters } from "@/components/shared/GlobalFilters";
@@ -19,13 +20,29 @@ const BUCKET_COLORS: Record<string, string> = {
 };
 const COLORS = ["#ef4444", "#f97316", "#eab308", "#22c55e", "#3b82f6", "#8b5cf6", "#ec4899", "#14b8a6"];
 
+const STATUS_LABELS: Record<string, string> = {
+  "A": "Ativo",
+  "CA": "Bloqueado (Cob. Auto)",
+  "CM": "Bloqueado (Cob. Manual)",
+  "B": "Bloqueado",
+  "D": "Desativado/Cancelado",
+  "FA": "Férias",
+  "S": "Suspenso",
+  "Ativo": "Ativo",
+  "Bloqueado": "Bloqueado",
+  "Suspenso": "Suspenso",
+  "Cancelado": "Cancelado",
+};
+
 const ChurnAnalytics = () => {
   const { churnStatus, isLoading, error } = useChurnData();
+  const { ispId } = useActiveIsp();
 
   const [plano, setPlano] = useState("todos");
   const [cidade, setCidade] = useState("todos");
   const [bairro, setBairro] = useState("todos");
   const [bucket, setBucket] = useState("todos");
+  const [atraso, setAtraso] = useState("todos");
 
   const filterOptions = useMemo(() => {
     const planos = new Set<string>();
@@ -49,8 +66,9 @@ const ChurnAnalytics = () => {
     if (cidade !== "todos") f = f.filter((c) => c.cliente_cidade === cidade);
     if (bairro !== "todos") f = f.filter((c) => c.cliente_bairro === bairro);
     if (bucket !== "todos") f = f.filter((c) => c.churn_risk_bucket === bucket);
+    if (atraso !== "todos") f = f.filter((c) => c.faixa_atraso === atraso);
     return f;
-  }, [churnStatus, plano, cidade, bairro, bucket]);
+  }, [churnStatus, plano, cidade, bairro, bucket, atraso]);
 
   const ativos = useMemo(() => filtered.filter((c) => c.status_churn !== "cancelado"), [filtered]);
   const emRisco = useMemo(() => filtered.filter((c) => c.status_churn === "risco"), [filtered]);
@@ -61,9 +79,15 @@ const ChurnAnalytics = () => {
     const pctRisco = totalAtivos > 0 ? ((totalRisco / totalAtivos) * 100).toFixed(1) : "0";
     const mrrRisco = emRisco.reduce((acc, c) => acc + (c.valor_mensalidade || 0), 0);
     const ltvRisco = emRisco.reduce((acc, c) => acc + (c.ltv_estimado || 0), 0);
-    const scores = ativos.filter((c) => c.churn_risk_score != null).map((c) => c.churn_risk_score!);
-    const scoreMedio = scores.length > 0 ? (scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(1) : "N/A";
-    return { totalAtivos, totalRisco, pctRisco, scoreMedio, mrrRisco, ltvRisco };
+    const scores = ativos.filter((c) => c.churn_risk_score != null).map((c) => c.churn_risk_score);
+    const scoreMedioNum = scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : null;
+    const scoreMedio = scoreMedioNum != null ? scoreMedioNum.toFixed(1) : "N/A";
+    const scoreVariant = scoreMedioNum == null ? "default"
+      : scoreMedioNum > 80 ? "danger"
+      : scoreMedioNum > 25 ? "warning"
+      : scoreMedioNum > 10 ? "info"
+      : "default";
+    return { totalAtivos, totalRisco, pctRisco, scoreMedio, mrrRisco, ltvRisco, scoreVariant };
   }, [ativos, emRisco]);
 
   // Distribuição por bucket
@@ -79,12 +103,15 @@ const ChurnAnalytics = () => {
       .sort((a, b) => b.value - a.value);
   }, [ativos]);
 
+  const bucketTotal = distribuicaoBucket.reduce((s, d) => s + d.value, 0);
+
   // Distribuição por status de contrato
   const distribuicaoStatus = useMemo(() => {
     const map: Record<string, number> = {};
     filtered.forEach((c) => {
-      const s = c.status_contrato || c.servico_status || "N/A";
-      map[s] = (map[s] || 0) + 1;
+      const raw = c.status_internet || c.status_contrato || "N/A";
+      const label = STATUS_LABELS[raw] || raw;
+      map[label] = (map[label] || 0) + 1;
     });
     return Object.entries(map)
       .map(([name, value]) => ({ name, value }))
@@ -104,7 +131,7 @@ const ChurnAnalytics = () => {
       .slice(0, 10);
   }, [emRisco]);
 
-  // Risco por plano (quantidade de clientes em risco)
+  // Risco por plano
   const riscoPorPlano = useMemo(() => {
     const map: Record<string, { risco: number; total: number; mrr: number }> = {};
     ativos.forEach((c) => {
@@ -124,12 +151,12 @@ const ChurnAnalytics = () => {
         pct: d.total > 0 ? Math.round((d.risco / d.total) * 100) : 0,
         mrr: Math.round(d.mrr),
       }))
-      .filter(d => d.total >= 5)
+      .filter(d => d.total >= 3)
       .sort((a, b) => b.risco - a.risco)
       .slice(0, 10);
   }, [ativos]);
 
-  // Distribuição de dias em atraso (bloqueados, vencidos)
+  // Distribuição de dias em atraso
   const distribuicaoAtraso = useMemo(() => {
     const faixas = [
       { label: "0 dias", min: 0, max: 0 },
@@ -172,6 +199,14 @@ const ChurnAnalytics = () => {
     { id: "cidade", label: "Cidade", value: cidade, onChange: setCidade, options: [{ value: "todos", label: "Todas" }, ...filterOptions.cidades.map((c) => ({ value: c, label: c }))] },
     { id: "bairro", label: "Bairro", value: bairro, onChange: setBairro, options: [{ value: "todos", label: "Todos" }, ...filterOptions.bairros.map((b) => ({ value: b, label: b }))] },
     { id: "bucket", label: "Bucket Risco", value: bucket, onChange: setBucket, options: [{ value: "todos", label: "Todos" }, { value: "Crítico", label: "🔴 Crítico" }, { value: "Alto", label: "🟠 Alto" }, { value: "Médio", label: "🟡 Médio" }, { value: "Baixo", label: "🟢 Baixo" }] },
+    { id: "atraso", label: "Faixa Atraso", value: atraso, onChange: setAtraso, options: [
+      { value: "todos", label: "Todas" },
+      { value: "0-0", label: "Em dia" },
+      { value: "1-7", label: "1-7 dias" },
+      { value: "8-15", label: "8-15 dias" },
+      { value: "16-30", label: "16-30 dias" },
+      { value: "30+", label: "30+ dias" },
+    ]},
   ];
 
   if (isLoading) return (
@@ -216,7 +251,7 @@ const ChurnAnalytics = () => {
           <KPICardNew title="Clientes Ativos" value={kpis.totalAtivos.toLocaleString()} icon={Users} variant="default" />
           <KPICardNew title="Em Risco" value={kpis.totalRisco.toLocaleString()} icon={AlertTriangle} variant="danger" />
           <KPICardNew title="% em Risco" value={`${kpis.pctRisco}%`} icon={Percent} variant="warning" />
-          <KPICardNew title="Score Médio" value={kpis.scoreMedio !== "N/A" ? kpis.scoreMedio : "—"} icon={Target} variant="info" />
+          <KPICardNew title="Score Médio" value={kpis.scoreMedio !== "N/A" ? kpis.scoreMedio : "—"} icon={Target} variant={kpis.scoreVariant as any} />
           <KPICardNew title="MRR em Risco" value={`R$ ${kpis.mrrRisco.toLocaleString("pt-BR", { minimumFractionDigits: 0 })}`} icon={DollarSign} variant="danger" />
           <KPICardNew title="LTV em Risco" value={`R$ ${kpis.ltvRisco.toLocaleString("pt-BR", { minimumFractionDigits: 0 })}`} icon={TrendingDown} variant="danger" />
         </div>
@@ -229,17 +264,39 @@ const ChurnAnalytics = () => {
             </CardHeader>
             <CardContent>
               {distribuicaoBucket.length > 0 ? (
-                <ResponsiveContainer width="100%" height={260}>
-                  <PieChart>
-                    <Pie data={distribuicaoBucket} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={90} innerRadius={50} paddingAngle={3}>
-                      {distribuicaoBucket.map((entry, idx) => (
-                        <Cell key={idx} fill={entry.color} />
-                      ))}
-                    </Pie>
-                    <Tooltip formatter={(v: any, n) => [`${v.toLocaleString()} clientes`, n]} />
-                    <Legend />
-                  </PieChart>
-                </ResponsiveContainer>
+                <div>
+                  <ResponsiveContainer width="100%" height={220}>
+                    <PieChart>
+                      <Pie data={distribuicaoBucket} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={85} innerRadius={45} paddingAngle={3}>
+                        {distribuicaoBucket.map((entry, idx) => (
+                          <Cell key={idx} fill={entry.color} />
+                        ))}
+                      </Pie>
+                      <Tooltip formatter={(v: any, n) => [`${v.toLocaleString()} clientes`, n]} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                  {/* Legenda com contagem e % */}
+                  <div className="grid grid-cols-2 gap-2 mt-2">
+                    {[
+                      { key: "Baixo", emoji: "🟢" },
+                      { key: "Médio", emoji: "🟡" },
+                      { key: "Alto", emoji: "🟠" },
+                      { key: "Crítico", emoji: "🔴" },
+                    ].map(({ key, emoji }) => {
+                      const entry = distribuicaoBucket.find(d => d.name === key);
+                      if (!entry) return null;
+                      const pct = bucketTotal > 0 ? ((entry.value / bucketTotal) * 100).toFixed(1) : "0";
+                      return (
+                        <div key={key} className="flex items-center gap-1.5 text-xs">
+                          <span>{emoji}</span>
+                          <span className="text-muted-foreground">{key}:</span>
+                          <span className="font-medium">{entry.value.toLocaleString()}</span>
+                          <span className="text-muted-foreground">({pct}%)</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
               ) : (
                 <div className="h-[260px] flex flex-col items-center justify-center text-muted-foreground text-sm gap-2">
                   <AlertTriangle className="h-8 w-8 opacity-30" />
@@ -260,7 +317,7 @@ const ChurnAnalytics = () => {
                   <BarChart data={distribuicaoStatus} layout="vertical" margin={{ left: 8 }}>
                     <CartesianGrid strokeDasharray="3 3" horizontal={false} />
                     <XAxis type="number" tick={{ fontSize: 11 }} />
-                    <YAxis type="category" dataKey="name" tick={{ fontSize: 10 }} width={90} />
+                    <YAxis type="category" dataKey="name" tick={{ fontSize: 10 }} width={130} />
                     <Tooltip formatter={(v: any) => [v.toLocaleString(), "Clientes"]} />
                     <Bar dataKey="value" radius={[0, 4, 4, 0]}>
                       {distribuicaoStatus.map((_, idx) => (
@@ -305,7 +362,7 @@ const ChurnAnalytics = () => {
 
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Risco por Plano (clientes em risco)</CardTitle>
+              <CardTitle className="text-sm font-medium text-muted-foreground">Risco por Plano — qtd e % de risco</CardTitle>
             </CardHeader>
             <CardContent>
               {riscoPorPlano.length > 0 ? (
@@ -315,8 +372,14 @@ const ChurnAnalytics = () => {
                       <CartesianGrid strokeDasharray="3 3" horizontal={false} />
                       <XAxis type="number" tick={{ fontSize: 10 }} />
                       <YAxis type="category" dataKey="plano" tick={{ fontSize: 10 }} width={130} />
-                      <Tooltip formatter={(v: any, name) => [v, name === "risco" ? "Em risco" : "% risco"]} />
-                      <Bar dataKey="risco" fill="hsl(var(--primary) / 0.7)" radius={[0, 4, 4, 0]} name="risco" />
+                      <Tooltip
+                        formatter={(v: any, name, props) => {
+                          const d = props.payload;
+                          if (name === "risco") return [`${v} de ${d.total} (${d.pct}%)`, "Em risco"];
+                          return [v, name];
+                        }}
+                      />
+                      <Bar dataKey="risco" fill="hsl(38 92% 50% / 0.8)" radius={[0, 4, 4, 0]} name="risco" />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>

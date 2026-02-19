@@ -1,185 +1,135 @@
-import { useMemo } from "react";
-import { useEventos } from "@/hooks/useEventos";
+import { useState, useEffect } from "react";
+import { externalSupabase } from "@/integrations/supabase/external-client";
+import { useActiveIsp } from "@/hooks/useActiveIsp";
 
-// ChurnStatus derivado a partir dos campos da tabela `eventos`
 export interface ChurnStatus {
   id: string;
   isp_id: string;
+  instancia_isp: string;
   cliente_id: number;
-  cliente_nome: string;
-  cliente_cidade: string;
-  cliente_uf: string;
-  cliente_bairro?: string;
-  plano_nome: string;
-  valor_mensalidade: number;
+  id_contrato: string | null;
+  // Cliente
+  cliente_nome: string | null;
+  cliente_cidade: string | null;
+  cliente_bairro: string | null;
+  plano_nome: string | null;
+  valor_mensalidade: number | null;
+  ltv_estimado: number | null;
+  ltv_meses_estimado: number | null;
+  tempo_cliente_meses: number | null;
+  data_instalacao: string | null;
+  // Status e risco
   status_churn: "ativo" | "risco" | "cancelado";
-  churn_risk_score?: number;
-  churn_risk_bucket?: string;
-  dias_em_risco?: number;
-  data_cancelamento?: string;
-  motivo_risco_principal?: string;
-  qtd_chamados_30d?: number;
-  qtd_chamados_90d?: number;
-  nps_ultimo_score?: number;
-  dias_atraso?: number;
-  ltv_estimado?: number;
-  tempo_cliente_meses?: number;
-  score_financeiro?: number;
-  score_atendimento?: number;
-  score_nps?: number;
-  score_uso?: number;
-  // campos extras da tabela eventos
-  servico_status?: string;
-  status_contrato?: string;
-  cobranca_status?: string;
-  alerta_tipo?: string;
-  acao_recomendada_1?: string;
-  acao_recomendada_2?: string;
-  acao_recomendada_3?: string;
-  data_instalacao?: string;
-  event_datetime?: string;
-  created_at?: string;
-  [key: string]: any;
+  churn_risk_score: number;
+  churn_risk_bucket: string | null;
+  dias_em_risco: number;
+  motivo_risco_principal: string | null;
+  data_cancelamento: string | null;
+  // Status do contrato (IXC)
+  status_internet: string | null;
+  status_contrato: string | null;
+  fidelidade: string | null;
+  fidelidade_expiracao: string | null;
+  desbloqueio_confianca: string | null;
+  // Financeiro
+  dias_atraso: number | null;
+  faixa_atraso: string | null;
+  ultimo_pagamento_data: string | null;
+  // Suporte
+  qtd_chamados_30d: number;
+  qtd_chamados_90d: number;
+  ultimo_atendimento_data: string | null;
+  // NPS
+  nps_ultimo_score: number | null;
+  nps_classificacao: string | null;
+  // Scores
+  score_financeiro: number;
+  score_suporte: number;
+  score_qualidade: number;
+  score_nps: number;
+  score_comportamental: number;
+  // Timestamps
+  created_at: string;
+  updated_at: string;
 }
 
 export interface ChurnEvent {
   id: string;
   isp_id: string;
   cliente_id: number;
-  event_type: string;
-  event_date: string;
-  motivo?: string;
-  detalhes?: string;
-  created_at?: string;
-  [key: string]: any;
+  id_contrato: string | null;
+  tipo_evento: string;
+  peso_evento: number;
+  impacto_score: number;
+  descricao: string | null;
+  dados_evento: Record<string, any> | null;
+  data_evento: string;
+  created_at: string;
 }
 
-/**
- * Deriva status_churn a partir dos campos disponíveis na tabela eventos:
- * - "cancelado": status_contrato === "Cancelado" OU servico_status === "Cancelado"
- * - "risco": churn_risk_bucket in ["Alto","Crítico"] OU (dias_atraso > 30 e cobranca_status !== "Pago")
- * - "ativo": demais
- */
-function deriveStatusChurn(e: any): "ativo" | "risco" | "cancelado" {
-  const contrato = (e.status_contrato || "").toLowerCase();
-  const servico = (e.servico_status || "").toLowerCase();
-  if (contrato === "cancelado" || servico === "cancelado") return "cancelado";
-
-  const bucket = e.churn_risk_bucket || "";
-  const diasAtraso = e.dias_atraso || 0;
-  const vencido = e.vencido === true;
-
-  if (bucket === "Alto" || bucket === "Crítico") return "risco";
-  if (diasAtraso > 30 && vencido) return "risco";
-  if (contrato === "suspenso" || servico === "bloqueado" || contrato === "bloqueado") return "risco";
-
-  return "ativo";
-}
-
-/**
- * Calcula tempo de cliente em meses a partir de data_instalacao
- */
-function calcTempoMeses(dataInstalacao?: string): number | undefined {
-  if (!dataInstalacao) return undefined;
-  const inst = new Date(dataInstalacao);
-  const now = new Date();
-  const diff = (now.getFullYear() - inst.getFullYear()) * 12 + (now.getMonth() - inst.getMonth());
-  return Math.max(0, diff);
-}
-
-/**
- * Hook que converte eventos em ChurnStatus derivados.
- * Usa a tabela `eventos` como fonte de verdade, pois churn_status está vazia.
- * Deduplica por cliente_id (mantém o evento mais recente).
- */
 export function useChurnData() {
-  const { eventos, isLoading, error } = useEventos();
+  const { ispId } = useActiveIsp();
+  const [churnStatus, setChurnStatus] = useState<ChurnStatus[]>([]);
+  const [churnEvents, setChurnEvents] = useState<ChurnEvent[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const churnStatus = useMemo((): ChurnStatus[] => {
-    if (!eventos || eventos.length === 0) return [];
+  useEffect(() => {
+    if (!ispId) return;
 
-    // Deduplica por cliente_id: mantém o mais recente (eventos já vêm ordenados por event_datetime desc)
-    const seen = new Map<number, any>();
-    for (const e of eventos) {
-      if (!seen.has(e.cliente_id)) {
-        seen.set(e.cliente_id, e);
+    const fetchAll = async () => {
+      setIsLoading(true);
+      setError(null);
+      try {
+        // Fetch churn_status with pagination to get all records
+        let allStatus: any[] = [];
+        let page = 0;
+        const pageSize = 1000;
+        while (true) {
+          const { data, error: statusErr } = await externalSupabase
+            .from("churn_status")
+            .select("*")
+            .eq("isp_id", ispId)
+            .order("churn_risk_score", { ascending: false })
+            .range(page * pageSize, (page + 1) * pageSize - 1);
+
+          if (statusErr) throw statusErr;
+          if (!data || data.length === 0) break;
+          allStatus = allStatus.concat(data);
+          if (data.length < pageSize) break;
+          page++;
+        }
+
+        console.log(`✅ useChurnData: ${allStatus.length} registros de churn_status para ${ispId}`);
+        setChurnStatus(allStatus as ChurnStatus[]);
+
+        // Fetch churn_events (últimos 90 dias)
+        const since = new Date();
+        since.setDate(since.getDate() - 90);
+        const { data: eventsData, error: eventsErr } = await externalSupabase
+          .from("churn_events")
+          .select("*")
+          .eq("isp_id", ispId)
+          .gte("data_evento", since.toISOString())
+          .order("data_evento", { ascending: false })
+          .limit(1000);
+
+        if (eventsErr) {
+          console.warn("⚠️ Erro ao carregar churn_events:", eventsErr.message);
+          // Não bloqueia — eventos são opcionais
+        } else {
+          setChurnEvents((eventsData as ChurnEvent[]) || []);
+        }
+      } catch (e: any) {
+        console.error("❌ useChurnData error:", e);
+        setError(e.message || "Erro ao carregar dados de churn");
+      } finally {
+        setIsLoading(false);
       }
-    }
+    };
 
-    const uniqueEventos = Array.from(seen.values());
-    console.log(`🔄 useChurnData: ${uniqueEventos.length} clientes únicos de ${eventos.length} eventos`);
+    fetchAll();
+  }, [ispId]);
 
-    return uniqueEventos.map((e): ChurnStatus => {
-      const status_churn = deriveStatusChurn(e);
-      const tempoMeses = calcTempoMeses(e.data_instalacao);
-
-      return {
-        id: e.id,
-        isp_id: e.isp_id,
-        cliente_id: e.cliente_id,
-        cliente_nome: e.cliente_nome || "—",
-        cliente_cidade: e.cliente_cidade || "",
-        cliente_uf: e.cliente_uf || "",
-        cliente_bairro: e.cliente_bairro,
-        plano_nome: e.plano_nome || "—",
-        valor_mensalidade: e.valor_mensalidade || 0,
-        status_churn,
-        churn_risk_score: e.churn_risk_score ?? undefined,
-        churn_risk_bucket: e.churn_risk_bucket ?? undefined,
-        dias_em_risco: e.dias_atraso ? Math.max(0, Math.floor(e.dias_atraso)) : undefined,
-        data_cancelamento: status_churn === "cancelado" ? (e.event_datetime || e.created_at) : undefined,
-        motivo_risco_principal: e.alerta_tipo || e.acao_recomendada_1 || undefined,
-        qtd_chamados_30d: undefined,
-        qtd_chamados_90d: undefined,
-        nps_ultimo_score: e.nps_score ?? undefined,
-        dias_atraso: e.dias_atraso ?? undefined,
-        ltv_estimado: e.ltv_reais_estimado ?? undefined,
-        tempo_cliente_meses: tempoMeses,
-        score_financeiro: e.dias_atraso != null ? Math.max(0, 100 - Math.min(100, e.dias_atraso * 2)) : undefined,
-        score_atendimento: undefined,
-        score_nps: e.nps_score != null ? Math.round((e.nps_score / 10) * 100) : undefined,
-        score_uso: undefined,
-        // extras
-        servico_status: e.servico_status,
-        status_contrato: e.status_contrato,
-        cobranca_status: e.cobranca_status,
-        alerta_tipo: e.alerta_tipo,
-        acao_recomendada_1: e.acao_recomendada_1,
-        acao_recomendada_2: e.acao_recomendada_2,
-        acao_recomendada_3: e.acao_recomendada_3,
-        data_instalacao: e.data_instalacao,
-        event_datetime: e.event_datetime,
-        created_at: e.created_at,
-      };
-    });
-  }, [eventos]);
-
-  // ChurnEvents: usa os próprios eventos como histórico do cliente
-  const churnEvents = useMemo((): ChurnEvent[] => {
-    return eventos.map((e): ChurnEvent => ({
-      id: e.id,
-      isp_id: e.isp_id,
-      cliente_id: e.cliente_id,
-      event_type: e.event_type || "SNAPSHOT",
-      event_date: e.event_datetime || e.created_at || "",
-      motivo: e.alerta_tipo || undefined,
-      detalhes: [e.acao_recomendada_1, e.acao_recomendada_2, e.acao_recomendada_3].filter(Boolean).join(" | ") || undefined,
-      created_at: e.created_at,
-      cobranca_status: e.cobranca_status,
-      valor_cobranca: e.valor_cobranca,
-      dias_atraso: e.dias_atraso,
-      churn_risk_score: e.churn_risk_score,
-      churn_risk_bucket: e.churn_risk_bucket,
-    }));
-  }, [eventos]);
-
-  const summary = useMemo(() => {
-    const ativos = churnStatus.filter(c => c.status_churn === "ativo").length;
-    const risco = churnStatus.filter(c => c.status_churn === "risco").length;
-    const cancelados = churnStatus.filter(c => c.status_churn === "cancelado").length;
-    console.log(`📊 useChurnData summary: ${ativos} ativos, ${risco} risco, ${cancelados} cancelados`);
-    return { ativos, risco, cancelados };
-  }, [churnStatus]);
-
-  return { churnStatus, churnEvents, isLoading, error, summary };
+  return { churnStatus, churnEvents, isLoading, error };
 }
