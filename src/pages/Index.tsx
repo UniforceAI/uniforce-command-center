@@ -8,6 +8,7 @@ import { useActiveIsp } from "@/hooks/useActiveIsp";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { KPICard } from "@/components/dashboard/KPICard";
+import { IspActions } from "@/components/shared/IspActions";
 import { DashboardFilters } from "@/components/dashboard/DashboardFilters";
 import { ClientesTable } from "@/components/dashboard/ClientesTable";
 import { ClienteDetailsSheet } from "@/components/dashboard/ClienteDetailsSheet";
@@ -510,16 +511,7 @@ const Index = () => {
               </h1>
               <p className="text-muted-foreground mt-1">{ispNome}</p>
             </div>
-            <div className="flex items-center gap-4">
-              {isSuperAdmin && (
-                <Button variant="outline" size="sm" onClick={() => { clearSelectedIsp(); navigate("/selecionar-cliente"); }}>
-                  Trocar Cliente
-                </Button>
-              )}
-              <Button variant="outline" onClick={handleLogout}>
-                Sair
-              </Button>
-            </div>
+            <IspActions />
           </div>
         </div>
       </header>

@@ -15,6 +15,7 @@ import { ExecutiveSummary } from "@/components/shared/ExecutiveSummary";
 import { RiskKPICard } from "@/components/shared/RiskKPICard";
 import { ActionMenu, QuickActions } from "@/components/shared/ActionMenu";
 import { EmptyState, NAValue } from "@/components/shared/EmptyState";
+import { IspActions } from "@/components/shared/IspActions";
 import { 
   Users, 
   UserPlus,
@@ -1154,11 +1155,7 @@ const VisaoGeral = () => {
             </Select>
           </div>
 
-          <div className="ml-auto">
-            <Badge variant="outline" className="text-[10px] h-5 font-medium">
-              {ispNome}
-            </Badge>
-          </div>
+          <IspActions className="ml-auto" />
         </div>
       </header>
 

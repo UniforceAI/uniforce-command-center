@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { useToast } from "@/hooks/use-toast";
 import { useEventos } from "@/hooks/useEventos";
 import { GlobalFilters } from "@/components/shared/GlobalFilters";
+import { IspActions } from "@/components/shared/IspActions";
 import { KPICardNew } from "@/components/shared/KPICardNew";
 import { DataTable, RiskBadge, Column } from "@/components/shared/DataTable";
 import { Evento } from "@/types/evento";
@@ -424,13 +425,10 @@ const ChurnRetencao = () => {
               <p className="text-muted-foreground mt-1">Análise de Risco e Ações de Retenção</p>
             </div>
             <div className="flex items-center gap-4">
-              <Badge variant="outline" className="text-xs font-medium">{ispNome}</Badge>
               <div className="text-sm text-muted-foreground">
                 {clientesFiltrados.length.toLocaleString()} clientes analisados
               </div>
-              <Button variant="outline" onClick={handleLogout}>
-                Sair
-              </Button>
+              <IspActions />
             </div>
           </div>
         </div>

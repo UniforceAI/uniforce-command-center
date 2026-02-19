@@ -7,6 +7,7 @@ import type { User } from "@supabase/supabase-js";
 import { Button } from "@/components/ui/button";
 import { ThumbsUp, Gauge, Wrench, Headphones, AlertCircle } from "lucide-react";
 import { NPSFilters } from "@/components/nps/NPSFilters";
+import { IspActions } from "@/components/shared/IspActions";
 import { NPSKPICard } from "@/components/nps/NPSKPICard";
 import { NPSCharts } from "@/components/nps/NPSCharts";
 import { NPSTable } from "@/components/nps/NPSTable";
@@ -195,9 +196,7 @@ const NPS = () => {
                 <ThumbsUp className="h-5 w-5" />
                 <span>{filteredRespostas.length} respostas</span>
               </div>
-              <Button variant="outline" onClick={handleLogout}>
-                Sair
-              </Button>
+              <IspActions />
             </div>
           </div>
         </div>
