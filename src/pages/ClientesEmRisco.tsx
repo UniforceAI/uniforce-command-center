@@ -81,8 +81,8 @@ function NPSBadge({ classificacao, nota }: { classificacao?: string; nota?: numb
   if (!classificacao && nota == null) {
     return <span className="text-xs text-muted-foreground">—</span>;
   }
-  const c = classificacao || "";
-  if (c === "Detrator") {
+  const c = (classificacao || "").toUpperCase();
+  if (c === "DETRATOR") {
     return (
       <Badge className="bg-red-100 text-red-800 border-red-200 border text-[10px] gap-1">
         <ThumbsDown className="h-2.5 w-2.5" />
@@ -90,7 +90,7 @@ function NPSBadge({ classificacao, nota }: { classificacao?: string; nota?: numb
       </Badge>
     );
   }
-  if (c === "Neutro") {
+  if (c === "NEUTRO") {
     return (
       <Badge className="bg-yellow-100 text-yellow-800 border-yellow-200 border text-[10px] gap-1">
         <Minus className="h-2.5 w-2.5" />
@@ -98,7 +98,7 @@ function NPSBadge({ classificacao, nota }: { classificacao?: string; nota?: numb
       </Badge>
     );
   }
-  if (c === "Promotor") {
+  if (c === "PROMOTOR") {
     return (
       <Badge className="bg-green-100 text-green-800 border-green-200 border text-[10px] gap-1">
         <ThumbsUp className="h-2.5 w-2.5" />
@@ -126,12 +126,11 @@ const ClientesEmRisco = () => {
   // e complementamos com nps_check pelo campo id_cliente (string UUID) via user_id
   const npsMap = useMemo(() => {
     const m = new Map<number, { nota: number; classificacao: string }>();
-    // Primeiro: popula a partir do próprio churn_status (fonte mais confiável)
     churnStatus.forEach((c) => {
       if (c.nps_ultimo_score != null && c.nps_classificacao) {
         m.set(c.cliente_id, {
           nota: c.nps_ultimo_score,
-          classificacao: c.nps_classificacao,
+          classificacao: c.nps_classificacao.toUpperCase(), // normaliza: DETRATOR, PROMOTOR, NEUTRO
         });
       }
     });
@@ -168,8 +167,7 @@ const ClientesEmRisco = () => {
   // Score NPS calculado com config do usuário: se detrator, soma npsDetrator pts
   const getScoreNPSReal = useCallback((cliente: ChurnStatus): number => {
     const nps = npsMap.get(cliente.cliente_id);
-    if (nps?.classificacao === "Detrator") return config.npsDetrator;
-    // Mantém o score original do banco para não-detratores
+    if (nps?.classificacao === "DETRATOR") return config.npsDetrator;
     return cliente.score_nps ?? 0;
   }, [npsMap, config]);
 
@@ -241,7 +239,7 @@ const ClientesEmRisco = () => {
 
     // Evento NPS Detrator REAL se cliente for detrator
     const npsCliente = npsMap.get(selectedCliente.cliente_id);
-    if (npsCliente?.classificacao === "Detrator") {
+    if (npsCliente?.classificacao === "DETRATOR") {
       eventos.unshift({
         id: "real-nps-detrator",
         isp_id: selectedCliente.isp_id,
