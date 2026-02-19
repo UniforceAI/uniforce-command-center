@@ -19,7 +19,7 @@ interface MapPoint {
 
 interface AlertasMapaProps {
   data: MapPoint[];
-  activeFilter: "churn" | "vencido" | "sinal" | "chamados";
+  activeFilter: "churn" | "vencido" | "sinal" | "chamados" | "todos";
 }
 
 // Component to auto-fit bounds when data changes
@@ -49,39 +49,53 @@ function FitBounds({ points }: { points: { lat: number; lng: number }[] }) {
 }
 
 const getColorByRisk = (point: MapPoint, filter: string): string => {
+  if (filter === "todos") {
+    // Color by general status: has issues = red/orange, ok = green
+    if (point.dias_atraso && point.dias_atraso > 0) return "#ef4444";
+    if (point.qtd_chamados && point.qtd_chamados >= 5) return "#ef4444";
+    if (point.qtd_chamados && point.qtd_chamados >= 2) return "#f97316";
+    if (point.alerta_tipo) return "#f97316";
+    return "#3b82f6"; // blue for normal clients
+  }
+  
   if (filter === "vencido") {
     const dias = point.dias_atraso ?? 0;
-    // Faixas: 1-7 (verde), 8-14 (amarelo), 15-24 (laranja), 25+ (vermelho)
-    if (dias >= 25) return "#ef4444"; // vermelho - crítico
-    if (dias >= 15) return "#f97316"; // laranja - alto
-    if (dias >= 8) return "#eab308"; // amarelo - médio
-    return "#22c55e"; // verde - baixo (1-7 dias)
+    if (dias >= 25) return "#ef4444";
+    if (dias >= 15) return "#f97316";
+    if (dias >= 8) return "#eab308";
+    return "#22c55e";
   }
   
   if (filter === "sinal") {
-    if (point.alerta_tipo) return "#ef4444"; // red - has alert
-    if (point.downtime_min_24h && point.downtime_min_24h > 0) return "#f97316"; // orange - downtime
-    return "#22c55e"; // green - no issues
+    if (point.alerta_tipo) return "#ef4444";
+    if (point.downtime_min_24h && point.downtime_min_24h > 0) return "#f97316";
+    return "#22c55e";
   }
   
   if (filter === "chamados") {
     const qtd = point.qtd_chamados ?? 0;
-    // Faixas: 1 (verde), 2-4 (laranja), 5+ (vermelho)
-    if (qtd >= 5) return "#ef4444"; // vermelho - crítico (5+ chamados)
-    if (qtd >= 2) return "#f97316"; // laranja - atenção (2-4 chamados)
-    return "#22c55e"; // verde - normal (1 chamado)
+    if (qtd >= 5) return "#ef4444";
+    if (qtd >= 2) return "#f97316";
+    return "#22c55e";
   }
   
-  return "#22c55e"; // default green
+  return "#22c55e";
 };
 
 const getRadiusByRisk = (point: MapPoint, filter: string): number => {
+  if (filter === "todos") {
+    if (point.dias_atraso && point.dias_atraso > 0) return 8;
+    if (point.qtd_chamados && point.qtd_chamados >= 5) return 8;
+    if (point.qtd_chamados && point.qtd_chamados >= 2) return 7;
+    return 4; // smaller for all clients view
+  }
+  
   if (filter === "vencido") {
     const dias = point.dias_atraso ?? 0;
-    if (dias >= 25) return 10; // 25+ dias - maior
-    if (dias >= 15) return 8; // 15-24 dias
-    if (dias >= 8) return 7; // 8-14 dias
-    return 6; // 1-7 dias
+    if (dias >= 25) return 10;
+    if (dias >= 15) return 8;
+    if (dias >= 8) return 7;
+    return 6;
   }
   
   if (filter === "sinal") {
@@ -92,10 +106,10 @@ const getRadiusByRisk = (point: MapPoint, filter: string): number => {
   
   if (filter === "chamados") {
     const qtd = point.qtd_chamados ?? 0;
-    if (qtd >= 5) return 10; // 5+ chamados - maior
-    if (qtd >= 3) return 8; // 3-4 chamados
-    if (qtd >= 2) return 7; // 2 chamados
-    return 6; // 1 chamado
+    if (qtd >= 5) return 10;
+    if (qtd >= 3) return 8;
+    if (qtd >= 2) return 7;
+    return 6;
   }
   
   return 5;
@@ -118,18 +132,19 @@ export function AlertasMapa({ data, activeFilter }: AlertasMapaProps) {
       }
 
       // Apply filter - only show relevant clients
+      if (activeFilter === "todos") {
+        return true; // Show all clients with coordinates
+      }
+      
       if (activeFilter === "vencido") {
-        // Show clients with vencido=true OR dias_atraso > 0
         return p.vencido === true || (p.dias_atraso !== undefined && p.dias_atraso > 0);
       }
       
       if (activeFilter === "sinal") {
-        // Only show clients with alerts or downtime
         return p.alerta_tipo || (p.downtime_min_24h && p.downtime_min_24h > 0);
       }
       
       if (activeFilter === "chamados") {
-        // Show clients with at least 1 call
         return p.qtd_chamados !== undefined && p.qtd_chamados > 0;
       }
       
@@ -211,27 +226,33 @@ export function AlertasMapa({ data, activeFilter }: AlertasMapaProps) {
       
       {/* Contextual Legend */}
       <div className="absolute bottom-3 left-3 flex gap-3 text-xs bg-background/80 backdrop-blur-sm px-2 py-1 rounded z-[1000]">
-        {/* Churn legend removed */}
+        {activeFilter === "todos" && (
+          <>
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{background: "#3b82f6"}}></span> Normal</span>
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{background: "#f97316"}}></span> Atenção</span>
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{background: "#ef4444"}}></span> Crítico</span>
+          </>
+        )}
         {activeFilter === "vencido" && (
           <>
-            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-500"></span> 1-7 dias</span>
-            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-yellow-500"></span> 8-14 dias</span>
-            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-orange-500"></span> 15-24 dias</span>
-            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500"></span> +25 dias</span>
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{background: "#22c55e"}}></span> 1-7 dias</span>
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{background: "#eab308"}}></span> 8-14 dias</span>
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{background: "#f97316"}}></span> 15-24 dias</span>
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{background: "#ef4444"}}></span> +25 dias</span>
           </>
         )}
         {activeFilter === "sinal" && (
           <>
-            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500"></span> Alerta ativo</span>
-            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-orange-500"></span> Downtime</span>
-            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-500"></span> OK</span>
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{background: "#ef4444"}}></span> Alerta ativo</span>
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{background: "#f97316"}}></span> Downtime</span>
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{background: "#22c55e"}}></span> OK</span>
           </>
         )}
         {activeFilter === "chamados" && (
           <>
-            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-500"></span> 1 chamado</span>
-            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-orange-500"></span> 2-4 chamados</span>
-            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500"></span> 5+ chamados</span>
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{background: "#22c55e"}}></span> 1 chamado</span>
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{background: "#f97316"}}></span> 2-4 chamados</span>
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{background: "#ef4444"}}></span> 5+ chamados</span>
           </>
         )}
       </div>

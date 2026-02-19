@@ -131,9 +131,10 @@ interface MapTabsProps {
 
 const MapTabs = ({ activeTab, onTabChange, availableTabs }: MapTabsProps) => {
   const allTabs = [
+    { id: "todos", label: "Todos" },
+    { id: "chamados", label: "Chamados" },
     { id: "vencido", label: "Vencido" },
     { id: "sinal", label: "Sinal" },
-    { id: "chamados", label: "Chamados" },
   ];
 
   const tabs = allTabs.filter(t => availableTabs.includes(t.id));
@@ -174,7 +175,7 @@ const VisaoGeral = () => {
   const [plano, setPlano] = useState("todos");
   const [status, setStatus] = useState("todos");
   const [cohortTab, setCohortTab] = useState("financeiro");
-  const [mapTab, setMapTab] = useState("vencido");
+  const [mapTab, setMapTab] = useState("todos");
   const [cohortDimension, setCohortDimension] = useState<"plano" | "cidade" | "bairro">("plano");
   const [top5Dimension, setTop5Dimension] = useState<"plano" | "cidade" | "bairro">("cidade");
   const [top5Filter, setTop5Filter] = useState<"churn" | "vencido">("vencido");
@@ -916,7 +917,7 @@ const VisaoGeral = () => {
 
   // Calculate which map tabs have data
   const availableMapTabs = useMemo(() => {
-    return ["vencido", "sinal", "chamados"];
+    return ["todos", "chamados", "vencido", "sinal"];
   }, []);
 
   // Estatísticas de clientes vencidos para debug
@@ -1472,19 +1473,19 @@ const VisaoGeral = () => {
                       Mapa de Alertas
                     </CardTitle>
                     <p className="text-xs text-muted-foreground">
-                      {mapTab === "vencido" ? (
+                      {mapTab === "todos" ? (
+                        <>
+                          <span className="font-medium text-foreground">{mapData.length}</span> clientes geolocalizados em {new Set(mapData.map(e => e.cliente_cidade)).size} cidades
+                        </>
+                      ) : mapTab === "vencido" ? (
                         <>
                           <span className="font-medium text-foreground">{vencidosStats.totalVencidos}</span> vencidos total | 
-                          <span className="font-medium text-green-500 ml-1">{vencidosStats.comCoordenadas}</span> no mapa 
-                          <span className="text-muted-foreground ml-1">({vencidosStats.comGeoExata} geo + {vencidosStats.comBairroFallback} bairro)</span> | 
-                          <span className="font-medium text-orange-500 ml-1">{vencidosStats.semCoordenadas}</span> sem localização
+                          <span className="font-medium ml-1">{vencidosStats.comCoordenadas}</span> no mapa
                         </>
                       ) : mapTab === "chamados" ? (
                         <>
                           <span className="font-medium text-foreground">{chamadosMapStats.totalClientes}</span> clientes com chamados | 
-                          <span className="font-medium text-foreground ml-1">{chamadosMapStats.totalChamados}</span> total | 
-                          <span className="font-medium text-red-500 ml-1">{chamadosMapStats.clientesCriticos}</span> críticos (5+) | 
-                          <span className="font-medium text-orange-500 ml-1">{chamadosMapStats.clientesAtencao}</span> atenção (2-4)
+                          <span className="font-medium text-foreground ml-1">{chamadosMapStats.totalChamados}</span> total
                         </>
                       ) : (
                         <>{mapData.length} clientes em {new Set(mapData.map(e => e.cliente_cidade)).size} cidades</>
@@ -1499,7 +1500,7 @@ const VisaoGeral = () => {
               <CardContent className="p-0">
                 <AlertasMapa 
                   data={mapData} 
-                  activeFilter={mapTab as "churn" | "vencido" | "sinal" | "chamados"} 
+                  activeFilter={mapTab as "churn" | "vencido" | "sinal" | "chamados" | "todos"} 
                 />
               </CardContent>
             </Card>
