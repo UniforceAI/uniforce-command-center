@@ -123,12 +123,15 @@ const ClientesEmRisco = () => {
     return Math.min(score, 25);
   }, [chamadosPorClienteMap]);
 
-  // Score total recalculado (substitui score_suporte pelo valor real)
+  // Score total recalculado: soma EXATA dos componentes exibidos no gráfico
+  // Garante que o número mostrado no badge == soma do que aparece na análise de risco
   const getScoreTotalReal = useCallback((cliente: ChurnStatus): number => {
-    const suporteOriginal = cliente.score_suporte ?? 0;
     const suporteReal = getScoreSuporteReal(cliente);
-    const diff = suporteReal - suporteOriginal;
-    return Math.max(0, Math.min(100, (cliente.churn_risk_score ?? 0) + diff));
+    const financeiro = cliente.score_financeiro ?? 0;
+    const comportamental = cliente.score_comportamental ?? 0;
+    const qualidade = cliente.score_qualidade ?? 0;
+    const nps = cliente.score_nps ?? 0;
+    return Math.max(0, Math.min(100, financeiro + suporteReal + comportamental + qualidade + nps));
   }, [getScoreSuporteReal]);
 
   const filtered = useMemo(() => {
