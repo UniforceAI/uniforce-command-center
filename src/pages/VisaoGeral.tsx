@@ -227,57 +227,52 @@ const VisaoGeral = () => {
     };
   }, [eventos]);
 
-  // Filtered events - CORRIGIDO: análise correta do período
-  // Os dados são um SNAPSHOT do estado atual dos clientes.
-  // O filtro de período deve filtrar por:
-  // - data_instalacao: para clientes novos (instalados no período)
-  // - data_vencimento: para cobranças no período
-  // - data_pagamento: para pagamentos no período
-  // - ultimo_atendimento: para atendimentos no período
-  // Para dados financeiros, usamos dias_atraso para calcular vencimento retroativo
+  // Filtered events - CORRIGIDO: para SNAPSHOT, o filtro de período filtra por data_vencimento
+  // (quando a cobrança vence/venceu) para que a mudança de 7d → 30d reflita mais clientes em atraso.
+  // Para outros casos, usamos dias_atraso como proxy temporal.
   const filteredEventos = useMemo(() => {
     let filtered = [...eventos] as Evento[];
 
-
-    // O período filtra clientes cuja ATIVIDADE (instalação, cobrança, etc) ocorreu no período
-    // Usamos múltiplas datas relevantes ao contexto
     if (periodo !== "todos") {
-      const diasAtras = parseInt(periodo);
-      
-      // Calcular data limite baseada no registro mais recente (não na data atual)
-      // Isso garante visualização de dados históricos
-      let maxDate = new Date(0);
-      filtered.forEach((e) => {
-        const d = e.event_datetime ? new Date(e.event_datetime) : null;
-        if (d && !isNaN(d.getTime()) && d > maxDate) maxDate = d;
-      });
-      
-      // Se não encontrou data válida, usar data atual
-      if (maxDate.getTime() === 0) maxDate = new Date();
-      
-      const dataLimite = new Date(maxDate);
-      dataLimite.setDate(dataLimite.getDate() - diasAtras);
-      dataLimite.setHours(0, 0, 0, 0);
+      const diasPeriodo = parseInt(periodo);
 
+      // Para cada cliente, pegamos o snapshot mais recente (event_datetime desc, já ordenado pelo backend)
+      // O filtro de período para dados SNAPSHOT funciona assim:
+      // - Mostra clientes cuja data_vencimento cai dentro dos últimos X dias
+      //   OU clientes com dias_atraso <= diasPeriodo (atraso acumulado dentro do período)
+      // Isso garante que 7d mostra menos vencidos que 30d.
       filtered = filtered.filter((e) => {
-        // Para SNAPSHOT events, usar event_datetime (quando o snapshot foi tirado)
-        // event_datetime é a data principal - é quando o dado foi registrado
-        let dateToCheck: Date | null = null;
-        
-        if (e.event_datetime) {
-          dateToCheck = new Date(e.event_datetime);
-        } else if (e.created_at) {
-          dateToCheck = new Date(e.created_at);
+        // Se tem data_vencimento, filtrar por ela
+        if (e.data_vencimento) {
+          // Suporte a DD/MM/YYYY e YYYY-MM-DD
+          let dvDate: Date | null = null;
+          const dvStr = String(e.data_vencimento).trim();
+          if (/^\d{4}-\d{2}-\d{2}/.test(dvStr)) {
+            dvDate = new Date(dvStr);
+          } else if (/^\d{2}\/\d{2}\/\d{4}/.test(dvStr)) {
+            const [d, m, y] = dvStr.split("/");
+            dvDate = new Date(`${y}-${m}-${d}`);
+          }
+
+          if (dvDate && !isNaN(dvDate.getTime())) {
+            const hoje = new Date();
+            const dataLimite = new Date();
+            dataLimite.setDate(hoje.getDate() - diasPeriodo);
+            dataLimite.setHours(0, 0, 0, 0);
+            // Incluir vencimentos que caíram dentro do período (já vencidos ou vencendo)
+            return dvDate >= dataLimite;
+          }
         }
-        
-        if (!dateToCheck || isNaN(dateToCheck.getTime())) {
-          return true;
+
+        // Fallback: se não tem data_vencimento, filtrar por dias_atraso <= diasPeriodo
+        // (assim 7d mostra apenas quem atrasou nos últimos 7 dias)
+        if (e.dias_atraso !== null && e.dias_atraso !== undefined) {
+          return Number(e.dias_atraso) <= diasPeriodo;
         }
-        
-        return dateToCheck >= dataLimite;
+
+        // Se não tem nem data_vencimento nem dias_atraso, manter (cliente ativo sem cobrança pendente)
+        return true;
       });
-      
-      
     }
 
     if (uf !== "todos") {
@@ -708,8 +703,8 @@ const VisaoGeral = () => {
     const sortKey = {
       churn: "churnPct",
       contratos: "contratosPct", 
-      financeiro: "mrrTotal",
-      suporte: "chamados", // Ordenar por total absoluto de chamados
+      financeiro: "valorVencido", // ← ordenar por valor em atraso, não MRR
+      suporte: "chamados",
       rede: "redePct",
       nps: "npsPct",
       ltv: "ltvMedio",
@@ -730,7 +725,7 @@ const VisaoGeral = () => {
     const info: Record<string, { dataKey: string; label: string; format: (v: number) => string }> = {
       churn: { dataKey: "churnPct", label: `% Churn por ${dimensionLabel}`, format: (v) => `${v.toFixed(1)}%` },
       contratos: { dataKey: "contratosPct", label: `% Bloqueados por ${dimensionLabel}`, format: (v) => `${v.toFixed(1)}%` },
-      financeiro: { dataKey: "mrrTotal", label: `MRR por ${dimensionLabel}`, format: (v) => `R$ ${(v/1000).toFixed(1)}k` },
+      financeiro: { dataKey: "valorVencido", label: `Valor em Atraso por ${dimensionLabel}`, format: (v) => `R$ ${(v/1000).toFixed(1)}k` },
       suporte: { dataKey: "chamados", label: `Total Chamados por ${dimensionLabel}`, format: (v) => `${v}` },
       rede: { dataKey: "redePct", label: `% Rede por ${dimensionLabel}`, format: (v) => `${v.toFixed(1)}%` },
       nps: { dataKey: "npsPct", label: `% Detratores por ${dimensionLabel}`, format: (v) => `${v.toFixed(1)}%` },
@@ -785,8 +780,9 @@ const VisaoGeral = () => {
       rate: p.total > 0 ? ((p as any)[countKey] || 0) / p.total * 100 : 0,
     }));
     
-    // Ordenar por taxa (maior primeiro), depois por count absoluto
+    // Ordenar por taxa (maior primeiro), depois por count absoluto — EXCLUIR rate = 0
     const top5Sorted = [...withRate]
+      .filter(item => item.rate > 0) // ← remove cidades/planos sem nenhum vencido/cancelado
       .sort((a, b) => b.rate - a.rate || b.count - a.count)
       .slice(0, 5);
     
@@ -1286,7 +1282,7 @@ const VisaoGeral = () => {
                           <XAxis 
                             type="number" 
                             domain={[0, 'auto']}
-                            tickFormatter={(v) => (cohortTab === "ltv" || cohortTab === "financeiro") ? `R$${(v/1000).toFixed(0)}k` : cohortTab === "suporte" ? `${v}` : `${v.toFixed(0)}%`}
+                            tickFormatter={(v) => (cohortTab === "ltv") ? `R$${(v/1000).toFixed(0)}k` : cohortTab === "financeiro" ? `R$${(v/1000).toFixed(0)}k` : cohortTab === "suporte" ? `${v}` : `${v.toFixed(0)}%`}
                             fontSize={11}
                           />
                           <YAxis 
@@ -1304,13 +1300,12 @@ const VisaoGeral = () => {
                               return (
                                 <div className="bg-popover border rounded-lg shadow-lg p-3 text-sm">
                                   <p className="font-semibold text-foreground mb-1">{data.key}</p>
-                                  <div className="space-y-1 text-muted-foreground">
+                                 <div className="space-y-1 text-muted-foreground">
                                     {cohortTab === "financeiro" && (
                                       <>
-                                        <p>MRR: <span className="text-primary font-medium">R$ {(value / 1000).toFixed(1)}k</span></p>
-                                        <p>Total clientes: <span className="text-foreground font-medium">{data.total}</span></p>
-                                        <p>Vencidos: <span className="text-foreground font-medium">{data.clientesVencidos}</span> ({data.total > 0 ? (data.clientesVencidos / data.total * 100).toFixed(1) : 0}%)</p>
-                                        <p>Valor em atraso: <span className="text-foreground font-medium">R$ {((data.valorVencido || 0) / 1000).toFixed(1)}k</span></p>
+                                        <p>Valor em atraso: <span className="text-destructive font-medium">R$ {((data.valorVencido || 0) / 1000).toFixed(1)}k</span></p>
+                                        <p>Clientes vencidos: <span className="text-foreground font-medium">{data.clientesVencidos}</span> de {data.total} ({data.total > 0 ? (data.clientesVencidos / data.total * 100).toFixed(1) : 0}% de inadimplência)</p>
+                                        <p>MRR do grupo: <span className="text-primary font-medium">R$ {((data.mrrTotal || 0) / 1000).toFixed(1)}k</span></p>
                                       </>
                                     )}
                                     {cohortTab === "churn" && (
@@ -1392,8 +1387,12 @@ const VisaoGeral = () => {
                             {sortedCohortData.map((entry, index) => {
                               const value = (entry as any)[cohortMetricInfo.dataKey] || 0;
                               let color = "hsl(var(--primary))";
-                              if (cohortTab === "ltv" || cohortTab === "financeiro") {
+                              if (cohortTab === "ltv") {
                                 color = "hsl(var(--primary))";
+                              } else if (cohortTab === "financeiro") {
+                                // Escala de vermelho: quanto maior o valor vencido, mais vermelho
+                                const pctInad = entry.total > 0 ? (entry.clientesVencidos / entry.total * 100) : 0;
+                                color = pctInad > 10 ? "hsl(var(--destructive))" : pctInad > 3 ? "hsl(var(--warning))" : "hsl(var(--primary))";
                               } else {
                                 color = value > 30 ? "hsl(var(--destructive))" : value > 10 ? "hsl(var(--warning))" : "hsl(var(--success))";
                               }
