@@ -58,6 +58,7 @@ import {
   Tooltip as RechartsTooltip,
   ResponsiveContainer,
   Cell,
+  Legend,
 } from "recharts";
 
 // KPI Card Compacto
@@ -498,18 +499,22 @@ const VisaoGeral = () => {
 
   // Mapa de cliente_id → dados NPS reais (da tabela nps_check)
   const npsDataPorCliente = useMemo(() => {
-    const map = new Map<number, { npsTotal: number; npsCount: number; detratores: number }>();
+    const map = new Map<number, { npsTotal: number; npsCount: number; detratores: number; neutros: number; promotores: number }>();
     npsData.forEach(r => {
       const existing = map.get(r.cliente_id);
       if (existing) {
         existing.npsTotal += r.nota;
         existing.npsCount++;
         if (r.classificacao === "Detrator") existing.detratores++;
+        else if (r.classificacao === "Neutro") existing.neutros++;
+        else if (r.classificacao === "Promotor") existing.promotores++;
       } else {
         map.set(r.cliente_id, {
           npsTotal: r.nota,
           npsCount: 1,
           detratores: r.classificacao === "Detrator" ? 1 : 0,
+          neutros: r.classificacao === "Neutro" ? 1 : 0,
+          promotores: r.classificacao === "Promotor" ? 1 : 0,
         });
       }
     });
@@ -547,6 +552,8 @@ const VisaoGeral = () => {
       npsTotal: number;
       npsCount: number;
       detratores: number;
+      neutros: number;
+      promotores: number;
       // LTV
       ltvTotal: number;
       mrrTotal: number;
@@ -592,7 +599,7 @@ const VisaoGeral = () => {
           label: getLabel(key, dimension),
           total: 0, risco: 0, cancelados: 0, ativos: 0, bloqueados: 0,
           clientesVencidos: 0, valorVencido: 0, chamados: 0, reincidentes: 0,
-          comDowntime: 0, comAlerta: 0, npsTotal: 0, npsCount: 0, detratores: 0,
+          comDowntime: 0, comAlerta: 0, npsTotal: 0, npsCount: 0, detratores: 0, neutros: 0, promotores: 0,
           ltvTotal: 0, mrrTotal: 0, mesesTotal: 0, mesesCount: 0, topClientes: []
         };
         clienteContado.set(key, new Set());
@@ -713,6 +720,8 @@ const VisaoGeral = () => {
         stats[key].npsTotal += npsStats.npsTotal;
         stats[key].npsCount += npsStats.npsCount;
         stats[key].detratores += npsStats.detratores;
+        stats[key].neutros += npsStats.neutros;
+        stats[key].promotores += npsStats.promotores;
       }
     });
 
@@ -744,15 +753,18 @@ const VisaoGeral = () => {
     const sortKey = {
       churn: "churnPct",
       contratos: "contratosPct", 
-      financeiro: "financeiroPct", // % inadimplência - valorVencido fica quase 0 em snapshot
+      financeiro: "financeiroPct",
       suporte: "chamados",
       rede: "redePct",
-      nps: "npsPct",
+      nps: "npsCount",
       ltv: "ltvMedio",
     }[cohortTab] || "churnPct";
 
-    const minClientes = 3;
-    const filtered = cohortData.filter(item => item.total >= minClientes);
+    // Para NPS: filtrar grupos com ao menos 1 resposta NPS
+    // Para outros: filtrar grupos com mínimo de 3 clientes
+    const filtered = cohortTab === "nps"
+      ? cohortData.filter(item => item.npsCount > 0)
+      : cohortData.filter(item => item.total >= 3);
 
     return [...filtered]
       .sort((a, b) => (b as any)[sortKey] - (a as any)[sortKey])
@@ -1358,6 +1370,85 @@ const VisaoGeral = () => {
                       </span>
                     </div>
                     {sortedCohortData.length > 0 ? (
+                      cohortTab === "nps" ? (
+                        // NPS: stacked bar chart com Promotores, Neutros e Detratores
+                        (() => {
+                          // Filtrar apenas grupos com alguma resposta NPS
+                          const npsChartData = sortedCohortData
+                            .filter(d => d.npsCount > 0)
+                            .map(d => ({
+                              label: d.label,
+                              key: d.key,
+                              npsCount: d.npsCount,
+                              promotores: d.npsCount > 0 ? Math.round((d.promotores / d.npsCount) * 100) : 0,
+                              neutros: d.npsCount > 0 ? Math.round((d.neutros / d.npsCount) * 100) : 0,
+                              detratores: d.npsCount > 0 ? Math.round((d.detratores / d.npsCount) * 100) : 0,
+                              promotoresAbs: d.promotores,
+                              neutrosAbs: d.neutros,
+                              detratoresAbs: d.detratores,
+                              npsMedia: d.npsMedia,
+                            }))
+                            .sort((a, b) => b.promotores - a.promotores);
+
+                          if (npsChartData.length === 0) {
+                            return (
+                              <div className="py-12 text-center">
+                                <p className="text-muted-foreground mb-1">Sem dados NPS para exibir</p>
+                                <p className="text-xs text-muted-foreground">Os clientes precisam ter respondido pesquisas NPS para aparecer aqui</p>
+                              </div>
+                            );
+                          }
+
+                          return (
+                            <ResponsiveContainer width="100%" height={Math.max(280, npsChartData.length * 44)}>
+                              <BarChart data={npsChartData} layout="vertical" margin={{ left: 10, right: 10, top: 4, bottom: 4 }} barCategoryGap="20%">
+                                <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="hsl(var(--border))" strokeOpacity={0.5} />
+                                <XAxis type="number" domain={[0, 100]} tickFormatter={(v) => `${v}%`} fontSize={11} tick={{ fill: 'hsl(var(--muted-foreground))' }} />
+                                <YAxis dataKey="label" type="category" width={160} fontSize={9} tick={{ fill: 'hsl(var(--muted-foreground))' }} />
+                                <RechartsTooltip
+                                  content={({ active, payload }) => {
+                                    if (!active || !payload || !payload.length) return null;
+                                    const d = payload[0].payload;
+                                    return (
+                                      <div className="bg-popover border rounded-lg shadow-lg p-3 text-sm min-w-[200px]">
+                                        <p className="font-semibold text-foreground mb-2">{d.key}</p>
+                                        <div className="space-y-1">
+                                          <p className="flex justify-between gap-4">
+                                            <span className="text-[hsl(142,71%,45%)] font-medium">Promotores</span>
+                                            <span className="font-bold">{d.promotoresAbs} ({d.promotores}%)</span>
+                                          </p>
+                                          <p className="flex justify-between gap-4">
+                                            <span className="text-[hsl(38,92%,50%)] font-medium">Neutros</span>
+                                            <span className="font-bold">{d.neutrosAbs} ({d.neutros}%)</span>
+                                          </p>
+                                          <p className="flex justify-between gap-4">
+                                            <span className="text-destructive font-medium">Detratores</span>
+                                            <span className="font-bold">{d.detratoresAbs} ({d.detratores}%)</span>
+                                          </p>
+                                          <div className="border-t border-border/50 pt-1 mt-1">
+                                            <p className="text-muted-foreground">Total respostas: <span className="text-foreground font-medium">{d.npsCount}</span></p>
+                                            <p className="text-muted-foreground">Nota média: <span className="text-foreground font-medium">{d.npsMedia?.toFixed(1)}</span></p>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    );
+                                  }}
+                                />
+                                <Legend
+                                  verticalAlign="bottom"
+                                  height={28}
+                                  formatter={(value) => (
+                                    <span className="text-xs text-foreground">{value}</span>
+                                  )}
+                                />
+                                <Bar dataKey="promotores" name="Promotores" stackId="nps" fill="hsl(142, 71%, 45%)" radius={[0, 0, 0, 0]} />
+                                <Bar dataKey="neutros" name="Neutros" stackId="nps" fill="hsl(38, 92%, 50%)" radius={[0, 0, 0, 0]} />
+                                <Bar dataKey="detratores" name="Detratores" stackId="nps" fill="hsl(var(--destructive))" radius={[0, 4, 4, 0]} />
+                              </BarChart>
+                            </ResponsiveContainer>
+                          );
+                        })()
+                      ) : (
                       <ResponsiveContainer width="100%" height={350}>
                         <BarChart data={sortedCohortData} layout="vertical" margin={{ left: 10, right: 40 }}>
                           <CartesianGrid strokeDasharray="3 3" horizontal={false} />
@@ -1394,13 +1485,6 @@ const VisaoGeral = () => {
                                       <>
                                         <p><span className="text-destructive font-medium">{value.toFixed(1)}%</span> de churn</p>
                                         <p>Cancelados: <span className="text-foreground font-medium">{data.cancelados}</span> de {data.total} clientes</p>
-                                      </>
-                                    )}
-                                    {cohortTab === "nps" && (
-                                      <>
-                                        <p><span className="text-destructive font-medium">{value.toFixed(1)}%</span> de detratores</p>
-                                        <p>Detratores: <span className="text-foreground font-medium">{data.detratores}</span> de {data.npsCount} respostas</p>
-                                        <p>Média NPS: <span className="text-foreground font-medium">{data.npsMedia?.toFixed(1) || "N/A"}</span></p>
                                       </>
                                     )}
                                     {cohortTab === "ltv" && (
@@ -1472,7 +1556,6 @@ const VisaoGeral = () => {
                               if (cohortTab === "ltv") {
                                 color = "hsl(var(--primary))";
                               } else if (cohortTab === "financeiro") {
-                                // financeiroPct: % inadimplência por grupo
                                 color = value > 10 ? "hsl(var(--destructive))" : value > 3 ? "hsl(var(--warning))" : value > 0 ? "hsl(217, 91%, 60%)" : "hsl(var(--muted))";
                               } else {
                                 color = value > 30 ? "hsl(var(--destructive))" : value > 10 ? "hsl(var(--warning))" : "hsl(var(--success))";
@@ -1487,6 +1570,7 @@ const VisaoGeral = () => {
                           </Bar>
                         </BarChart>
                       </ResponsiveContainer>
+                      )
                     ) : (
                       <p className="text-center text-muted-foreground py-12">Sem dados para exibir</p>
                     )}
