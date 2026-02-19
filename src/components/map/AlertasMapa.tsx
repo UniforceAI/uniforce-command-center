@@ -119,6 +119,12 @@ export function AlertasMapa({ data, activeFilter }: AlertasMapaProps) {
         return false;
       }
 
+      // Filtrar coordenadas fora do Brasil (bounding box aproximado)
+      // Brasil: lat entre -34 e 6, lng entre -74 e -28
+      if (p.geo_lat < -34 || p.geo_lat > 6 || p.geo_lng < -74 || p.geo_lng > -28) {
+        return false;
+      }
+
       // Apply filter - only show relevant clients
       if (activeFilter === "vencido") {
         // vencido=false no banco, mas dias_atraso > 0 indica vencimento real
