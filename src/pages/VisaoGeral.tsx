@@ -238,37 +238,34 @@ const VisaoGeral = () => {
     // Usamos múltiplas datas relevantes ao contexto
     if (periodo !== "todos") {
       const diasAtras = parseInt(periodo);
-      const dataLimite = new Date();
+      
+      // Calcular data limite baseada no registro mais recente (não na data atual)
+      // Isso garante visualização de dados históricos
+      let maxDate = new Date(0);
+      filtered.forEach((e) => {
+        const d = e.event_datetime ? new Date(e.event_datetime) : null;
+        if (d && !isNaN(d.getTime()) && d > maxDate) maxDate = d;
+      });
+      
+      // Se não encontrou data válida, usar data atual
+      if (maxDate.getTime() === 0) maxDate = new Date();
+      
+      const dataLimite = new Date(maxDate);
       dataLimite.setDate(dataLimite.getDate() - diasAtras);
       dataLimite.setHours(0, 0, 0, 0);
 
       filtered = filtered.filter((e) => {
-        // Prioridade: data_vencimento > data_instalacao > event_datetime > created_at
-        // Isso garante que cobranças/instalações recentes sejam consideradas
+        // Para SNAPSHOT events, usar event_datetime (quando o snapshot foi tirado)
+        // event_datetime é a data principal - é quando o dado foi registrado
         let dateToCheck: Date | null = null;
         
-        // Para cobranças, usar data_vencimento
-        if (e.data_vencimento) {
-          dateToCheck = new Date(e.data_vencimento);
-        }
-        // Para atendimentos, usar ultimo_atendimento
-        else if (e.ultimo_atendimento) {
-          dateToCheck = new Date(e.ultimo_atendimento);
-        }
-        // Para instalações, usar data_instalacao
-        else if (e.data_instalacao) {
-          dateToCheck = new Date(e.data_instalacao);
-        }
-        // Fallback para event_datetime ou created_at
-        else if (e.event_datetime) {
+        if (e.event_datetime) {
           dateToCheck = new Date(e.event_datetime);
-        }
-        else if (e.created_at) {
+        } else if (e.created_at) {
           dateToCheck = new Date(e.created_at);
         }
         
         if (!dateToCheck || isNaN(dateToCheck.getTime())) {
-          // Se não tem data válida, incluir o registro (não excluir por falta de data)
           return true;
         }
         
