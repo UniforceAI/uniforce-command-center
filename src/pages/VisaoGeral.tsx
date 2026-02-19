@@ -409,12 +409,12 @@ const VisaoGeral = () => {
       ? ltvMesesCalculados.reduce((a, b) => a + b, 0) / ltvMesesCalculados.length 
       : 0;
     
-    // Valores fixos calculados diretamente do banco de dados completo
-    // Fórmula: 21460.5 meses total / 871 clientes = 24.6 ≈ 25 meses
-    // LTV = 25 meses × R$ 131.81 = R$ 3.295,25
-    const ltvMeses = 25;
-    const ltvMedio = 3295;
-    
+    // LTV calculado dinamicamente
+    const ltvMeses = ltvMesesCalculado > 0 ? Math.round(ltvMesesCalculado) : 0;
+    const ticketMedioGlobal = allClientesUnicos.length > 0 
+      ? allClientesUnicos.reduce((acc, e) => acc + (e.valor_mensalidade || 0), 0) / allClientesUnicos.length 
+      : 0;
+    const ltvMedio = ltvMeses * ticketMedioGlobal;
 
     // Ticket Médio
     const ticketMedio = clientesAtivos > 0 ? mrrTotal / clientesAtivos : 0;
@@ -728,7 +728,7 @@ const VisaoGeral = () => {
     return calculateCohortData(top5Dimension);
   }, [filteredEventos, top5Dimension, chamadosStats, clientePlanoMap]);
 
-  // Top 5 por métrica selecionada - FILTRAR mínimo de clientes
+  // Top 5 por métrica selecionada - mostra TAXA REAL (não distribuição)
   const top5Risco = useMemo(() => {
     const countKey = top5Filter === "churn" ? "cancelados" : "clientesVencidos";
     
@@ -736,27 +736,21 @@ const VisaoGeral = () => {
     const minClientes = 3;
     const filtered = top5Data.filter(item => item.total >= minClientes);
     
-    // Ordenar por QUANTIDADE ABSOLUTA (maior primeiro) e pegar TOP 5
-    const top5Sorted = [...filtered]
-      .sort((a, b) => ((b as any)[countKey] || 0) - ((a as any)[countKey] || 0))
-      .slice(0, 5);
-    
-    // Calcular total dos 5 para distribuição fechar 100%
-    const totalTop5 = top5Sorted.reduce((sum, p) => sum + ((p as any)[countKey] || 0), 0);
-    
-    if (totalTop5 === 0) {
-      return top5Sorted.map(p => ({
-        key: p.key,
-        label: p.label,
-        pct: "0.0",
-      }));
-    }
-    
-    return top5Sorted.map(p => ({
+    // Calcular taxa real (count/total) e ordenar pela taxa
+    const withRate = filtered.map(p => ({
       key: p.key,
       label: p.label,
-      pct: (((p as any)[countKey] || 0) / totalTop5 * 100).toFixed(1),
+      count: (p as any)[countKey] || 0,
+      total: p.total,
+      rate: p.total > 0 ? ((p as any)[countKey] || 0) / p.total * 100 : 0,
     }));
+    
+    // Ordenar por taxa (maior primeiro), depois por count absoluto
+    const top5Sorted = [...withRate]
+      .sort((a, b) => b.rate - a.rate || b.count - a.count)
+      .slice(0, 5);
+    
+    return top5Sorted;
   }, [top5Data, top5Filter]);
 
   // Fila de Risco - FIXED: use available fields (alerta_tipo, downtime, etc.)
@@ -1394,7 +1388,7 @@ const VisaoGeral = () => {
                     </div>
                     {/* Legenda explicativa */}
                     <p className="text-[10px] text-muted-foreground mt-1">
-                      📊 Distribuição: onde estão concentrados os {top5Filter === "churn" ? "cancelamentos" : "vencidos"}
+                      📊 Taxa de {top5Filter === "churn" ? "cancelamento" : "inadimplência"} por {top5Dimension === "plano" ? "plano" : top5Dimension === "cidade" ? "cidade" : "bairro"}
                     </p>
                     {/* Filtros de dimensão independentes */}
                     <div className="flex items-center gap-1 mt-2">
@@ -1432,31 +1426,28 @@ const VisaoGeral = () => {
                   </CardHeader>
                   <CardContent className="space-y-2">
                     {top5Risco.length > 0 ? top5Risco.map((item, i) => {
-                      // Buscar dados completos do item para exibir detalhes
-                      const itemData = top5Data.find(d => d.key === item.key);
-                      const countKey = top5Filter === "churn" ? "cancelados" : "clientesVencidos";
-                      const count = itemData ? (itemData as any)[countKey] : 0;
-                      const total = itemData?.total || 0;
-                      
                       return (
                         <Tooltip key={i}>
                           <TooltipTrigger asChild>
                             <div className="flex justify-between items-center text-sm cursor-help hover:bg-muted/50 rounded px-1 -mx-1 py-0.5">
-                              <span className="text-muted-foreground truncate max-w-[180px]" title={item.key}>
-                                {item.label.length > 35 ? item.label.substring(0, 35) + "..." : item.label}
+                              <span className="text-muted-foreground truncate max-w-[140px]" title={item.key}>
+                                {item.label.length > 25 ? item.label.substring(0, 25) + "..." : item.label}
                               </span>
-                              <span className={`font-medium ${parseFloat(item.pct) > 0 ? "text-destructive" : "text-muted-foreground"}`}>
-                                {item.pct}%
-                              </span>
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs text-muted-foreground">{item.count}/{item.total}</span>
+                                <span className={`font-medium min-w-[45px] text-right ${item.rate > 0 ? "text-destructive" : "text-muted-foreground"}`}>
+                                  {item.rate.toFixed(1)}%
+                                </span>
+                              </div>
                             </div>
                           </TooltipTrigger>
                           <TooltipContent side="left" className="max-w-[250px]">
                             <p className="font-semibold mb-1">{item.key}</p>
                             <p className="text-xs text-muted-foreground">
-                              {top5Filter === "churn" ? "Cancelados" : "Vencidos"}: <span className="text-foreground font-medium">{count}</span> de {total} clientes
+                              {top5Filter === "churn" ? "Cancelados" : "Vencidos"}: <span className="text-foreground font-medium">{item.count}</span> de {item.total} clientes
                             </p>
                             <p className="text-xs text-muted-foreground">
-                              Representa <span className="text-destructive font-medium">{item.pct}%</span> do total dos Top 5
+                              Taxa: <span className="text-destructive font-medium">{item.rate.toFixed(1)}%</span>
                             </p>
                           </TooltipContent>
                         </Tooltip>
