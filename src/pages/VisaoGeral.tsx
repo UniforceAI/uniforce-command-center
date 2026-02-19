@@ -255,10 +255,7 @@ const VisaoGeral = () => {
     return filtered;
   }, [eventos, uf, cidade, bairro, plano, status, filial]);
 
-  // Calcula a data limite para o período selecionado — usada para filtrar métricas financeiras
-  // A data de referência é a data de vencimento (data_vencimento) dos clientes.
-  // 7 dias: clientes cujo vencimento caiu nos últimos 7 dias (já vencidos recentemente)
-  // 30/90 dias: janela maior, captura mais inadimplentes históricos
+  // Calcula a data limite para o período selecionado — usada para filtrar chamados e novos clientes
   const dataLimitePeriodo = useMemo(() => {
     if (periodo === "todos") return null;
     const hoje = new Date();
@@ -267,23 +264,27 @@ const VisaoGeral = () => {
     return limite;
   }, [periodo]);
 
-  // Eventos do período — filtra por data_vencimento dentro da janela selecionada.
-  // Isso faz 7d mostrar apenas quem venceu nos últimos 7 dias, 30d nos últimos 30, etc.
-  const filteredEventosPeriodo = useMemo(() => {
-    if (!dataLimitePeriodo) return filteredEventos;
-    return filteredEventos.filter(e => {
-      if (!e.data_vencimento) return false;
-      try {
-        const dv = new Date(e.data_vencimento);
-        if (isNaN(dv.getTime())) return false;
-        // Clientes cujo vencimento caiu dentro da janela do período (passado recente)
-        const hoje = new Date();
-        return dv >= dataLimitePeriodo && dv <= hoje;
-      } catch {
-        return false;
-      }
+  // DIAGNÓSTICO: log das datas e inadimplentes reais
+  useEffect(() => {
+    if (filteredEventos.length === 0) return;
+    const comDiasAtraso = filteredEventos.filter(e => e.dias_atraso && Number(e.dias_atraso) > 0);
+    const datasVencimento = comDiasAtraso.slice(0, 5).map(e => ({
+      cliente: e.cliente_nome,
+      dias_atraso: e.dias_atraso,
+      data_vencimento: e.data_vencimento,
+      cobranca_status: e.cobranca_status,
+    }));
+    console.log("💰 INADIMPLENTES REAIS:", {
+      total: comDiasAtraso.length,
+      amostra: datasVencimento,
     });
-  }, [filteredEventos, dataLimitePeriodo]);
+  }, [filteredEventos]);
+
+  // filteredEventosPeriodo — para fins financeiros/inadimplência NÃO filtramos por data_vencimento
+  // pois o snapshot salva a PRÓXIMA cobrança (futura). Inadimplência = dias_atraso > 0 em qualquer evento.
+  // O período afeta apenas chamados e novos clientes (data_instalacao).
+  // Para cohort financeiro: todos os eventos filtrados geograficamente.
+  const filteredEventosPeriodo = filteredEventos;
 
 
   // KPIs calculation
@@ -323,18 +324,6 @@ const VisaoGeral = () => {
       .filter(e => e.cobranca_status === "Pago" || (e.valor_pago && e.valor_pago > 0))
       .reduce((acc, e) => acc + (e.valor_pago || e.valor_cobranca || 0), 0);
 
-    // ---- MÉTRICAS DO PERÍODO (filtradas por data_vencimento) ----
-    // Clientes únicos com vencimento dentro do período selecionado
-    const clientesMapPeriodo = new Map<number, Evento>();
-    filteredEventosPeriodo.forEach(e => {
-      if (!clientesMapPeriodo.has(e.cliente_id) ||
-          new Date(e.event_datetime) > new Date(clientesMapPeriodo.get(e.cliente_id)!.event_datetime)) {
-        clientesMapPeriodo.set(e.cliente_id, e);
-      }
-    });
-    const clientesPeriodo = Array.from(clientesMapPeriodo.values());
-    const totalClientesPeriodo = clientesPeriodo.length;
-
     // Novos clientes (instalados no período)
     const hoje = new Date();
     const diasPeriodo = periodo === "todos" ? 365 : parseInt(periodo);
@@ -345,22 +334,21 @@ const VisaoGeral = () => {
       return dataInstalacao && !isNaN(dataInstalacao.getTime()) && dataInstalacao >= dataLimite;
     }).length;
 
-    // INADIMPLÊNCIA do período: clientes cujo vencimento caiu no período E têm dias_atraso > 0
-    const clientesVencidosPeriodo = clientesPeriodo.filter(e => isClienteVencido(e));
-    const rrVencido = clientesVencidosPeriodo.reduce((acc, e) => acc + (e.valor_cobranca || e.valor_mensalidade || 0), 0);
-    const clientesVencidosUnicos = clientesVencidosPeriodo.length;
+    // INADIMPLÊNCIA: usa TODOS os clientes únicos (snapshot captura próxima fatura - data futura)
+    // dias_atraso > 0 é o único campo confiável para identificar inadimplência real
+    const clientesVencidos = clientesUnicos.filter(e => isClienteVencido(e));
+    const rrVencido = clientesVencidos.reduce((acc, e) => acc + (e.valor_cobranca || e.valor_mensalidade || 0), 0);
+    const clientesVencidosUnicos = clientesVencidos.length;
 
-    // % Inadimplência = vencidos no período / total de clientes com vencimento no período
-    const pctInadimplencia = totalClientesPeriodo > 0 
-      ? ((clientesVencidosUnicos / totalClientesPeriodo) * 100).toFixed(1)
-      : totalClientes > 0 
-        ? ((clientesUnicos.filter(e => isClienteVencido(e)).length / totalClientes) * 100).toFixed(1)
-        : "0.0";
+    // % Inadimplência = vencidos / total de clientes
+    const pctInadimplencia = totalClientes > 0 
+      ? ((clientesVencidosUnicos / totalClientes) * 100).toFixed(1)
+      : "0.0";
 
-    // % Inadimplência Crítica (vencido > 30 dias) no período
-    const inadCritica = clientesVencidosPeriodo.filter(e => e.dias_atraso && e.dias_atraso > 30);
-    const pctInadCritica = totalClientesPeriodo > 0 
-      ? (inadCritica.length / totalClientesPeriodo * 100).toFixed(1)
+    // % Inadimplência Crítica (vencido > 30 dias)
+    const inadCritica = clientesVencidos.filter(e => e.dias_atraso && e.dias_atraso > 30);
+    const pctInadCritica = totalClientes > 0 
+      ? (inadCritica.length / totalClientes * 100).toFixed(1)
       : "0.0";
 
     // MRR em Risco — usa base total (não varia com período por ser snapshot)
@@ -411,7 +399,7 @@ const VisaoGeral = () => {
     return {
       clientesAtivos,
       totalClientes,
-      totalClientesPeriodo,
+      totalClientesPeriodo: totalClientes,
       novosClientes,
       churnCount,
       mrrTotal,
@@ -426,7 +414,7 @@ const VisaoGeral = () => {
       ltvMeses,
       ticketMedio,
     };
-  }, [filteredEventos, filteredEventosPeriodo, periodo, eventos]);
+  }, [filteredEventos, periodo, eventos]);
 
   // Chamados por cliente - memoizado para performance
   const chamadosStats = useMemo(() => {
