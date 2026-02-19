@@ -3,7 +3,8 @@ import { useChurnData } from "@/hooks/useChurnData";
 import { useChamados } from "@/hooks/useChamados";
 import { IspActions } from "@/components/shared/IspActions";
 import {
-  AlertTriangle, Users, Percent, Target, DollarSign, TrendingDown, AlertCircle, Info, ChevronDown,
+  AlertTriangle, Users, Percent, Target, DollarSign, TrendingDown,
+  AlertCircle, Info,
 } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
@@ -11,15 +12,31 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
 
-/** Normaliza cidade: se for numérico retorna como string limpa, se nome retorna capitalizado */
 function normalizarCidade(raw: string | null): string {
   if (!raw) return "Desconhecida";
   const s = raw.trim();
   if (!isNaN(Number(s))) return `Cidade ${s}`;
   return s;
 }
+
+function fmtBRL(v: number): string {
+  if (v >= 1_000_000) return `R$ ${(v / 1_000_000).toFixed(2)}M`;
+  if (v >= 1_000) return `R$ ${(v / 1_000).toFixed(1)}k`;
+  return `R$ ${v.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`;
+}
+
+const barColor = (pct: number) => {
+  if (pct >= 20) return "hsl(var(--destructive))";
+  if (pct >= 10) return "hsl(38 92% 50%)";
+  return "hsl(var(--primary))";
+};
+
+const cidadeColor = (idx: number) => {
+  if (idx === 0) return "hsl(var(--destructive))";
+  if (idx <= 2) return "hsl(38 92% 50%)";
+  return "hsl(var(--primary))";
+};
 
 const ChurnAnalytics = () => {
   const { churnStatus, isLoading, error } = useChurnData();
@@ -66,8 +83,7 @@ const ChurnAnalytics = () => {
     const mrrRisco = emRisco.reduce((acc, c) => acc + (c.valor_mensalidade || 0), 0);
     const ltvRisco = emRisco.reduce((acc, c) => acc + (c.ltv_estimado || 0), 0);
     const scores = ativos.filter((c) => c.churn_risk_score != null).map((c) => c.churn_risk_score);
-    const scoreMedioNum = scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : null;
-    const scoreMedio = scoreMedioNum != null ? scoreMedioNum.toFixed(1) : "—";
+    const scoreMedio = scores.length > 0 ? (scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(1) : "—";
     return { totalAtivos, totalRisco, pctRisco, scoreMedio, mrrRisco, ltvRisco };
   }, [ativos, emRisco]);
 
@@ -107,220 +123,157 @@ const ChurnAnalytics = () => {
       .slice(0, 10);
   }, [ativos]);
 
-  const barColor = (pct: number) => {
-    if (pct >= 20) return "hsl(var(--destructive))";
-    if (pct >= 10) return "hsl(var(--warning))";
-    return "hsl(var(--primary))";
-  };
-
-  const cidadeColor = (idx: number) => {
-    if (idx === 0) return "hsl(var(--destructive))";
-    if (idx <= 2) return "hsl(38 92% 50%)"; // warning
-    return "hsl(var(--primary))";
-  };
-
   const activeFiltersCount = [plano, cidade, bairro, bucket].filter((v) => v !== "todos").length;
 
   if (isLoading) return (
     <div className="min-h-screen bg-background flex items-center justify-center">
-      <div className="text-center space-y-4">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto" />
-        <p className="text-muted-foreground">Carregando dados de churn...</p>
-      </div>
+      <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary mx-auto" />
     </div>
   );
 
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
-      <header className="border-b bg-card">
-        <div className="container mx-auto px-6 py-4 flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-bold text-foreground">Churn Analytics</h1>
-            <p className="text-muted-foreground text-xs mt-0.5">
-              {ativos.length.toLocaleString()} ativos · {emRisco.length.toLocaleString()} em risco · base de {churnStatus.length.toLocaleString()} clientes
-            </p>
-          </div>
-          <IspActions />
+      <header className="border-b bg-card px-6 py-4 flex items-center justify-between">
+        <div>
+          <h1 className="text-xl font-bold text-foreground">Churn Analytics</h1>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            {ativos.length.toLocaleString()} ativos · {emRisco.length.toLocaleString()} em risco · base de {churnStatus.length.toLocaleString()} clientes
+          </p>
         </div>
+        <IspActions />
       </header>
 
       {/* Filtros */}
-      <div className="border-b bg-muted/20">
-        <div className="container mx-auto px-6 py-3 flex flex-wrap items-center gap-3">
-          <span className="text-xs font-medium text-muted-foreground shrink-0">Filtrar por:</span>
+      <div className="border-b bg-muted/20 px-6 py-2.5 flex flex-wrap items-center gap-x-4 gap-y-2">
+        <span className="text-xs font-medium text-muted-foreground">Filtrar por:</span>
 
-          <div className="flex items-center gap-1.5">
-            <span className="text-xs text-muted-foreground">Plano</span>
-            <Select value={plano} onValueChange={setPlano}>
-              <SelectTrigger className="h-7 text-xs w-[140px] bg-background">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="todos" className="text-xs">Todos</SelectItem>
-                {filterOptions.planos.map((p) => (
-                  <SelectItem key={p} value={p} className="text-xs">{p}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="flex items-center gap-1.5">
-            <span className="text-xs text-muted-foreground">Cidade</span>
-            <Select value={cidade} onValueChange={setCidade}>
+        {[
+          { label: "Plano", value: plano, set: setPlano, options: filterOptions.planos, placeholder: "Todos" },
+          { label: "Cidade", value: cidade, set: setCidade, options: filterOptions.cidades, placeholder: "Todas" },
+          { label: "Bairro", value: bairro, set: setBairro, options: filterOptions.bairros, placeholder: "Todos" },
+        ].map(({ label, value, set, options, placeholder }) => (
+          <div key={label} className="flex items-center gap-1.5">
+            <span className="text-xs text-muted-foreground">{label}</span>
+            <Select value={value} onValueChange={set}>
               <SelectTrigger className="h-7 text-xs w-[130px] bg-background">
-                <SelectValue />
+                <SelectValue placeholder={placeholder} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="todos" className="text-xs">Todas</SelectItem>
-                {filterOptions.cidades.map((c) => (
-                  <SelectItem key={c} value={c} className="text-xs">{c}</SelectItem>
-                ))}
+                <SelectItem value="todos" className="text-xs">{placeholder}</SelectItem>
+                {options.map((o) => <SelectItem key={o} value={o} className="text-xs">{o}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>
+        ))}
 
-          <div className="flex items-center gap-1.5">
-            <span className="text-xs text-muted-foreground">Bairro</span>
-            <Select value={bairro} onValueChange={setBairro}>
-              <SelectTrigger className="h-7 text-xs w-[130px] bg-background">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="todos" className="text-xs">Todos</SelectItem>
-                {filterOptions.bairros.map((b) => (
-                  <SelectItem key={b} value={b} className="text-xs">{b}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="flex items-center gap-1.5">
-            <span className="text-xs text-muted-foreground">Risco</span>
-            <Select value={bucket} onValueChange={setBucket}>
-              <SelectTrigger className="h-7 text-xs w-[110px] bg-background">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="todos" className="text-xs">Todos</SelectItem>
-                <SelectItem value="Crítico" className="text-xs">🔴 Crítico</SelectItem>
-                <SelectItem value="Alto" className="text-xs">🟠 Alto</SelectItem>
-                <SelectItem value="Médio" className="text-xs">🟡 Médio</SelectItem>
-                <SelectItem value="Baixo" className="text-xs">🟢 Baixo</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          {activeFiltersCount > 0 && (
-            <button
-              onClick={() => { setPlano("todos"); setCidade("todos"); setBairro("todos"); setBucket("todos"); }}
-              className="text-xs text-muted-foreground hover:text-destructive underline"
-            >
-              Limpar filtros ({activeFiltersCount})
-            </button>
-          )}
+        <div className="flex items-center gap-1.5">
+          <span className="text-xs text-muted-foreground">Risco</span>
+          <Select value={bucket} onValueChange={setBucket}>
+            <SelectTrigger className="h-7 text-xs w-[110px] bg-background">
+              <SelectValue placeholder="Todos" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="todos" className="text-xs">Todos</SelectItem>
+              <SelectItem value="Crítico" className="text-xs">🔴 Crítico</SelectItem>
+              <SelectItem value="Alto" className="text-xs">🟠 Alto</SelectItem>
+              <SelectItem value="Médio" className="text-xs">🟡 Médio</SelectItem>
+              <SelectItem value="Baixo" className="text-xs">🟢 Baixo</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
+
+        {activeFiltersCount > 0 && (
+          <button
+            onClick={() => { setPlano("todos"); setCidade("todos"); setBairro("todos"); setBucket("todos"); }}
+            className="text-xs text-destructive hover:underline"
+          >
+            Limpar ({activeFiltersCount})
+          </button>
+        )}
       </div>
 
-      <main className="container mx-auto px-6 py-6 space-y-6">
+      <main className="px-6 py-6 space-y-6 max-w-[1400px] mx-auto">
         {error && (
           <div className="flex items-center gap-2 text-destructive bg-destructive/10 rounded-lg p-3 text-sm">
             <AlertCircle className="h-4 w-4 shrink-0" />
-            <span>Erro ao carregar dados: {error}</span>
+            <span>{error}</span>
           </div>
         )}
 
-        {/* KPI Cards — 6 cards em grid */}
+        {/* ── KPI CARDS ── estilo igual ao print de referência */}
         <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-3">
-          {/* Clientes Risco */}
-          <div className="bg-card border border-border rounded-xl p-4 shadow-sm group hover:border-destructive/40 transition-colors">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-medium text-muted-foreground">Clientes Risco</span>
-              <div className="p-1.5 rounded-lg bg-destructive/10">
-                <AlertTriangle className="h-3.5 w-3.5 text-destructive" />
-              </div>
+
+          <div className="rounded-xl border border-border bg-card p-4 flex flex-col gap-1 min-h-[90px]">
+            <div className="flex items-center gap-1.5">
+              <AlertTriangle className="h-3.5 w-3.5 text-destructive" />
+              <span className="text-xs text-muted-foreground font-medium">Clientes Risco</span>
             </div>
-            <p className="text-2xl font-bold text-foreground">{kpis.totalRisco.toLocaleString()}</p>
-            <p className="text-xs text-muted-foreground mt-0.5">{kpis.pctRisco}% da base</p>
+            <p className="text-3xl font-bold tracking-tight text-foreground">{kpis.totalRisco.toLocaleString()}</p>
+            <p className="text-xs text-muted-foreground">{kpis.pctRisco}% da base</p>
           </div>
 
-          {/* % Risco */}
-          <div className="bg-card border border-border rounded-xl p-4 shadow-sm hover:border-warning/40 transition-colors">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-medium text-muted-foreground">% em Risco</span>
-              <div className="p-1.5 rounded-lg bg-warning/10">
-                <Percent className="h-3.5 w-3.5 text-warning" />
-              </div>
+          <div className="rounded-xl border border-border bg-card p-4 flex flex-col gap-1 min-h-[90px]">
+            <div className="flex items-center gap-1.5">
+              <TrendingDown className="h-3.5 w-3.5 text-warning" />
+              <span className="text-xs text-muted-foreground font-medium">Rescisões</span>
             </div>
-            <p className="text-2xl font-bold text-foreground">{kpis.pctRisco}%</p>
-            <p className="text-xs text-muted-foreground mt-0.5">Churn Rate</p>
-          </div>
-
-          {/* MRR Risco */}
-          <div className="bg-card border border-border rounded-xl p-4 shadow-sm hover:border-destructive/40 transition-colors">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-medium text-muted-foreground">MRR Risco</span>
-              <div className="p-1.5 rounded-lg bg-destructive/10">
-                <DollarSign className="h-3.5 w-3.5 text-destructive" />
-              </div>
-            </div>
-            <p className="text-lg font-bold text-foreground leading-tight">
-              R$ {kpis.mrrRisco.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+            <p className="text-3xl font-bold tracking-tight text-foreground">
+              {churnStatus.filter((c) => c.status_churn === "cancelado").length.toLocaleString()}
             </p>
-            <p className="text-xs text-muted-foreground mt-0.5">Receita ameaçada</p>
+            <p className="text-xs text-muted-foreground">cancelamentos</p>
           </div>
 
-          {/* LTV Risco */}
-          <div className="bg-card border border-border rounded-xl p-4 shadow-sm hover:border-destructive/40 transition-colors">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-medium text-muted-foreground">LTV Risco</span>
-              <div className="p-1.5 rounded-lg bg-destructive/10">
-                <TrendingDown className="h-3.5 w-3.5 text-destructive" />
-              </div>
+          <div className="rounded-xl border border-border bg-card p-4 flex flex-col gap-1 min-h-[90px]">
+            <div className="flex items-center gap-1.5">
+              <DollarSign className="h-3.5 w-3.5 text-destructive" />
+              <span className="text-xs text-muted-foreground font-medium">MRR Risco</span>
             </div>
-            <p className="text-lg font-bold text-foreground leading-tight">
-              R$ {kpis.ltvRisco.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
-            </p>
-            <p className="text-xs text-muted-foreground mt-0.5">Valor estimado perdido</p>
+            <p className="text-2xl font-bold tracking-tight text-foreground">{fmtBRL(kpis.mrrRisco)}</p>
+            <p className="text-xs text-muted-foreground">receita ameaçada</p>
           </div>
 
-          {/* Score Médio */}
-          <div className="bg-card border border-border rounded-xl p-4 shadow-sm hover:border-warning/40 transition-colors">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-medium text-muted-foreground">Score Médio</span>
-              <div className="p-1.5 rounded-lg bg-warning/10">
-                <Target className="h-3.5 w-3.5 text-warning" />
-              </div>
+          <div className="rounded-xl border border-border bg-card p-4 flex flex-col gap-1 min-h-[90px]">
+            <div className="flex items-center gap-1.5">
+              <TrendingDown className="h-3.5 w-3.5 text-destructive" />
+              <span className="text-xs text-muted-foreground font-medium">LTV Risco</span>
             </div>
-            <p className="text-2xl font-bold text-foreground">{kpis.scoreMedio}</p>
-            <p className="text-xs text-muted-foreground mt-0.5">Score de risco</p>
+            <p className="text-2xl font-bold tracking-tight text-foreground">{fmtBRL(kpis.ltvRisco)}</p>
+            <p className="text-xs text-muted-foreground">valor estimado perdido</p>
           </div>
 
-          {/* Total Clientes */}
-          <div className="bg-card border border-border rounded-xl p-4 shadow-sm hover:border-primary/40 transition-colors">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-medium text-muted-foreground">Total Clientes</span>
-              <div className="p-1.5 rounded-lg bg-primary/10">
-                <Users className="h-3.5 w-3.5 text-primary" />
-              </div>
+          <div className="rounded-xl border border-border bg-card p-4 flex flex-col gap-1 min-h-[90px]">
+            <div className="flex items-center gap-1.5">
+              <Target className="h-3.5 w-3.5 text-warning" />
+              <span className="text-xs text-muted-foreground font-medium">Churn Rate</span>
             </div>
-            <p className="text-2xl font-bold text-foreground">{kpis.totalAtivos.toLocaleString()}</p>
-            <p className="text-xs text-muted-foreground mt-0.5">Base ativa</p>
+            <p className="text-3xl font-bold tracking-tight text-foreground">{kpis.pctRisco}%</p>
+            <p className="text-xs text-muted-foreground">score médio: {kpis.scoreMedio}</p>
           </div>
+
+          <div className="rounded-xl border border-border bg-card p-4 flex flex-col gap-1 min-h-[90px]">
+            <div className="flex items-center gap-1.5">
+              <Users className="h-3.5 w-3.5 text-primary" />
+              <span className="text-xs text-muted-foreground font-medium">Total Clientes</span>
+            </div>
+            <p className="text-3xl font-bold tracking-tight text-foreground">{kpis.totalAtivos.toLocaleString()}</p>
+            <p className="text-xs text-muted-foreground">base ativa</p>
+          </div>
+
         </div>
 
-        {/* Gráficos */}
+        {/* ── GRÁFICOS ── */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
           {/* Cohort Churn por Plano */}
-          <div className="bg-card border border-border rounded-xl shadow-sm flex flex-col">
+          <div className="rounded-xl border border-border bg-card shadow-sm">
             <div className="px-5 py-4 border-b border-border flex items-center gap-2">
-              <span className="font-semibold text-sm text-foreground">Cohort Churn por Plano</span>
+              <span className="text-sm font-semibold text-foreground">Cohort Churn por Plano</span>
               <Info className="h-3.5 w-3.5 text-muted-foreground" />
             </div>
             {riscoPorPlano.length > 0 ? (
-              <div className="p-5 flex flex-col gap-4 flex-1">
-                <ResponsiveContainer width="100%" height={240}>
+              <div className="p-5 space-y-4">
+                <ResponsiveContainer width="100%" height={230}>
                   <BarChart data={riscoPorPlano} margin={{ top: 8, right: 8, bottom: 80, left: -10 }}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
                     <XAxis
@@ -342,48 +295,44 @@ const ChurnAnalytics = () => {
                       contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 12 }}
                       formatter={(_v: any, _n: any, props: any) => {
                         const d = props.payload;
-                        return [`${d.risco} de ${d.total} clientes (${d.pct}%)`, "Em risco"];
+                        return [`${d.risco} de ${d.total} (${d.pct}%)`, "Em risco"];
                       }}
                     />
-                    <Bar dataKey="pct" radius={[4, 4, 0, 0]} maxBarSize={40}>
-                      {riscoPorPlano.map((entry, idx) => (
-                        <Cell key={idx} fill={barColor(entry.pct)} />
-                      ))}
+                    <Bar dataKey="pct" radius={[4, 4, 0, 0]} maxBarSize={44}>
+                      {riscoPorPlano.map((e, i) => <Cell key={i} fill={barColor(e.pct)} />)}
                     </Bar>
                   </BarChart>
                 </ResponsiveContainer>
 
-                <div className="space-y-1 overflow-y-auto max-h-[200px]">
+                <div className="space-y-1.5 max-h-[200px] overflow-y-auto">
                   {riscoPorPlano.map((d) => (
-                    <div key={d.plano} className="flex items-center justify-between py-1.5 border-b border-border/30 last:border-0">
+                    <div key={d.plano} className="flex items-center justify-between py-1 border-b border-border/30 last:border-0 gap-2">
                       <div className="flex items-center gap-2 min-w-0 flex-1">
                         <span className="w-2 h-2 rounded-full shrink-0" style={{ background: barColor(d.pct) }} />
                         <span className="text-xs text-foreground truncate">{d.plano}</span>
                       </div>
-                      <div className="flex items-center gap-3 shrink-0 ml-2">
-                        <span className="text-xs font-semibold text-foreground">{d.risco} clientes</span>
-                        <span className="text-xs text-muted-foreground">LTV: R$ {d.mrr.toLocaleString("pt-BR")}</span>
+                      <div className="flex items-center gap-3 shrink-0 text-xs">
+                        <span className="font-semibold text-foreground">{d.risco} clientes</span>
+                        <span className="text-muted-foreground">LTV: R$ {d.mrr.toLocaleString("pt-BR")}</span>
                       </div>
                     </div>
                   ))}
                 </div>
               </div>
             ) : (
-              <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm p-10">
-                Sem dados de plano disponíveis
-              </div>
+              <div className="h-48 flex items-center justify-center text-muted-foreground text-sm">Sem dados</div>
             )}
           </div>
 
           {/* Top 10 Cidades em Risco */}
-          <div className="bg-card border border-border rounded-xl shadow-sm flex flex-col">
+          <div className="rounded-xl border border-border bg-card shadow-sm">
             <div className="px-5 py-4 border-b border-border flex items-center gap-2">
-              <span className="font-semibold text-sm text-foreground">Top 10 Cidades em Risco</span>
+              <span className="text-sm font-semibold text-foreground">Top 10 Cidades em Risco</span>
               <Info className="h-3.5 w-3.5 text-muted-foreground" />
             </div>
             {topCidades.length > 0 ? (
-              <div className="p-5 flex flex-col gap-4 flex-1">
-                <ResponsiveContainer width="100%" height={240}>
+              <div className="p-5 space-y-4">
+                <ResponsiveContainer width="100%" height={230}>
                   <BarChart data={topCidades} layout="vertical" margin={{ top: 4, right: 44, bottom: 4, left: 4 }}>
                     <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="hsl(var(--border))" />
                     <XAxis type="number" tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} tickLine={false} axisLine={false} />
@@ -397,21 +346,24 @@ const ChurnAnalytics = () => {
                     />
                     <Tooltip
                       contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 12 }}
-                      formatter={(v: any) => [v, "Clientes em risco"]}
+                      formatter={(v: any) => [v, "em risco"]}
                     />
-                    <Bar dataKey="qtd" radius={[0, 4, 4, 0]} maxBarSize={20} label={{ position: "right", fontSize: 10, fill: "hsl(var(--muted-foreground))" }}>
-                      {topCidades.map((_, idx) => (
-                        <Cell key={idx} fill={cidadeColor(idx)} />
-                      ))}
+                    <Bar
+                      dataKey="qtd"
+                      radius={[0, 4, 4, 0]}
+                      maxBarSize={20}
+                      label={{ position: "right", fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
+                    >
+                      {topCidades.map((_, i) => <Cell key={i} fill={cidadeColor(i)} />)}
                     </Bar>
                   </BarChart>
                 </ResponsiveContainer>
 
-                <div className="space-y-1 overflow-y-auto max-h-[200px]">
-                  {topCidades.map((d, idx) => (
-                    <div key={d.cidade} className="flex items-center justify-between py-1.5 border-b border-border/30 last:border-0">
+                <div className="space-y-1.5 max-h-[200px] overflow-y-auto">
+                  {topCidades.map((d, i) => (
+                    <div key={d.cidade} className="flex items-center justify-between py-1 border-b border-border/30 last:border-0">
                       <div className="flex items-center gap-2">
-                        <span className="w-2 h-2 rounded-full shrink-0" style={{ background: cidadeColor(idx) }} />
+                        <span className="w-2 h-2 rounded-full shrink-0" style={{ background: cidadeColor(i) }} />
                         <span className="text-xs text-foreground">{d.cidade}</span>
                       </div>
                       <span className="text-xs font-semibold text-foreground">{d.qtd} em risco</span>
@@ -420,8 +372,8 @@ const ChurnAnalytics = () => {
                 </div>
               </div>
             ) : (
-              <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm p-10">
-                {emRisco.length === 0 ? `Nenhum cliente em risco (${ativos.length} ativos)` : "Sem dados de cidade"}
+              <div className="h-48 flex items-center justify-center text-muted-foreground text-sm">
+                {emRisco.length === 0 ? "Nenhum cliente em risco" : "Sem dados de cidade"}
               </div>
             )}
           </div>
