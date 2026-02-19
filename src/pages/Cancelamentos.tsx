@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
 import { useChurnData } from "@/hooks/useChurnData";
+import { useChamados } from "@/hooks/useChamados";
 import { IspActions } from "@/components/shared/IspActions";
 import { KPICardNew } from "@/components/shared/KPICardNew";
 import { GlobalFilters } from "@/components/shared/GlobalFilters";
@@ -18,6 +19,10 @@ const STATUS_MOTIVO: Record<string, string> = {
 
 const Cancelamentos = () => {
   const { churnStatus, isLoading, error } = useChurnData();
+  const { getChamadosPorCliente } = useChamados();
+
+  // Mapa de chamados reais (90d) para cruzar com cancelados
+  const chamadosMap90d = useMemo(() => getChamadosPorCliente(90), [getChamadosPorCliente]);
 
   const [plano, setPlano] = useState("todos");
   const [cidade, setCidade] = useState("todos");
@@ -307,6 +312,7 @@ const Cancelamentos = () => {
                         <TableHead className="text-xs whitespace-nowrap text-center">Dias Atraso</TableHead>
                         <TableHead className="text-xs whitespace-nowrap">Motivo</TableHead>
                         <TableHead className="text-xs whitespace-nowrap text-center">Meses Cliente</TableHead>
+                        <TableHead className="text-xs whitespace-nowrap text-center">Chamados 90d</TableHead>
                         <TableHead className="text-xs whitespace-nowrap text-right">LTV</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -337,10 +343,13 @@ const Cancelamentos = () => {
                             <TableCell className="text-xs max-w-[130px] truncate text-muted-foreground">
                               {c.motivo_risco_principal || STATUS_MOTIVO[c.status_internet || ""] || "—"}
                             </TableCell>
-                            <TableCell className="text-center text-xs">{c.tempo_cliente_meses ?? "—"}</TableCell>
-                            <TableCell className="text-right text-xs">
-                              {c.ltv_estimado != null ? `R$ ${c.ltv_estimado.toLocaleString("pt-BR", { minimumFractionDigits: 0 })}` : "—"}
-                            </TableCell>
+                             <TableCell className="text-center text-xs">{c.tempo_cliente_meses ?? "—"}</TableCell>
+                             <TableCell className="text-center text-xs">
+                               {chamadosMap90d.get(c.cliente_id)?.chamados_periodo ?? 0}
+                             </TableCell>
+                             <TableCell className="text-right text-xs">
+                               {c.ltv_estimado != null ? `R$ ${c.ltv_estimado.toLocaleString("pt-BR", { minimumFractionDigits: 0 })}` : "—"}
+                             </TableCell>
                           </TableRow>
                         ))
                       )}
