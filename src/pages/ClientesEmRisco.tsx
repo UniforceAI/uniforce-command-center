@@ -570,7 +570,7 @@ const ClientesEmRisco = () => {
                           <div className="flex justify-between items-center">
                             <span className="font-medium">{EVENTO_LABELS[e.tipo_evento] || e.tipo_evento}</span>
                             <span className="text-muted-foreground">
-                              {e.data_evento ? new Date(e.data_evento).toLocaleDateString("pt-BR") : "—"}
+                              {e.data_evento ? new Date(e.data_evento.replace(" ", "T")).toLocaleDateString("pt-BR") : "—"}
                             </span>
                           </div>
                           {e.descricao && (
