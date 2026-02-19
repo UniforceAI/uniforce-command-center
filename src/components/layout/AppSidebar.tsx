@@ -14,9 +14,9 @@ import {
 import { Button } from "@/components/ui/button";
 
 const menuItems = [
-  { title: "Visão Geral", url: "/visao-geral", icon: LayoutDashboard },
+  { title: "Visão Geral", url: "/", icon: LayoutDashboard },
   { title: "Financeiro", url: "/financeiro", icon: DollarSign },
-  { title: "Chamados Frequentes", url: "/", icon: AlertTriangle },
+  { title: "Chamados Frequentes", url: "/chamados", icon: AlertTriangle },
   { title: "Churn & Retenção", url: "/churn-retencao", icon: TrendingDown },
   { title: "NPS", url: "/nps", icon: ThumbsUp },
 ];

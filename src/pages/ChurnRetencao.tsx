@@ -1,7 +1,9 @@
 import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
+import { useActiveIsp } from "@/hooks/useActiveIsp";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { useEventos } from "@/hooks/useEventos";
@@ -56,6 +58,7 @@ const ChurnRetencao = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const { signOut } = useAuth();
+  const { ispNome } = useActiveIsp();
   const { eventos, isLoading, error } = useEventos();
 
   // Filtros
@@ -421,6 +424,7 @@ const ChurnRetencao = () => {
               <p className="text-muted-foreground mt-1">Análise de Risco e Ações de Retenção</p>
             </div>
             <div className="flex items-center gap-4">
+              <Badge variant="outline" className="text-xs font-medium">{ispNome}</Badge>
               <div className="text-sm text-muted-foreground">
                 {clientesFiltrados.length.toLocaleString()} clientes analisados
               </div>
