@@ -125,12 +125,13 @@ const ClientesEmRisco = () => {
   // MAS churn_status já tem nps_ultimo_score e nps_classificacao — usamos esses primeiro
   // e complementamos com nps_check pelo campo id_cliente (string UUID) via user_id
   const npsMap = useMemo(() => {
-    const m = new Map<number, { nota: number; classificacao: string }>();
+    const m = new Map<number, { nota: number; classificacao: string; data: string | null }>();
     churnStatus.forEach((c) => {
       if (c.nps_ultimo_score != null && c.nps_classificacao) {
         m.set(c.cliente_id, {
           nota: c.nps_ultimo_score,
-          classificacao: c.nps_classificacao.toUpperCase(), // normaliza: DETRATOR, PROMOTOR, NEUTRO
+          classificacao: c.nps_classificacao.toUpperCase(),
+          data: (c as any).nps_data ?? null,
         });
       }
     });
@@ -216,8 +217,15 @@ const ClientesEmRisco = () => {
       .filter((e) => e.tipo_evento !== "nps_detrator") // removemos o estático para inserir o real
       .slice(0, 15);
 
-    // Evento de chamado reincidente REAL
+    // Evento de chamado reincidente REAL — usa data do último atendimento do cliente
     const ch30Real = chamadosPorClienteMap.d30.get(selectedCliente.cliente_id)?.chamados_periodo ?? 0;
+    const rawUltimoChamado = chamadosPorClienteMap.d30.get(selectedCliente.cliente_id)?.ultimo_chamado
+      ?? selectedCliente.ultimo_atendimento_data
+      ?? new Date().toISOString();
+    // Normaliza formato "YYYY-MM-DD HH:mm:ss" para ISO (substitui espaço por T)
+    const ultimoChamadoData = typeof rawUltimoChamado === "string"
+      ? rawUltimoChamado.replace(" ", "T")
+      : new Date().toISOString();
     if (ch30Real >= 2) {
       const impacto = ch30Real >= 3
         ? config.chamados30dBase + (ch30Real - 2) * config.chamadoAdicional
@@ -232,14 +240,15 @@ const ClientesEmRisco = () => {
         impacto_score: impacto,
         descricao: `${ch30Real} chamados nos últimos 30 dias — impacto de +${impacto}pts no score`,
         dados_evento: { qtd_chamados_30d_real: ch30Real },
-        data_evento: new Date().toISOString(),
-        created_at: new Date().toISOString(),
+        data_evento: ultimoChamadoData,
+        created_at: ultimoChamadoData,
       });
     }
 
-    // Evento NPS Detrator REAL se cliente for detrator
+    // Evento NPS Detrator REAL — usa nps_data do churn_status como data real da pesquisa
     const npsCliente = npsMap.get(selectedCliente.cliente_id);
     if (npsCliente?.classificacao === "DETRATOR") {
+      const npsData = npsCliente.data ?? new Date().toISOString();
       eventos.unshift({
         id: "real-nps-detrator",
         isp_id: selectedCliente.isp_id,
@@ -250,8 +259,8 @@ const ClientesEmRisco = () => {
         impacto_score: config.npsDetrator,
         descricao: `NPS Detrator — nota ${npsCliente.nota}/10 — impacto de +${config.npsDetrator}pts no score`,
         dados_evento: { nota_nps: npsCliente.nota, classificacao: npsCliente.classificacao },
-        data_evento: new Date().toISOString(),
-        created_at: new Date().toISOString(),
+        data_evento: npsData,
+        created_at: npsData,
       });
     }
 
