@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useEventos } from "@/hooks/useEventos";
 import { useChamados } from "@/hooks/useChamados";
+import { useNPSData } from "@/hooks/useNPSData";
 
 import { Evento } from "@/types/evento";
 import { AlertasMapa } from "@/components/map/AlertasMapa";
@@ -165,9 +166,10 @@ const VisaoGeral = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const { profile, signOut } = useAuth();
-  const { ispNome } = useActiveIsp();
+  const { ispNome, ispId } = useActiveIsp();
   const { eventos, isLoading, error } = useEventos();
   const { chamados, getChamadosPorCliente, isLoading: isLoadingChamados } = useChamados();
+  const { npsData } = useNPSData(ispId);
 
   // Filtros
   const [periodo, setPeriodo] = useState("7");
@@ -494,6 +496,26 @@ const VisaoGeral = () => {
     return map;
   }, [eventos]);
 
+  // Mapa de cliente_id → dados NPS reais (da tabela nps_check)
+  const npsDataPorCliente = useMemo(() => {
+    const map = new Map<number, { npsTotal: number; npsCount: number; detratores: number }>();
+    npsData.forEach(r => {
+      const existing = map.get(r.cliente_id);
+      if (existing) {
+        existing.npsTotal += r.nota;
+        existing.npsCount++;
+        if (r.classificacao === "Detrator") existing.detratores++;
+      } else {
+        map.set(r.cliente_id, {
+          npsTotal: r.nota,
+          npsCount: 1,
+          detratores: r.classificacao === "Detrator" ? 1 : 0,
+        });
+      }
+    });
+    return map;
+  }, [npsData]);
+
   // Generic function to calculate cohort data for any dimension
   // eventosBase: todos os eventos filtrados (para MRR, LTV, churn, etc.)
   // eventosPeriodo: eventos filtrados pelo período (para inadimplência financeira)
@@ -629,12 +651,7 @@ const VisaoGeral = () => {
         if (e.downtime_min_24h && e.downtime_min_24h > 60) stats[key].comDowntime++;
         if (e.alerta_tipo) stats[key].comAlerta++;
         
-        // NPS
-        if (e.nps_score !== null && e.nps_score !== undefined) {
-          stats[key].npsTotal += e.nps_score;
-          stats[key].npsCount++;
-          if (e.nps_score < 7) stats[key].detratores++;
-        }
+        // NPS — será preenchido pelo passo de integração com nps_check abaixo
       }
     });
 
@@ -680,6 +697,25 @@ const VisaoGeral = () => {
       }
     });
 
+    // Integrar dados NPS reais da tabela nps_check (cruzado com eventos por cliente_id)
+    npsDataPorCliente.forEach((npsStats, clienteId) => {
+      const infoCliente = clientePlanoMap.get(clienteId);
+      if (!infoCliente) return;
+
+      let key: string | null = null;
+      switch (dimension) {
+        case "plano": key = infoCliente.plano; break;
+        case "cidade": key = infoCliente.cidade; break;
+        case "bairro": key = infoCliente.bairro; break;
+      }
+
+      if (key && stats[key]) {
+        stats[key].npsTotal += npsStats.npsTotal;
+        stats[key].npsCount += npsStats.npsCount;
+        stats[key].detratores += npsStats.detratores;
+      }
+    });
+
     // Calculate all percentages
     return Object.values(stats)
       .map(p => ({
@@ -701,7 +737,7 @@ const VisaoGeral = () => {
   // Cohort data based on selected dimension
   const cohortData = useMemo(() => {
     return calculateCohortData(cohortDimension, filteredEventos, filteredEventosPeriodo);
-  }, [filteredEventos, filteredEventosPeriodo, cohortDimension, chamadosStats, clientePlanoMap]);
+  }, [filteredEventos, filteredEventosPeriodo, cohortDimension, chamadosStats, clientePlanoMap, npsDataPorCliente]);
 
   // Sorted cohort data based on selected tab - FILTRAR planos com mínimo de clientes
   const sortedCohortData = useMemo(() => {
@@ -765,7 +801,7 @@ const VisaoGeral = () => {
   // Top 5 Data - calculado com sua própria dimensão independente
   const top5Data = useMemo(() => {
     return calculateCohortData(top5Dimension, filteredEventos, filteredEventosPeriodo);
-  }, [filteredEventos, filteredEventosPeriodo, top5Dimension, chamadosStats, clientePlanoMap]);
+  }, [filteredEventos, filteredEventosPeriodo, top5Dimension, chamadosStats, clientePlanoMap, npsDataPorCliente]);
 
   // Top 5 por métrica selecionada - mostra TAXA REAL (não distribuição)
   const top5Risco = useMemo(() => {
