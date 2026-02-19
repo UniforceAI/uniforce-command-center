@@ -518,6 +518,8 @@ const VisaoGeral = () => {
       // LTV
       ltvTotal: number;
       mrrTotal: number;
+      mesesTotal: number;
+      mesesCount: number;
     }> = {};
 
     const clientesPorKey = new Map<string, Set<number>>();
@@ -557,7 +559,7 @@ const VisaoGeral = () => {
           total: 0, risco: 0, cancelados: 0, ativos: 0, bloqueados: 0,
           clientesVencidos: 0, valorVencido: 0, chamados: 0, reincidentes: 0,
           comDowntime: 0, comAlerta: 0, npsTotal: 0, npsCount: 0, detratores: 0,
-          ltvTotal: 0, mrrTotal: 0
+          ltvTotal: 0, mrrTotal: 0, mesesTotal: 0, mesesCount: 0
         };
         clienteContado.set(key, new Set());
       }
@@ -571,6 +573,18 @@ const VisaoGeral = () => {
         // MRR e LTV
         stats[key].mrrTotal += e.valor_mensalidade || 0;
         stats[key].ltvTotal += e.ltv_reais_estimado || (e.valor_mensalidade || 0) * 24;
+        
+        // Meses como cliente (para justificar LTV)
+        if (e.data_instalacao && e.data_instalacao.length >= 10) {
+          const dataInst = new Date(e.data_instalacao);
+          if (!isNaN(dataInst.getTime())) {
+            const meses = (new Date().getTime() - dataInst.getTime()) / (1000 * 60 * 60 * 24 * 30.44);
+            if (meses > 0) {
+              stats[key].mesesTotal += meses;
+              stats[key].mesesCount++;
+            }
+          }
+        }
         
         // Contratos
         if (e.status_contrato === "C" || e.servico_status === "C") {
@@ -655,6 +669,8 @@ const VisaoGeral = () => {
         npsPct: p.npsCount > 0 ? (p.detratores / p.npsCount * 100) : 0,
         npsMedia: p.npsCount > 0 ? (p.npsTotal / p.npsCount) : 0,
         ltvMedio: p.total > 0 ? (p.ltvTotal / p.total) : 0,
+        mesesMedio: p.mesesCount > 0 ? (p.mesesTotal / p.mesesCount) : 0,
+        ticketMedio: p.total > 0 ? (p.mrrTotal / p.total) : 0,
       }));
   };
 
@@ -1281,6 +1297,14 @@ const VisaoGeral = () => {
                                     {cohortTab === "ltv" && (
                                       <>
                                         <p>LTV Médio: <span className="text-primary font-medium">R$ {(value / 1000).toFixed(1)}k</span></p>
+                                        <p className="text-xs mt-1 border-t pt-1 border-border/50">
+                                          <span className="text-muted-foreground">Fórmula: </span>
+                                          <span className="text-foreground font-medium">{data.mesesMedio?.toFixed(0) || 0} meses</span>
+                                          <span className="text-muted-foreground"> × </span>
+                                          <span className="text-foreground font-medium">R$ {(data.ticketMedio || 0).toFixed(0)}/mês</span>
+                                        </p>
+                                        <p>Tempo médio como cliente: <span className="text-foreground font-medium">{data.mesesMedio?.toFixed(1) || 0} meses ({((data.mesesMedio || 0) / 12).toFixed(1)} anos)</span></p>
+                                        <p>Ticket médio: <span className="text-foreground font-medium">R$ {(data.ticketMedio || 0).toFixed(2)}</span></p>
                                         <p>Total clientes: <span className="text-foreground font-medium">{data.total}</span></p>
                                         <p>MRR: <span className="text-foreground font-medium">R$ {(data.mrrTotal / 1000).toFixed(1)}k</span></p>
                                       </>
