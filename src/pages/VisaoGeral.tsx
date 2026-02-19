@@ -520,6 +520,7 @@ const VisaoGeral = () => {
       mrrTotal: number;
       mesesTotal: number;
       mesesCount: number;
+      topClientes: { nome: string; dataInstalacao: string; meses: number; mensalidade: number; ltv: number }[];
     }> = {};
 
     const clientesPorKey = new Map<string, Set<number>>();
@@ -559,7 +560,7 @@ const VisaoGeral = () => {
           total: 0, risco: 0, cancelados: 0, ativos: 0, bloqueados: 0,
           clientesVencidos: 0, valorVencido: 0, chamados: 0, reincidentes: 0,
           comDowntime: 0, comAlerta: 0, npsTotal: 0, npsCount: 0, detratores: 0,
-          ltvTotal: 0, mrrTotal: 0, mesesTotal: 0, mesesCount: 0
+          ltvTotal: 0, mrrTotal: 0, mesesTotal: 0, mesesCount: 0, topClientes: []
         };
         clienteContado.set(key, new Set());
       }
@@ -582,6 +583,22 @@ const VisaoGeral = () => {
             if (meses > 0) {
               stats[key].mesesTotal += meses;
               stats[key].mesesCount++;
+              
+              // Guardar top 3 clientes com maior LTV para comprovação
+              const clienteLtv = meses * (e.valor_mensalidade || 0);
+              const clienteInfo = {
+                nome: e.cliente_nome || `Cliente ${e.cliente_id}`,
+                dataInstalacao: dataInst.toLocaleDateString("pt-BR"),
+                meses: Math.round(meses),
+                mensalidade: e.valor_mensalidade || 0,
+                ltv: clienteLtv,
+              };
+              stats[key].topClientes.push(clienteInfo);
+              // Manter apenas top 3 por LTV
+              if (stats[key].topClientes.length > 3) {
+                stats[key].topClientes.sort((a, b) => b.ltv - a.ltv);
+                stats[key].topClientes = stats[key].topClientes.slice(0, 3);
+              }
             }
           }
         }
@@ -1303,10 +1320,22 @@ const VisaoGeral = () => {
                                           <span className="text-muted-foreground"> × </span>
                                           <span className="text-foreground font-medium">R$ {(data.ticketMedio || 0).toFixed(0)}/mês</span>
                                         </p>
-                                        <p>Tempo médio como cliente: <span className="text-foreground font-medium">{data.mesesMedio?.toFixed(1) || 0} meses ({((data.mesesMedio || 0) / 12).toFixed(1)} anos)</span></p>
+                                        <p>Tempo médio: <span className="text-foreground font-medium">{data.mesesMedio?.toFixed(0) || 0} meses ({((data.mesesMedio || 0) / 12).toFixed(1)} anos)</span></p>
                                         <p>Ticket médio: <span className="text-foreground font-medium">R$ {(data.ticketMedio || 0).toFixed(2)}</span></p>
-                                        <p>Total clientes: <span className="text-foreground font-medium">{data.total}</span></p>
-                                        <p>MRR: <span className="text-foreground font-medium">R$ {(data.mrrTotal / 1000).toFixed(1)}k</span></p>
+                                        <p>Total clientes: <span className="text-foreground font-medium">{data.total}</span> | MRR: <span className="text-foreground font-medium">R$ {(data.mrrTotal / 1000).toFixed(1)}k</span></p>
+                                        
+                                        {data.topClientes && data.topClientes.length > 0 && (
+                                          <div className="mt-1.5 pt-1.5 border-t border-border/50">
+                                            <p className="text-[10px] font-semibold text-muted-foreground mb-1">📋 Top clientes (comprovação):</p>
+                                            {data.topClientes.map((c: any, idx: number) => (
+                                              <div key={idx} className="text-[10px] text-muted-foreground leading-tight mb-0.5">
+                                                <span className="text-foreground">{c.nome}</span>
+                                                <br />
+                                                <span>Desde {c.dataInstalacao} ({c.meses} meses) • R$ {c.mensalidade.toFixed(0)}/mês • LTV: R$ {(c.ltv/1000).toFixed(1)}k</span>
+                                              </div>
+                                            ))}
+                                          </div>
+                                        )}
                                       </>
                                     )}
                                     {cohortTab === "suporte" && (
