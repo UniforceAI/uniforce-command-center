@@ -12,7 +12,9 @@ import Auth from "./pages/Auth";
 import NotFound from "./pages/NotFound";
 import VisaoGeral from "./pages/VisaoGeral";
 import Financeiro from "./pages/Financeiro";
-import ChurnRetencao from "./pages/ChurnRetencao";
+import ChurnAnalytics from "./pages/ChurnAnalytics";
+import ClientesEmRisco from "./pages/ClientesEmRisco";
+import Cancelamentos from "./pages/Cancelamentos";
 import SelecionarCliente from "./pages/SelecionarCliente";
 
 const queryClient = new QueryClient();
@@ -75,11 +77,31 @@ const App = () => (
               }
             />
             <Route
-              path="/churn-retencao"
+              path="/churn-analytics"
               element={
                 <ProtectedRoute>
                   <MainLayout>
-                    <ChurnRetencao />
+                    <ChurnAnalytics />
+                  </MainLayout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/clientes-em-risco"
+              element={
+                <ProtectedRoute>
+                  <MainLayout>
+                    <ClientesEmRisco />
+                  </MainLayout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/cancelamentos"
+              element={
+                <ProtectedRoute>
+                  <MainLayout>
+                    <Cancelamentos />
                   </MainLayout>
                 </ProtectedRoute>
               }
