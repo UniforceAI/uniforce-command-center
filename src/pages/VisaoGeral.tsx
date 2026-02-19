@@ -337,9 +337,9 @@ const VisaoGeral = () => {
       .filter(e => e.status_contrato !== "C" && e.servico_status !== "C")
       .reduce((acc, e) => acc + (e.valor_mensalidade || 0), 0);
 
-    // Faturamento realizado (cobranças pagas)
-    const faturamentoRealizado = filteredEventos
-      .filter(e => e.event_type === "COBRANCA" && (e.cobranca_status === "Pago" || e.valor_pago))
+    // Faturamento realizado (cobranças pagas) - sem filtro de event_type para suportar SNAPSHOT
+    const faturamentoRealizado = clientesUnicos
+      .filter(e => e.cobranca_status === "Pago" || (e.valor_pago && e.valor_pago > 0))
       .reduce((acc, e) => acc + (e.valor_pago || e.valor_cobranca || 0), 0);
 
     // MRR em Risco - clientes com alerta ou risco
@@ -353,14 +353,12 @@ const VisaoGeral = () => {
     // LTV em Risco
     const ltvEmRisco = clientesEmRisco.reduce((acc, e) => acc + (e.ltv_reais_estimado || e.valor_mensalidade * 12 || 0), 0);
 
-    // RR Vencido (receita recorrente vencida)
-    const cobrancasVencidas = filteredEventos.filter(e => 
-      e.event_type === "COBRANCA" && isClienteVencido(e)
-    );
-    const rrVencido = cobrancasVencidas.reduce((acc, e) => acc + (e.valor_cobranca || 0), 0);
+    // RR Vencido (receita recorrente vencida) - sem filtro de event_type para suportar SNAPSHOT
+    const clientesVencidosArr = clientesUnicos.filter(e => isClienteVencido(e));
+    const rrVencido = clientesVencidosArr.reduce((acc, e) => acc + (e.valor_cobranca || e.valor_mensalidade || 0), 0);
 
     // Clientes vencidos únicos
-    const clientesVencidosUnicos = new Set(cobrancasVencidas.map(e => e.cliente_id)).size;
+    const clientesVencidosUnicos = clientesVencidosArr.length;
 
     // % Inadimplência = clientes com cobrança vencida / total de clientes
     const pctInadimplencia = totalClientes > 0 
@@ -368,9 +366,9 @@ const VisaoGeral = () => {
       : "0.0";
 
     // % Inadimplência Crítica (vencido > 30 dias)
-    const inadCritica = cobrancasVencidas.filter(e => e.dias_atraso && e.dias_atraso > 30);
+    const inadCritica = clientesVencidosArr.filter(e => e.dias_atraso && e.dias_atraso > 30);
     const pctInadCritica = totalClientes > 0 
-      ? (new Set(inadCritica.map(e => e.cliente_id)).size / totalClientes * 100).toFixed(1)
+      ? (inadCritica.length / totalClientes * 100).toFixed(1)
       : "0.0";
 
     // % Detratores (NPS < 7)
@@ -795,7 +793,7 @@ const VisaoGeral = () => {
   // Cobrança Inteligente
   const cobrancaInteligente = useMemo(() => {
     return filteredEventos
-      .filter(e => e.event_type === "COBRANCA" && isClienteVencido(e))
+      .filter(e => isClienteVencido(e))
       .map(e => ({
         id: e.cliente_id,
         nome: e.cliente_nome || `Cliente ${e.cliente_id}`,
