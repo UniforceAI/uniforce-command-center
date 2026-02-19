@@ -497,11 +497,33 @@ const VisaoGeral = () => {
     return map;
   }, [eventos]);
 
-  // Mapa de cliente_id → dados NPS reais (da tabela nps_check)
+  // Mapas de lookup por celular e CPF dos eventos (para match alternativo com nps_check)
+  const eventoLookupMaps = useMemo(() => {
+    const byCelular = new Map<string, number>(); // celular normalizado → cliente_id
+    const byCpf = new Map<string, number>(); // cpf/cnpj normalizado → cliente_id
+    const normalizePhone = (val: any): string | undefined => {
+      if (!val) return undefined;
+      const digits = String(val).replace(/\D/g, "");
+      return digits.length >= 8 ? digits.slice(-11) : undefined;
+    };
+    eventos.forEach(e => {
+      if (e.cliente_celular) {
+        const norm = normalizePhone(e.cliente_celular);
+        if (norm && !byCelular.has(norm)) byCelular.set(norm, e.cliente_id);
+      }
+    });
+    console.log("📱 Lookup por celular construído:", byCelular.size, "entradas");
+    return { byCelular, byCpf };
+  }, [eventos]);
+
+  // Mapa de cliente_id → dados NPS reais (match por cliente_id, celular ou CPF)
   const npsDataPorCliente = useMemo(() => {
     const map = new Map<number, { npsTotal: number; npsCount: number; detratores: number; neutros: number; promotores: number }>();
-    npsData.forEach(r => {
-      const existing = map.get(r.cliente_id);
+    
+    let matchedById = 0, matchedByCelular = 0, unmatched = 0;
+
+    const addToMap = (clienteId: number, r: typeof npsData[0]) => {
+      const existing = map.get(clienteId);
       if (existing) {
         existing.npsTotal += r.nota;
         existing.npsCount++;
@@ -509,7 +531,7 @@ const VisaoGeral = () => {
         else if (r.classificacao === "Neutro") existing.neutros++;
         else if (r.classificacao === "Promotor") existing.promotores++;
       } else {
-        map.set(r.cliente_id, {
+        map.set(clienteId, {
           npsTotal: r.nota,
           npsCount: 1,
           detratores: r.classificacao === "Detrator" ? 1 : 0,
@@ -517,9 +539,34 @@ const VisaoGeral = () => {
           promotores: r.classificacao === "Promotor" ? 1 : 0,
         });
       }
+    };
+
+    npsData.forEach(r => {
+      // 1. Tentar match direto por cliente_id (se > 0 e existe nos eventos)
+      if (r.cliente_id > 0 && clientePlanoMap.has(r.cliente_id)) {
+        addToMap(r.cliente_id, r);
+        matchedById++;
+        return;
+      }
+
+      // 2. Tentar match por celular
+      if (r.celular && eventoLookupMaps.byCelular.has(r.celular)) {
+        const clienteId = eventoLookupMaps.byCelular.get(r.celular)!;
+        addToMap(clienteId, r);
+        matchedByCelular++;
+        return;
+      }
+
+      // 3. Sem match — registrar com cliente_id original (pode não aparecer no cohort)
+      if (r.cliente_id > 0) {
+        addToMap(r.cliente_id, r);
+      }
+      unmatched++;
     });
+
+    console.log("🔗 NPS match:", { matchedById, matchedByCelular, unmatched, totalNPS: npsData.length, totalMapped: map.size });
     return map;
-  }, [npsData]);
+  }, [npsData, eventoLookupMaps, clientePlanoMap]);
 
   // Generic function to calculate cohort data for any dimension
   // eventosBase: todos os eventos filtrados (para MRR, LTV, churn, etc.)
