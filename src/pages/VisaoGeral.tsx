@@ -299,6 +299,23 @@ const VisaoGeral = () => {
   // pois o banco tem apenas o estado atual do dia. filteredEventosPeriodo = filteredEventos.
   const filteredEventosPeriodo = filteredEventos;
 
+  // Label amigável do período para exibição
+  const periodoLabel = useMemo(() => {
+    if (periodo === "todos") return "Todo o histórico";
+    const n = parseInt(periodo);
+    if (n === 7) return "Últimos 7 dias";
+    if (n === 30) return "Últimos 30 dias";
+    if (n === 90) return "Últimos 90 dias";
+    if (n === 365) return "Último ano";
+    return `Últimos ${n} dias`;
+  }, [periodo]);
+
+  // Data de início do período (relativa ao maxChamadosDate)
+  const periodoInicio = useMemo(() => {
+    if (!dataLimitePeriodo) return null;
+    return dataLimitePeriodo;
+  }, [dataLimitePeriodo]);
+
 
   // KPIs calculation
   const kpis = useMemo(() => {
@@ -1002,24 +1019,18 @@ const VisaoGeral = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header Compacto com Filtros - linha única fina */}
+      {/* Header Compacto com Filtros */}
       <header className="bg-muted/30 border-b">
-        <div className="flex items-center gap-2 flex-wrap px-3 py-1.5">
-          <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider mr-1">Filtros</span>
+        {/* Linha 1: Filtros de período e geo */}
+        <div className="flex items-center gap-2 flex-wrap px-3 py-1.5 border-b border-border/40">
           <Filter className="h-3 w-3 text-muted-foreground" />
+          <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">Filtros</span>
           
-          <div className="flex items-center gap-0.5">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span className="text-[9px] text-muted-foreground cursor-help border-b border-dashed border-muted-foreground/50">Período</span>
-              </TooltipTrigger>
-              <TooltipContent side="bottom" className="max-w-[220px]">
-                <p className="text-xs">Afeta apenas <strong>Chamados</strong> e <strong>Novos Clientes</strong>.<br/>
-                Dados financeiros e cadastrais são snapshot do dia atual e não variam com o período.</p>
-              </TooltipContent>
-            </Tooltip>
+          {/* Período com badge informativo */}
+          <div className="flex items-center gap-1 bg-primary/10 border border-primary/20 rounded px-1.5 py-0.5">
+            <span className="text-[9px] text-primary font-semibold">Período</span>
             <Select value={periodo} onValueChange={setPeriodo}>
-              <SelectTrigger className="w-[80px] h-6 text-xs bg-background">
+              <SelectTrigger className="w-[75px] h-5 text-xs bg-transparent border-0 shadow-none p-0 pl-1 text-primary font-medium">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -1032,6 +1043,10 @@ const VisaoGeral = () => {
             </Select>
           </div>
 
+          {/* Separador */}
+          <span className="text-muted-foreground/30 text-xs">|</span>
+
+          {/* Filtros geográficos e de dados */}
           <div className="flex items-center gap-0.5">
             <span className="text-[9px] text-muted-foreground">UF</span>
             <Select value={uf} onValueChange={setUf}>
@@ -1131,12 +1146,41 @@ const VisaoGeral = () => {
                   📅 Snapshot: {snapshotDate.toLocaleDateString("pt-BR")} {snapshotDate.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
                 </span>
               </TooltipTrigger>
-              <TooltipContent side="bottom" className="max-w-[260px]">
-                <p className="text-xs">Última atualização dos dados cadastrais e financeiros.<br/>
-                Chamados atualizados até: <strong>{maxChamadosDate.toLocaleDateString("pt-BR")}</strong></p>
+              <TooltipContent side="bottom" className="max-w-[280px]">
+                <p className="text-xs font-semibold mb-1">ℹ️ Sobre os dados</p>
+                <p className="text-xs"><strong>Dados financeiros/cadastrais</strong> são snapshot do dia — não variam com o filtro de período.</p>
+                <p className="text-xs mt-1"><strong>Chamados</strong> e <strong>Novos Clientes</strong> variam conforme o período selecionado.</p>
+                <p className="text-xs mt-1 text-muted-foreground">Chamados atualizados até: <strong>{maxChamadosDate.toLocaleDateString("pt-BR")}</strong></p>
               </TooltipContent>
             </Tooltip>
           )}
+        </div>
+
+        {/* Linha 2: Indicador do que o período atual afeta */}
+        <div className="flex items-center gap-3 px-3 py-1 text-[10px]">
+          <span className="text-muted-foreground">
+            <span className="font-semibold text-primary">{periodoLabel}</span>
+            {periodoInicio && (
+              <span className="text-muted-foreground ml-1">
+                ({periodoInicio.toLocaleDateString("pt-BR")} → {maxChamadosDate.toLocaleDateString("pt-BR")})
+              </span>
+            )}
+            <span className="ml-2 text-muted-foreground/70">
+              — afeta: <span className="text-foreground font-medium">🎫 Chamados ({chamadosStats.totalChamados.toLocaleString()})</span>
+              {kpis.novosClientes > 0 && <span className="text-foreground font-medium ml-2">👤 Novos Clientes ({kpis.novosClientes})</span>}
+            </span>
+          </span>
+          <span className="text-muted-foreground/50">|</span>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="text-muted-foreground/70 cursor-help">
+                🔒 <span className="border-b border-dashed border-muted-foreground/40">Fixos (snapshot)</span>: Inadimplência, MRR, Clientes Ativos
+              </span>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" className="max-w-[260px]">
+              <p className="text-xs">Estes dados refletem o estado atual da base de clientes (snapshot). Não há histórico de datas disponível no banco — para análise temporal, contate o suporte do ISP para habilitar eventos históricos.</p>
+            </TooltipContent>
+          </Tooltip>
         </div>
       </header>
 
@@ -1221,14 +1265,16 @@ const VisaoGeral = () => {
                 value={formatCurrency(kpis.rrVencido)}
                 icon={Clock}
                 variant="warning"
+                subtitle="snapshot atual"
+                tooltip="Valor total em atraso (dias_atraso > 0). Dado fixo — não varia com filtro de período."
               />
               <RiskKPICard
-                title={`Chamados (${periodo === "todos" ? "total" : periodo + "d"})`}
+                title={`Chamados`}
                 value={chamadosStats.totalChamados.toLocaleString()}
                 icon={RefreshCcw}
                 variant={chamadosStats.totalChamados > 100 ? "warning" : "default"}
-                subtitle={`${chamadosStats.clientesComChamados} clientes`}
-                tooltip={`${chamadosStats.totalReincidentes} reincidentes`}
+                subtitle={`${periodoLabel} · ${chamadosStats.clientesComChamados} clientes`}
+                tooltip={`${chamadosStats.totalReincidentes} reincidentes no período. Dado dinâmico — muda com o filtro de período.`}
                 source="tabela chamados"
               />
               <RiskKPICard
@@ -1284,9 +1330,28 @@ const VisaoGeral = () => {
                 <Card>
                   <CardContent className="pt-4">
                     <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-medium text-muted-foreground">
-                        {cohortMetricInfo.label}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium text-muted-foreground">
+                          {cohortMetricInfo.label}
+                        </span>
+                        {cohortTab === "financeiro" && (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span className="text-[9px] bg-muted text-muted-foreground px-1.5 py-0.5 rounded border cursor-help">
+                                🔒 Snapshot — não varia com período
+                              </span>
+                            </TooltipTrigger>
+                            <TooltipContent side="top" className="max-w-[240px]">
+                              <p className="text-xs">Os dados de inadimplência refletem o estado atual da base (snapshot do dia). O banco externo não fornece histórico de cobranças por data — apenas o estado atual de cada cliente.</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        )}
+                        {cohortTab === "suporte" && (
+                          <span className="text-[9px] bg-primary/10 text-primary px-1.5 py-0.5 rounded border border-primary/20">
+                            🎫 {periodoLabel}: {chamadosStats.totalChamados} chamados
+                          </span>
+                        )}
+                      </div>
                       <span className="text-xs text-muted-foreground">
                         {sortedCohortData.length} {cohortDimension === "plano" ? "planos" : cohortDimension === "cidade" ? "cidades" : "bairros"} (mín. 3 clientes)
                       </span>
