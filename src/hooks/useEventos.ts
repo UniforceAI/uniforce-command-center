@@ -42,16 +42,15 @@ export function useEventos() {
 
         console.log(`🔄 Buscando eventos (isp_id=${ispId})...`);
 
+        // Busca 1: snapshots recentes (últimos 7 dias de dados) para KPIs gerais
         const BATCH_SIZE = 1000;
-        const MAX_BATCHES = 15; // Até 15k registros para cobrir ISPs grandes
+        const MAX_BATCHES = 10;
         let allData: any[] = [];
         let hasMore = true;
 
         for (let i = 0; i < MAX_BATCHES && hasMore; i++) {
           const start = i * BATCH_SIZE;
           const end = start + BATCH_SIZE - 1;
-
-          console.log(`📥 Eventos batch ${i + 1} (${start}-${end})...`);
 
           const { data, error: batchError } = await externalSupabase
             .from("eventos")
@@ -73,59 +72,63 @@ export function useEventos() {
           }
         }
 
-        console.log(`✅ Total eventos: ${allData.length}`);
+        // Busca 2: TODOS os eventos vencidos (dias_atraso > 0) independente da data
+        // Necessário pois inadimplentes têm data_vencimento no passado e ficam fora dos batches recentes
+        let vencidosData: any[] = [];
+        let vencidosHasMore = true;
+        let vencidosPage = 0;
+        const VENCIDOS_MAX_BATCHES = 10;
+
+        while (vencidosHasMore && vencidosPage < VENCIDOS_MAX_BATCHES) {
+          const start = vencidosPage * BATCH_SIZE;
+          const end = start + BATCH_SIZE - 1;
+
+          const { data, error: vErr } = await externalSupabase
+            .from("eventos")
+            .select(ESSENTIAL_COLUMNS)
+            .eq("isp_id", ispId)
+            .gt("dias_atraso", 0)
+            .order("dias_atraso", { ascending: false })
+            .range(start, end);
+
+          if (vErr) {
+            console.warn("⚠️ Erro ao buscar vencidos:", vErr.message);
+            break;
+          }
+
+          if (data && data.length > 0) {
+            vencidosData = [...vencidosData, ...data];
+            vencidosHasMore = data.length === BATCH_SIZE;
+          } else {
+            vencidosHasMore = false;
+          }
+          vencidosPage++;
+        }
+
+        console.log(`✅ Eventos recentes: ${allData.length} | Vencidos: ${vencidosData.length}`);
+
+        // Mesclar e deduplicar por id
+        const merged = [...allData, ...vencidosData];
+
+        console.log(`✅ Total eventos recentes: ${allData.length} | Vencidos extras: ${vencidosData.length}`);
 
         const uniqueData = Array.from(
-          new Map(allData.map(item => [item.id, item])).values()
+          new Map(merged.map(item => [item.id, item])).values()
         );
 
         if (uniqueData.length > 0) {
           setColumns(Object.keys(uniqueData[0]));
-          console.log("📋 Amostra evento:", JSON.stringify(uniqueData[0]).substring(0, 500));
           
-          // DEBUG DETALHADO: campos financeiros
-          const cobrancaStatuses = new Map<string, number>();
-          const vencidoValues = new Map<string, number>();
-          const alertaTipos = new Map<string, number>();
-          let comValorCobranca = 0;
-          let comValorPago = 0;
-          let comDiasAtraso = 0;
-          let comChurnScore = 0;
-          let comGeoLat = 0;
-          let comNps = 0;
-          
-          uniqueData.forEach((e: any) => {
-            const cs = String(e.cobranca_status || "null");
-            cobrancaStatuses.set(cs, (cobrancaStatuses.get(cs) || 0) + 1);
-            const v = String(e.vencido);
-            vencidoValues.set(v, (vencidoValues.get(v) || 0) + 1);
-            if (e.alerta_tipo) alertaTipos.set(e.alerta_tipo, (alertaTipos.get(e.alerta_tipo) || 0) + 1);
-            if (e.valor_cobranca && e.valor_cobranca > 0) comValorCobranca++;
-            if (e.valor_pago && e.valor_pago > 0) comValorPago++;
-            if (e.dias_atraso && e.dias_atraso > 0) comDiasAtraso++;
-            if (e.churn_risk_score && e.churn_risk_score > 0) comChurnScore++;
-            if (e.geo_lat && e.geo_lat !== 0) comGeoLat++;
-            if (e.nps_score !== null && e.nps_score !== undefined) comNps++;
+          // Log diagnóstico
+          const comDiasAtraso = uniqueData.filter((e: any) => e.dias_atraso && e.dias_atraso > 0).length;
+          const clientesVencidosUnicos = new Set(
+            uniqueData.filter((e: any) => e.dias_atraso && e.dias_atraso > 0).map((e: any) => e.cliente_id)
+          ).size;
+          console.log("📊 DIAGNÓSTICO:", {
+            total_registros: uniqueData.length,
+            registros_com_atraso: comDiasAtraso,
+            clientes_unicos_vencidos: clientesVencidosUnicos,
           });
-          
-          console.log("📊 DIAGNÓSTICO COMPLETO:", {
-            total: uniqueData.length,
-            cobranca_status: Object.fromEntries(cobrancaStatuses),
-            vencido_values: Object.fromEntries(vencidoValues),
-            alerta_tipos: Object.fromEntries(alertaTipos),
-            comValorCobranca,
-            comValorPago,
-            comDiasAtraso,
-            comChurnScore,
-            comGeoLat,
-            comNps,
-          });
-          
-          // Amostra de 3 eventos com dados financeiros
-          const amostraFinanceira = uniqueData
-            .filter((e: any) => e.valor_cobranca || e.dias_atraso)
-            .slice(0, 3);
-          console.log("💰 Amostra financeira:", JSON.stringify(amostraFinanceira).substring(0, 1000));
           
           setEventos(uniqueData as Evento[]);
         } else {

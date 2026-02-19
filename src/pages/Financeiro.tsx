@@ -13,6 +13,7 @@ import { KPICardNew } from "@/components/shared/KPICardNew";
 import { DataTable, StatusBadge, Column } from "@/components/shared/DataTable";
 import { ExpandableCobrancaTable, ClienteAgrupado, Cobranca } from "@/components/shared/ExpandableCobrancaTable";
 import { FAIXAS_AGING } from "@/types/evento";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { 
   DollarSign, 
   TrendingUp, 
@@ -23,7 +24,8 @@ import {
   Percent,
   Clock,
   Users,
-  ArrowUpDown
+  ArrowUpDown,
+  AlertTriangle
 } from "lucide-react";
 import {
   BarChart,
@@ -260,25 +262,39 @@ const Financeiro = () => {
       .sort((a, b) => b.quantidade - a.quantidade);
   }, [filteredEventos]);
 
+  // Lista de clientes vencidos — pega o snapshot mais recente de cada cliente inadimplente
+  const clientesVencidosList = useMemo(() => {
+    // Pegar todos os eventos com dias_atraso > 0 (SNAPSHOT ou COBRANCA)
+    const vencidos = filteredEventos.filter(e => e.dias_atraso > 0);
+
+    // Guardar o registro mais recente por cliente (maior dias_atraso = mais grave)
+    const porCliente = new Map<number, typeof vencidos[0]>();
+    vencidos.forEach(e => {
+      const existing = porCliente.get(e.cliente_id);
+      if (!existing || e.dias_atraso > existing.dias_atraso) {
+        porCliente.set(e.cliente_id, e);
+      }
+    });
+
+    return Array.from(porCliente.values())
+      .sort((a, b) => b.dias_atraso - a.dias_atraso);
+  }, [filteredEventos]);
+
   // Fila de cobrança - agrupa por cliente, deduplicando por data+valor (mesma cobrança real)
   const filaCobranca = useMemo((): ClienteAgrupado[] => {
     const clientesMap = new Map<number, ClienteAgrupado>();
     const cobrancasVistas = new Set<string>();
     
-    // Filtrar eventos vencidos (COBRANCA)
-    const eventosVencidos = filteredEventos.filter(e => 
-      e.event_type === "COBRANCA" && (e.vencido === true || e.dias_atraso > 0)
-    );
+    // Usa TODOS os eventos vencidos (snapshot ou cobrança)
+    const eventosVencidos = filteredEventos.filter(e => e.dias_atraso > 0);
     
     // Ordenar por dias_atraso DESC para pegar o registro mais recente de cada cobrança
     const sorted = [...eventosVencidos].sort((a, b) => (b.dias_atraso || 0) - (a.dias_atraso || 0));
     
     sorted.forEach(e => {
       // CHAVE ÚNICA: cliente + data de vencimento + valor arredondado
-      // Isso identifica a mesma cobrança real, independente de quantos registros existam no banco
       const cobrancaKey = `${e.cliente_id}_${e.data_vencimento}_${Math.round(e.valor_cobranca || e.valor_mensalidade || 0)}`;
       
-      // Pular se já processamos essa cobrança (mantém o primeiro = maior atraso)
       if (cobrancasVistas.has(cobrancaKey)) return;
       cobrancasVistas.add(cobrancaKey);
       
@@ -613,6 +629,89 @@ const Financeiro = () => {
                 </CardContent>
               </Card>
             </div>
+
+            {/* Tabela de Clientes Vencidos */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <AlertTriangle className="h-5 w-5 text-destructive" />
+                  Clientes Inadimplentes
+                  <Badge variant="destructive" className="ml-2">
+                    {clientesVencidosList.length} clientes
+                  </Badge>
+                  <span className="text-xs font-normal text-muted-foreground ml-auto">
+                    Prova real: {clientesVencidosList.length} clientes únicos com dias_atraso &gt; 0 encontrados nos dados carregados
+                  </span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                <div className="overflow-auto max-h-[500px]">
+                  <Table>
+                    <TableHeader className="sticky top-0 bg-card z-10">
+                      <TableRow>
+                        <TableHead className="text-xs">Cliente</TableHead>
+                        <TableHead className="text-xs">Plano</TableHead>
+                        <TableHead className="text-xs text-center">Última Fatura em Aberto</TableHead>
+                        <TableHead className="text-xs text-center">Dias em Atraso</TableHead>
+                        <TableHead className="text-xs text-right">Valor Vencido</TableHead>
+                        <TableHead className="text-xs">Status</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {clientesVencidosList.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={6} className="text-center text-muted-foreground py-8 text-sm">
+                            Nenhum cliente inadimplente encontrado nos dados carregados.
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        clientesVencidosList.map((e) => {
+                          const diasAtraso = Math.round(e.dias_atraso || 0);
+                          const faixaColor = diasAtraso > 60 ? "text-destructive font-bold" :
+                                            diasAtraso > 30 ? "text-orange-600 font-semibold" :
+                                            diasAtraso > 15 ? "text-yellow-600 font-medium" : "text-muted-foreground";
+                          const vencimentoStr = e.data_vencimento
+                            ? new Date(e.data_vencimento).toLocaleDateString("pt-BR")
+                            : "—";
+                          const valor = e.valor_cobranca || e.valor_mensalidade || 0;
+                          return (
+                            <TableRow key={e.cliente_id} className="hover:bg-muted/50">
+                              <TableCell className="text-xs font-medium max-w-[180px] truncate">
+                                {e.cliente_nome || "—"}
+                              </TableCell>
+                              <TableCell className="text-xs max-w-[140px] truncate text-muted-foreground">
+                                {e.plano_nome || "—"}
+                              </TableCell>
+                              <TableCell className="text-xs text-center">
+                                {vencimentoStr}
+                              </TableCell>
+                              <TableCell className={`text-xs text-center ${faixaColor}`}>
+                                {diasAtraso}d
+                              </TableCell>
+                              <TableCell className="text-xs text-right font-medium">
+                                {valor > 0 ? `R$ ${valor.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}` : "—"}
+                              </TableCell>
+                              <TableCell className="text-xs">
+                                <Badge
+                                  variant="outline"
+                                  className={
+                                    diasAtraso > 60 ? "border-destructive text-destructive" :
+                                    diasAtraso > 30 ? "border-orange-500 text-orange-600" :
+                                    "border-yellow-500 text-yellow-600"
+                                  }
+                                >
+                                  {diasAtraso > 60 ? "Crítico" : diasAtraso > 30 ? "Grave" : "Em atraso"}
+                                </Badge>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+              </CardContent>
+            </Card>
 
             {/* Fila de Cobrança */}
             <Card>
