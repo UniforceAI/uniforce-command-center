@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Slider } from "@/components/ui/slider";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { AlertTriangle, Users, DollarSign, Target, Clock, AlertCircle, TrendingDown } from "lucide-react";
+import { AlertTriangle, Users, DollarSign, Target, Clock, AlertCircle, TrendingDown, ShieldAlert } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from "recharts";
 
@@ -18,15 +18,51 @@ const BUCKET_COLORS: Record<string, string> = {
   Crítico: "bg-red-100 text-red-800 border-red-200",
 };
 
-function getBucketFromStatus(c: ChurnStatus): string {
-  // Se tem bucket definido, usa
-  if (c.churn_risk_bucket) return c.churn_risk_bucket;
-  // Senão deriva do status e dias de atraso
-  const dias = c.dias_atraso || 0;
-  const contrato = (c.status_contrato || "").toLowerCase();
-  if (contrato === "bloqueado" || contrato === "suspenso" || dias > 60) return "Alto";
-  if (dias > 15) return "Médio";
-  return "Baixo";
+const STATUS_INTERNET: Record<string, string> = {
+  A: "Ativo",
+  CA: "Bloq. Cob. Auto",
+  CM: "Bloq. Cob. Manual",
+  B: "Bloqueado",
+  D: "Cancelado",
+  FA: "Férias",
+  S: "Suspenso",
+};
+
+const EVENTO_LABELS: Record<string, string> = {
+  inadimplencia_iniciou: "🔴 Inadimplência iniciou",
+  inadimplencia_agravou: "⬆️ Atraso agravou",
+  inadimplencia_resolvida: "✅ Pagamento efetuado",
+  bloqueio_automatico: "🔒 Bloqueio automático",
+  chamado_critico: "🚨 Chamado crítico",
+  chamado_reincidente: "📞 Chamado reincidente",
+  nps_detrator: "👎 NPS detrator",
+  cancelamento_real: "❌ Cancelamento confirmado",
+  risco_aumentou: "⚠️ Risco aumentou",
+  risco_reduziu: "📉 Risco reduziu",
+  score_critico: "🔥 Score crítico atingido",
+  suspensao_fidelidade: "📋 Suspensão de fidelidade",
+};
+
+const PRIORIDADE_COLORS: Record<string, string> = {
+  P0: "bg-red-100 text-red-800 border-red-300",
+  P1: "bg-orange-100 text-orange-800 border-orange-300",
+  P2: "bg-yellow-100 text-yellow-800 border-yellow-300",
+  P3: "bg-gray-100 text-gray-700 border-gray-200",
+};
+
+function getBucketLabel(c: ChurnStatus): string {
+  return c.churn_risk_bucket || "Baixo";
+}
+
+function getPrioridade(c: ChurnStatus): string {
+  const ltv = c.ltv_estimado ?? 0;
+  const bucket = c.churn_risk_bucket;
+  if (ltv >= 3000 && bucket === "Crítico") return "P0";
+  if (ltv >= 3000 && bucket === "Alto") return "P1";
+  if (bucket === "Crítico") return "P1";
+  if (ltv >= 1500 && bucket === "Alto") return "P2";
+  if (bucket === "Alto") return "P2";
+  return "P3";
 }
 
 function ScoreBadge({ score, bucket }: { score?: number; bucket?: string }) {
@@ -47,15 +83,9 @@ const ClientesEmRisco = () => {
   const [plano, setPlano] = useState("todos");
   const [selectedCliente, setSelectedCliente] = useState<ChurnStatus | null>(null);
 
-  // Clientes em risco: status_churn === "risco" OU bloqueados/suspensos
+  // Clientes em risco: usa status_churn direto
   const clientesRisco = useMemo(() =>
-    churnStatus.filter((c) =>
-      c.status_churn === "risco" ||
-      (c.status_contrato || "").toLowerCase() === "bloqueado" ||
-      (c.status_contrato || "").toLowerCase() === "suspenso" ||
-      (c.servico_status || "").toLowerCase() === "bloqueado" ||
-      (c.dias_atraso || 0) > 15
-    ),
+    churnStatus.filter((c) => c.status_churn === "risco"),
     [churnStatus]
   );
 
@@ -71,12 +101,11 @@ const ClientesEmRisco = () => {
 
   const filtered = useMemo(() => {
     let f = [...clientesRisco];
-    if (scoreMin > 0) f = f.filter((c) => (c.churn_risk_score || 0) >= scoreMin || (c.dias_atraso || 0) >= scoreMin);
-    if (bucket !== "todos") f = f.filter((c) => getBucketFromStatus(c) === bucket);
+    if (scoreMin > 0) f = f.filter((c) => (c.churn_risk_score || 0) >= scoreMin);
+    if (bucket !== "todos") f = f.filter((c) => getBucketLabel(c) === bucket);
     if (cidade !== "todos") f = f.filter((c) => c.cliente_cidade === cidade);
     if (plano !== "todos") f = f.filter((c) => c.plano_nome === plano);
     return f.sort((a, b) => {
-      // Prioriza: score desc, depois dias_atraso desc
       const scoreA = a.churn_risk_score ?? 0;
       const scoreB = b.churn_risk_score ?? 0;
       if (scoreB !== scoreA) return scoreB - scoreA;
@@ -88,42 +117,34 @@ const ClientesEmRisco = () => {
     const totalRisco = filtered.length;
     const mrrRisco = filtered.reduce((acc, c) => acc + (c.valor_mensalidade || 0), 0);
     const ltvRisco = filtered.reduce((acc, c) => acc + (c.ltv_estimado || 0), 0);
-    const scores = filtered.filter((c) => c.churn_risk_score != null).map((c) => c.churn_risk_score!);
+    const scores = filtered.filter((c) => c.churn_risk_score != null).map((c) => c.churn_risk_score);
     const scoreMedio = scores.length > 0 ? (scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(1) : "—";
     const diasRisco = filtered.filter((c) => c.dias_atraso != null && c.dias_atraso > 0).map((c) => c.dias_atraso!);
     const diasMedio = diasRisco.length > 0 ? Math.round(diasRisco.reduce((a, b) => a + b, 0) / diasRisco.length) : 0;
-    return { totalRisco, mrrRisco, ltvRisco, scoreMedio, diasMedio };
+    const bloqueadosCobranca = filtered.filter(c => ["CA", "CM", "B"].includes(c.status_internet || "")).length;
+    return { totalRisco, mrrRisco, ltvRisco, scoreMedio, diasMedio, bloqueadosCobranca };
   }, [filtered]);
 
-  // Eventos do cliente selecionado
+  // Eventos do cliente selecionado (churn_events)
   const clienteEvents = useMemo(() => {
     if (!selectedCliente) return [];
     return churnEvents
       .filter((e) => e.cliente_id === selectedCliente.cliente_id)
-      .sort((a, b) => new Date(b.event_date || b.created_at || "").getTime() - new Date(a.event_date || a.created_at || "").getTime())
       .slice(0, 15);
   }, [selectedCliente, churnEvents]);
 
-  // Score por componente do cliente selecionado
+  // Score por componente normalizado 0-100%
   const scoreComponentes = useMemo(() => {
     if (!selectedCliente) return [];
-    const campos = [
-      { nome: "Financeiro", valor: selectedCliente.score_financeiro },
-      { nome: "NPS", valor: selectedCliente.score_nps },
-      { nome: "Atendimento", valor: selectedCliente.score_atendimento },
-      { nome: "Uso", valor: selectedCliente.score_uso },
-    ].filter((c) => c.valor != null);
-
-    // Se nenhum score de componente, cria baseado nos dados disponíveis
-    if (campos.length === 0) {
-      const dias = selectedCliente.dias_atraso || 0;
-      return [
-        { nome: "Financeiro", valor: Math.max(0, 100 - Math.min(100, dias * 2)) },
-        { nome: "Status Serviço", valor: (selectedCliente.servico_status || "").toLowerCase() === "liberado" ? 80 : 20 },
-        { nome: "Contrato", valor: (selectedCliente.status_contrato || "").toLowerCase() === "ativo" ? 90 : 30 },
-      ];
-    }
-    return campos;
+    return [
+      { nome: "Financeiro (0-30)", valor: selectedCliente.score_financeiro ?? 0, max: 30 },
+      { nome: "Suporte (0-25)", valor: selectedCliente.score_suporte ?? 0, max: 25 },
+      { nome: "Comportamental (0-20)", valor: selectedCliente.score_comportamental ?? 0, max: 20 },
+      { nome: "Qualidade (0-25)", valor: selectedCliente.score_qualidade ?? 0, max: 25 },
+      { nome: "NPS (0-20)", valor: selectedCliente.score_nps ?? 0, max: 20 },
+    ]
+      .map(c => ({ ...c, pct: Math.round((c.valor / c.max) * 100) }))
+      .filter(c => c.max > 0);
   }, [selectedCliente]);
 
   if (isLoading) return (
@@ -167,11 +188,11 @@ const ClientesEmRisco = () => {
             <div className="flex flex-wrap items-center gap-4">
               <div className="flex items-center gap-3 min-w-[200px]">
                 <div className="flex flex-col gap-1">
-                  <span className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">Dias Atraso Mín.</span>
-                  <span className="text-xs font-mono font-bold">{scoreMin}d</span>
+                  <span className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">Score Mín.</span>
+                  <span className="text-xs font-mono font-bold">{scoreMin}</span>
                 </div>
                 <div className="w-32">
-                  <Slider min={0} max={90} step={5} value={[scoreMin]} onValueChange={(v) => setScoreMin(v[0])} />
+                  <Slider min={0} max={100} step={5} value={[scoreMin]} onValueChange={(v) => setScoreMin(v[0])} />
                 </div>
               </div>
 
@@ -219,12 +240,13 @@ const ClientesEmRisco = () => {
         </Card>
 
         {/* KPIs */}
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
           <KPICardNew title="Total em Risco" value={kpis.totalRisco.toLocaleString()} icon={AlertTriangle} variant="danger" />
           <KPICardNew title="MRR em Risco" value={`R$ ${kpis.mrrRisco.toLocaleString("pt-BR", { minimumFractionDigits: 0 })}`} icon={DollarSign} variant="warning" />
           <KPICardNew title="LTV em Risco" value={`R$ ${kpis.ltvRisco.toLocaleString("pt-BR", { minimumFractionDigits: 0 })}`} icon={TrendingDown} variant="danger" />
           <KPICardNew title="Score Médio" value={kpis.scoreMedio} icon={Target} variant="info" />
           <KPICardNew title="Dias Médios Atraso" value={kpis.diasMedio > 0 ? `${kpis.diasMedio}d` : "—"} icon={Clock} variant="default" />
+          <KPICardNew title="Bloqueados p/ Cob." value={kpis.bloqueadosCobranca.toLocaleString()} icon={ShieldAlert} variant="warning" />
         </div>
 
         {/* Tabela */}
@@ -239,17 +261,17 @@ const ClientesEmRisco = () => {
               <Table>
                 <TableHeader className="sticky top-0 bg-card z-10">
                   <TableRow>
+                    <TableHead className="text-xs whitespace-nowrap">Prioridade</TableHead>
                     <TableHead className="text-xs whitespace-nowrap">Cliente</TableHead>
                     <TableHead className="text-xs whitespace-nowrap text-center">Score/Bucket</TableHead>
                     <TableHead className="text-xs whitespace-nowrap">Status</TableHead>
                     <TableHead className="text-xs whitespace-nowrap text-center">Dias Atraso</TableHead>
                     <TableHead className="text-xs whitespace-nowrap">Plano</TableHead>
                     <TableHead className="text-xs whitespace-nowrap">Cidade</TableHead>
-                    <TableHead className="text-xs whitespace-nowrap">Serviço</TableHead>
-                    <TableHead className="text-xs whitespace-nowrap text-center">NPS</TableHead>
+                    <TableHead className="text-xs whitespace-nowrap">Internet</TableHead>
                     <TableHead className="text-xs whitespace-nowrap text-right">Mensalidade</TableHead>
                     <TableHead className="text-xs whitespace-nowrap text-right">LTV</TableHead>
-                    <TableHead className="text-xs whitespace-nowrap">Motivo / Alerta</TableHead>
+                    <TableHead className="text-xs whitespace-nowrap">Motivo</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -263,13 +285,17 @@ const ClientesEmRisco = () => {
                     </TableRow>
                   ) : (
                     filtered.map((c) => {
-                      const derivedBucket = getBucketFromStatus(c);
+                      const derivedBucket = getBucketLabel(c);
+                      const prioridade = getPrioridade(c);
                       return (
                         <TableRow
                           key={c.id || c.cliente_id}
                           className="cursor-pointer hover:bg-muted/50 transition-colors"
                           onClick={() => setSelectedCliente(c)}
                         >
+                          <TableCell>
+                            <Badge className={`${PRIORIDADE_COLORS[prioridade]} border font-mono text-xs`}>{prioridade}</Badge>
+                          </TableCell>
                           <TableCell className="text-xs font-medium max-w-[140px] truncate">{c.cliente_nome}</TableCell>
                           <TableCell className="text-center">
                             <ScoreBadge score={c.churn_risk_score} bucket={derivedBucket} />
@@ -284,8 +310,7 @@ const ClientesEmRisco = () => {
                           </TableCell>
                           <TableCell className="text-xs max-w-[110px] truncate">{c.plano_nome || "—"}</TableCell>
                           <TableCell className="text-xs max-w-[100px] truncate">{c.cliente_cidade || "—"}</TableCell>
-                          <TableCell className="text-xs">{c.servico_status || "—"}</TableCell>
-                          <TableCell className="text-center text-xs">{c.nps_ultimo_score ?? "—"}</TableCell>
+                          <TableCell className="text-xs">{STATUS_INTERNET[c.status_internet || ""] || c.status_internet || "—"}</TableCell>
                           <TableCell className="text-right text-xs">
                             {c.valor_mensalidade ? `R$ ${c.valor_mensalidade.toFixed(2)}` : "—"}
                           </TableCell>
@@ -293,7 +318,7 @@ const ClientesEmRisco = () => {
                             {c.ltv_estimado ? `R$ ${c.ltv_estimado.toLocaleString("pt-BR", { minimumFractionDigits: 0 })}` : "—"}
                           </TableCell>
                           <TableCell className="text-xs max-w-[150px] truncate text-muted-foreground">
-                            {c.motivo_risco_principal || c.alerta_tipo || "—"}
+                            {c.motivo_risco_principal || "—"}
                           </TableCell>
                         </TableRow>
                       );
@@ -308,34 +333,37 @@ const ClientesEmRisco = () => {
 
       {/* Drawer de detalhes */}
       <Sheet open={!!selectedCliente} onOpenChange={() => setSelectedCliente(null)}>
-        <SheetContent side="right" className="w-[420px] overflow-y-auto">
+        <SheetContent side="right" className="w-[440px] overflow-y-auto">
           <SheetHeader>
             <SheetTitle className="text-base">{selectedCliente?.cliente_nome}</SheetTitle>
           </SheetHeader>
 
           {selectedCliente && (
             <div className="mt-4 space-y-5">
-              {/* Score/bucket */}
+              {/* Score/bucket + prioridade */}
               <div className="flex items-center gap-3 flex-wrap">
-                <ScoreBadge score={selectedCliente.churn_risk_score} bucket={getBucketFromStatus(selectedCliente)} />
+                <ScoreBadge score={selectedCliente.churn_risk_score} bucket={getBucketLabel(selectedCliente)} />
+                <Badge className={`${PRIORIDADE_COLORS[getPrioridade(selectedCliente)]} border text-xs font-mono`}>
+                  {getPrioridade(selectedCliente)}
+                </Badge>
                 <span className="text-sm text-muted-foreground">
                   {selectedCliente.status_contrato} — {selectedCliente.cliente_cidade}
                 </span>
               </div>
 
-              {/* Score por componente */}
+              {/* Score por componente normalizado */}
               {scoreComponentes.length > 0 && (
                 <div>
-                  <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Análise de Risco</h4>
-                  <ResponsiveContainer width="100%" height={scoreComponentes.length * 32 + 20}>
+                  <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Análise de Risco por Componente</h4>
+                  <ResponsiveContainer width="100%" height={scoreComponentes.length * 36 + 20}>
                     <BarChart data={scoreComponentes} layout="vertical" margin={{ left: 0 }}>
                       <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                      <XAxis type="number" domain={[0, 100]} tick={{ fontSize: 10 }} />
-                      <YAxis type="category" dataKey="nome" tick={{ fontSize: 10 }} width={90} />
-                      <Tooltip formatter={(v: any) => [`${v}`, "Score"]} />
-                      <Bar dataKey="valor" radius={[0, 4, 4, 0]}>
+                      <XAxis type="number" domain={[0, 100]} tick={{ fontSize: 10 }} tickFormatter={v => `${v}%`} />
+                      <YAxis type="category" dataKey="nome" tick={{ fontSize: 9 }} width={115} />
+                      <Tooltip formatter={(v: any, _n, props) => [`${props.payload.valor} de ${props.payload.max} pts (${v}%)`, "Score"]} />
+                      <Bar dataKey="pct" radius={[0, 4, 4, 0]}>
                         {scoreComponentes.map((entry, idx) => (
-                          <Cell key={idx} fill={(entry.valor || 0) >= 70 ? "#22c55e" : (entry.valor || 0) >= 40 ? "#eab308" : "#ef4444"} />
+                          <Cell key={idx} fill={entry.pct >= 60 ? "#ef4444" : entry.pct >= 30 ? "#f97316" : "#eab308"} />
                         ))}
                       </Bar>
                     </BarChart>
@@ -343,44 +371,47 @@ const ClientesEmRisco = () => {
                 </div>
               )}
 
-              {/* Resumo financeiro */}
+              {/* Resumo financeiro completo */}
               <div>
-                <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Resumo Financeiro</h4>
+                <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Resumo Financeiro & Operacional</h4>
                 <div className="space-y-1.5 text-sm">
                   <div className="flex justify-between"><span className="text-muted-foreground">Mensalidade</span><span>R$ {(selectedCliente.valor_mensalidade || 0).toFixed(2)}</span></div>
-                  <div className="flex justify-between"><span className="text-muted-foreground">LTV Estimado</span><span>{selectedCliente.ltv_estimado ? `R$ ${selectedCliente.ltv_estimado.toLocaleString("pt-BR")}` : "N/A"}</span></div>
+                  <div className="flex justify-between"><span className="text-muted-foreground">LTV Estimado</span><span>{selectedCliente.ltv_estimado ? `R$ ${selectedCliente.ltv_estimado.toLocaleString("pt-BR")}` : "—"}</span></div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Dias em Atraso</span>
-                    <span className={(selectedCliente.dias_atraso || 0) > 0 ? "text-destructive font-medium" : ""}>
-                      {selectedCliente.dias_atraso ? `${Math.round(selectedCliente.dias_atraso)}d` : "0d"}
+                    <span className={(selectedCliente.dias_atraso || 0) > 30 ? "text-destructive font-bold" : (selectedCliente.dias_atraso || 0) > 0 ? "text-orange-500 font-medium" : ""}>
+                      {selectedCliente.dias_atraso ? `${Math.round(selectedCliente.dias_atraso)}d` : "Em dia"}
                     </span>
                   </div>
-                  <div className="flex justify-between"><span className="text-muted-foreground">NPS</span><span>{selectedCliente.nps_ultimo_score ?? "N/A"}</span></div>
-                  <div className="flex justify-between"><span className="text-muted-foreground">Plano</span><span className="text-right max-w-[180px] truncate">{selectedCliente.plano_nome}</span></div>
-                  <div className="flex justify-between"><span className="text-muted-foreground">Status Serviço</span><span>{selectedCliente.servico_status || "N/A"}</span></div>
-                  <div className="flex justify-between"><span className="text-muted-foreground">Status Contrato</span><span>{selectedCliente.status_contrato || "N/A"}</span></div>
+                  {selectedCliente.faixa_atraso && (
+                    <div className="flex justify-between"><span className="text-muted-foreground">Faixa Atraso</span><span>{selectedCliente.faixa_atraso}</span></div>
+                  )}
+                  <div className="flex justify-between"><span className="text-muted-foreground">Plano</span><span className="text-right max-w-[200px] truncate">{selectedCliente.plano_nome || "—"}</span></div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Status Internet</span>
+                    <span>{STATUS_INTERNET[selectedCliente.status_internet || ""] || selectedCliente.status_internet || "—"}</span>
+                  </div>
+                  <div className="flex justify-between"><span className="text-muted-foreground">Status Contrato</span><span>{selectedCliente.status_contrato || "—"}</span></div>
+                  {selectedCliente.desbloqueio_confianca && (
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Desbloqueio Confiança</span>
+                      <Badge variant="outline" className="text-xs">{selectedCliente.desbloqueio_confianca}</Badge>
+                    </div>
+                  )}
+                  <div className="flex justify-between"><span className="text-muted-foreground">Chamados 30d / 90d</span><span>{selectedCliente.qtd_chamados_30d ?? "—"} / {selectedCliente.qtd_chamados_90d ?? "—"}</span></div>
+                  {selectedCliente.ultimo_atendimento_data && (
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Último Atendimento</span>
+                      <span>{new Date(selectedCliente.ultimo_atendimento_data).toLocaleDateString("pt-BR")}</span>
+                    </div>
+                  )}
                   {selectedCliente.tempo_cliente_meses != null && (
-                    <div className="flex justify-between"><span className="text-muted-foreground">Tempo como cliente</span><span>{selectedCliente.tempo_cliente_meses} meses</span></div>
+                    <div className="flex justify-between"><span className="text-muted-foreground">Tempo como Cliente</span><span>{selectedCliente.tempo_cliente_meses} meses</span></div>
                   )}
                 </div>
               </div>
 
-              {/* Ações recomendadas */}
-              {(selectedCliente.acao_recomendada_1 || selectedCliente.acao_recomendada_2 || selectedCliente.acao_recomendada_3) && (
-                <div>
-                  <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Ações Recomendadas</h4>
-                  <div className="space-y-1">
-                    {[selectedCliente.acao_recomendada_1, selectedCliente.acao_recomendada_2, selectedCliente.acao_recomendada_3]
-                      .filter(Boolean)
-                      .map((a, i) => (
-                        <div key={i} className="text-xs bg-muted rounded px-2 py-1.5">• {a}</div>
-                      ))
-                    }
-                  </div>
-                </div>
-              )}
-
-              {/* Últimos eventos */}
+              {/* Histórico de eventos churn_events */}
               <div>
                 <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
                   Histórico de Eventos {clienteEvents.length > 0 && `(${clienteEvents.length})`}
@@ -390,21 +421,31 @@ const ClientesEmRisco = () => {
                     {clienteEvents.map((e, idx) => (
                       <div key={idx} className="rounded-md border p-2 text-xs space-y-0.5">
                         <div className="flex justify-between items-center">
-                          <span className="font-medium">{e.event_type}</span>
+                          <span className="font-medium">{EVENTO_LABELS[e.tipo_evento] || e.tipo_evento}</span>
                           <span className="text-muted-foreground">
-                            {e.event_date ? new Date(e.event_date).toLocaleDateString("pt-BR") : "—"}
+                            {e.data_evento ? new Date(e.data_evento).toLocaleDateString("pt-BR") : "—"}
                           </span>
                         </div>
-                        {e.cobranca_status && (
-                          <div className="text-muted-foreground">Cobrança: {e.cobranca_status}{e.dias_atraso ? ` · ${Math.round(e.dias_atraso)}d atraso` : ""}</div>
+                        {e.descricao && (
+                          <div className="text-muted-foreground">{e.descricao}</div>
                         )}
-                        {e.motivo && <div className="text-muted-foreground">Alerta: {e.motivo}</div>}
-                        {e.detalhes && <div className="text-muted-foreground truncate">Ação: {e.detalhes}</div>}
+                        {e.dados_evento && Object.keys(e.dados_evento).length > 0 && (
+                          <div className="text-muted-foreground truncate">
+                            {Object.entries(e.dados_evento)
+                              .map(([k, v]) => `${k}: ${v}`)
+                              .join(" · ")}
+                          </div>
+                        )}
+                        {e.peso_evento >= 3 && (
+                          <Badge variant="outline" className="text-[10px]">
+                            Peso {e.peso_evento}/5
+                          </Badge>
+                        )}
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <p className="text-xs text-muted-foreground">Nenhum evento encontrado.</p>
+                  <p className="text-xs text-muted-foreground">Nenhum evento encontrado nos últimos 90 dias.</p>
                 )}
               </div>
             </div>
