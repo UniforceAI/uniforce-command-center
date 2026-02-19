@@ -42,22 +42,7 @@ const Index = () => {
         console.log("🔄 Buscando chamados do Supabase externo...");
         console.log(`🏢 Filtro multi-tenant: isp_id = ${ispId}`);
 
-        // Primeiro, verificar total sem filtro para debug
-        const { count: totalSemFiltro } = await externalSupabase
-          .from("chamados")
-          .select("*", { count: "exact", head: true });
-        
-        console.log(`📊 Total SEM filtro: ${totalSemFiltro}`);
-
-        // Verificar quais isp_ids existem
-        const { data: ispIds } = await externalSupabase
-          .from("chamados")
-          .select("isp_id")
-          .limit(10);
-        
-        console.log(`🔍 ISP IDs encontrados:`, ispIds?.map(r => r.isp_id));
-
-        // Agora com filtro
+        // Contar total com filtro de ISP
         const { count: totalCount, error: countError } = await externalSupabase
           .from("chamados")
           .select("*", { count: "exact", head: true })
@@ -70,10 +55,13 @@ const Index = () => {
 
         console.log(`📊 Total com filtro (${ispId}): ${totalCount}`);
 
-        // Buscar em batches de 1000
+        // Buscar em batches de 1000 - com limite máximo para performance
         const BATCH_SIZE = 1000;
-        const totalBatches = Math.ceil((totalCount || 0) / BATCH_SIZE);
+        const MAX_BATCHES = 15; // Máximo 15K registros (suficiente após deduplicação por protocolo)
+        const totalBatches = Math.min(Math.ceil((totalCount || 0) / BATCH_SIZE), MAX_BATCHES);
         let allData: any[] = [];
+
+        console.log(`📊 Total: ${totalCount}, buscando ${totalBatches} batches (max ${MAX_BATCHES})`);
 
         for (let i = 0; i < totalBatches; i++) {
           const start = i * BATCH_SIZE;
@@ -97,11 +85,21 @@ const Index = () => {
 
         console.log(`✅ Total de registros buscados: ${allData.length}`);
 
+        // Deduplicar por protocolo + id_cliente (manter registro mais recente)
+        const uniqueMap = new Map<string, any>();
+        allData.forEach((item: any) => {
+          const key = `${item.id_cliente}_${item.protocolo}`;
+          const existing = uniqueMap.get(key);
+          if (!existing || (item.updated_at && (!existing.updated_at || item.updated_at > existing.updated_at))) {
+            uniqueMap.set(key, item);
+          }
+        });
+        const uniqueData = Array.from(uniqueMap.values());
+        console.log(`📊 Após deduplicação: ${uniqueData.length} chamados únicos (de ${allData.length})`);
+
         // Transformar dados do banco para o formato esperado
-        // Usar mapeamento de categorias para converter ID para nome
-        const chamadosTransformados: Chamado[] = allData.map((item: any) => {
+        const chamadosTransformados: Chamado[] = uniqueData.map((item: any) => {
           const categoria = item.categoria || "";
-          // Usar o mapeamento de categorias para obter o nome
           const motivoFinal = getCategoriaName(categoria);
           
           return {
@@ -115,7 +113,7 @@ const Index = () => {
             Categoria: categoria,
             "Motivo do Contato": motivoFinal,
             Origem: item.origem || "",
-            Solicitante: item.solicitante || item.id_cliente || "", // Fallback para id_cliente se não houver nome
+            Solicitante: item.solicitante || item.id_cliente || "",
             Urgência: item.urgencia || "",
             Status: item.status || "",
             "Dias ultimo chamado": item.dias_desde_ultimo ?? null,
@@ -123,25 +121,13 @@ const Index = () => {
             Classificação: item.classificacao || "",
             Insight: item.insight || "",
             "Chamados Anteriores": item.chamados_anteriores || "",
-            _id: item.id, // ID único do banco
+            _id: item.id,
             isp_id: item.isp_id || null,
             instancia_isp: item.instancia_isp || null,
           };
         });
 
         console.log(`✅ ${chamadosTransformados.length} chamados transformados`);
-        
-        // Log de amostra para debug
-        if (allData.length > 0) {
-          console.log("📋 Amostra de dados raw:", allData[0]);
-          console.log("📋 Amostra transformada:", chamadosTransformados[0]);
-        }
-
-        // Log de debug: contar chamados por cliente ALLAN
-        const allanChamados = chamadosTransformados.filter(c => 
-          c.Solicitante?.toLowerCase().includes('allan')
-        );
-        console.log(`🔍 Chamados do ALLAN encontrados: ${allanChamados.length}`, allanChamados);
 
         setChamados(chamadosTransformados);
       } catch (error: any) {
