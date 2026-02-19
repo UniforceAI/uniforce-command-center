@@ -255,35 +255,48 @@ const VisaoGeral = () => {
     return filtered;
   }, [eventos, uf, cidade, bairro, plano, status, filial]);
 
-  // Calcula a data limite para o período selecionado — usada para filtrar chamados e novos clientes
+  // Data do snapshot mais recente (para mostrar ao usuário quando foi a última atualização)
+  const snapshotDate = useMemo(() => {
+    if (eventos.length === 0) return null;
+    let maxDate = new Date(0);
+    eventos.forEach(e => {
+      const d = new Date(e.event_datetime || e.created_at);
+      if (!isNaN(d.getTime()) && d > maxDate) maxDate = d;
+    });
+    return maxDate.getTime() > 0 ? maxDate : null;
+  }, [eventos]);
+
+  // Data máxima dos chamados (referência real para o filtro de período em chamados)
+  // Os chamados têm data_abertura no formato "DD/MM/YYYY HH:MM:SS"
+  const maxChamadosDate = useMemo(() => {
+    if (chamados.length === 0) return new Date();
+    let maxDate = new Date(0);
+    chamados.forEach(c => {
+      try {
+        let d: Date | null = null;
+        if (c.data_abertura && c.data_abertura.includes("/")) {
+          const [datePart] = c.data_abertura.split(" ");
+          const [dia, mes, ano] = datePart.split("/");
+          d = new Date(parseInt(ano), parseInt(mes) - 1, parseInt(dia));
+        } else if (c.data_abertura) {
+          d = new Date(c.data_abertura);
+        }
+        if (d && !isNaN(d.getTime()) && d > maxDate) maxDate = d;
+      } catch (e) {}
+    });
+    return maxDate.getTime() > 0 ? maxDate : new Date();
+  }, [chamados]);
+
+  // Calcula a data limite RELATIVA à data máxima dos chamados (não Date.now())
+  // Isso evita que "7 dias" retorne vazio quando os dados têm delay de sincronização
   const dataLimitePeriodo = useMemo(() => {
     if (periodo === "todos") return null;
-    const hoje = new Date();
-    const limite = new Date();
-    limite.setDate(hoje.getDate() - parseInt(periodo));
+    const limite = new Date(maxChamadosDate.getTime() - parseInt(periodo) * 24 * 60 * 60 * 1000);
     return limite;
-  }, [periodo]);
+  }, [periodo, maxChamadosDate]);
 
-  // DIAGNÓSTICO: log das datas e inadimplentes reais
-  useEffect(() => {
-    if (filteredEventos.length === 0) return;
-    const comDiasAtraso = filteredEventos.filter(e => e.dias_atraso && Number(e.dias_atraso) > 0);
-    const datasVencimento = comDiasAtraso.slice(0, 5).map(e => ({
-      cliente: e.cliente_nome,
-      dias_atraso: e.dias_atraso,
-      data_vencimento: e.data_vencimento,
-      cobranca_status: e.cobranca_status,
-    }));
-    console.log("💰 INADIMPLENTES REAIS:", {
-      total: comDiasAtraso.length,
-      amostra: datasVencimento,
-    });
-  }, [filteredEventos]);
-
-  // filteredEventosPeriodo — para fins financeiros/inadimplência NÃO filtramos por data_vencimento
-  // pois o snapshot salva a PRÓXIMA cobrança (futura). Inadimplência = dias_atraso > 0 em qualquer evento.
-  // O período afeta apenas chamados e novos clientes (data_instalacao).
-  // Para cohort financeiro: todos os eventos filtrados geograficamente.
+  // Para dados financeiros (snapshots): o período NÃO altera dados cadastrais/financeiros
+  // pois o banco tem apenas o estado atual do dia. filteredEventosPeriodo = filteredEventos.
   const filteredEventosPeriodo = filteredEventos;
 
 
@@ -324,15 +337,11 @@ const VisaoGeral = () => {
       .filter(e => e.cobranca_status === "Pago" || (e.valor_pago && e.valor_pago > 0))
       .reduce((acc, e) => acc + (e.valor_pago || e.valor_cobranca || 0), 0);
 
-    // Novos clientes (instalados no período)
-    const hoje = new Date();
-    const diasPeriodo = periodo === "todos" ? 365 : parseInt(periodo);
-    const dataLimite = new Date();
-    dataLimite.setDate(hoje.getDate() - diasPeriodo);
-    const novosClientes = clientesUnicos.filter(e => {
+    // Novos clientes (instalados no período — relativo a snapshotDate, não hoje)
+    const novosClientes = dataLimitePeriodo ? clientesUnicos.filter(e => {
       const dataInstalacao = e.data_instalacao ? new Date(e.data_instalacao) : null;
-      return dataInstalacao && !isNaN(dataInstalacao.getTime()) && dataInstalacao >= dataLimite;
-    }).length;
+      return dataInstalacao && !isNaN(dataInstalacao.getTime()) && dataInstalacao >= dataLimitePeriodo;
+    }).length : clientesUnicos.length;
 
     // INADIMPLÊNCIA: usa TODOS os clientes únicos (snapshot captura próxima fatura - data futura)
     // dias_atraso > 0 é o único campo confiável para identificar inadimplência real
@@ -414,7 +423,7 @@ const VisaoGeral = () => {
       ltvMeses,
       ticketMedio,
     };
-  }, [filteredEventos, periodo, eventos]);
+  }, [filteredEventos, dataLimitePeriodo, eventos]);
 
   // Chamados por cliente - memoizado para performance
   const chamadosStats = useMemo(() => {
@@ -1000,7 +1009,15 @@ const VisaoGeral = () => {
           <Filter className="h-3 w-3 text-muted-foreground" />
           
           <div className="flex items-center gap-0.5">
-            <span className="text-[9px] text-muted-foreground">Período</span>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="text-[9px] text-muted-foreground cursor-help border-b border-dashed border-muted-foreground/50">Período</span>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" className="max-w-[220px]">
+                <p className="text-xs">Afeta apenas <strong>Chamados</strong> e <strong>Novos Clientes</strong>.<br/>
+                Dados financeiros e cadastrais são snapshot do dia atual e não variam com o período.</p>
+              </TooltipContent>
+            </Tooltip>
             <Select value={periodo} onValueChange={setPeriodo}>
               <SelectTrigger className="w-[80px] h-6 text-xs bg-background">
                 <SelectValue />
@@ -1107,6 +1124,19 @@ const VisaoGeral = () => {
           </div>
 
           <IspActions className="ml-auto" />
+          {snapshotDate && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="text-[9px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded border cursor-help">
+                  📅 Snapshot: {snapshotDate.toLocaleDateString("pt-BR")} {snapshotDate.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+                </span>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" className="max-w-[260px]">
+                <p className="text-xs">Última atualização dos dados cadastrais e financeiros.<br/>
+                Chamados atualizados até: <strong>{maxChamadosDate.toLocaleDateString("pt-BR")}</strong></p>
+              </TooltipContent>
+            </Tooltip>
+          )}
         </div>
       </header>
 
