@@ -176,12 +176,12 @@ const ClientesEmRisco = () => {
   const getScoreTotalReal = useCallback((cliente: ChurnStatus): number => {
     const suporteReal = getScoreSuporteReal(cliente);
     const npsReal = getScoreNPSReal(cliente);
-    const financeiro = cliente.score_financeiro ?? 0;
-    // Qualidade e comportamental escalados pela config
-    const qualidadeBase = 25; // max original
+    // Financeiro: escala pelo config.faturaAtrasada (max original = 30 no banco)
+    const financeiro = Math.round(((cliente.score_financeiro ?? 0) / 30) * config.faturaAtrasada);
+    const qualidadeBase = 25;
     const qualidade = Math.round(((cliente.score_qualidade ?? 0) / qualidadeBase) * config.qualidade);
     const comportamental = Math.round(((cliente.score_comportamental ?? 0) / 20) * config.comportamental);
-    return Math.max(0, Math.min(200, financeiro + suporteReal + comportamental + qualidade + npsReal));
+    return Math.max(0, Math.min(500, financeiro + suporteReal + comportamental + qualidade + npsReal));
   }, [getScoreSuporteReal, getScoreNPSReal, config]);
 
   const filtered = useMemo(() => {
@@ -268,7 +268,7 @@ const ClientesEmRisco = () => {
     const qualidade = Math.round(((selectedCliente.score_qualidade ?? 0) / qualidadeBase) * config.qualidade);
     const comportamental = Math.round(((selectedCliente.score_comportamental ?? 0) / 20) * config.comportamental);
     return [
-      { nome: `Financeiro (0-30)`, valor: selectedCliente.score_financeiro ?? 0, max: 30 },
+      { nome: `Financeiro (0-${config.faturaAtrasada})`, valor: Math.round(((selectedCliente.score_financeiro ?? 0) / 30) * config.faturaAtrasada), max: config.faturaAtrasada },
       { nome: `Suporte (0-${config.chamados30dBase})`, valor: suporteReal, max: config.chamados30dBase + config.chamadoAdicional * 4 },
       { nome: `Comportamental (0-${config.comportamental})`, valor: comportamental, max: config.comportamental },
       { nome: `Qualidade (0-${config.qualidade})`, valor: qualidade, max: config.qualidade },
