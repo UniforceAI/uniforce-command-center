@@ -4,6 +4,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
+import { ChurnScoreConfigProvider } from "@/contexts/ChurnScoreConfigContext";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { MainLayout } from "@/components/layout/MainLayout";
 import Index from "./pages/Index";
@@ -16,6 +17,7 @@ import ChurnAnalytics from "./pages/ChurnAnalytics";
 import ClientesEmRisco from "./pages/ClientesEmRisco";
 import Cancelamentos from "./pages/Cancelamentos";
 import SelecionarCliente from "./pages/SelecionarCliente";
+import ConfiguracaoChurnScore from "./pages/ConfiguracaoChurnScore";
 
 const queryClient = new QueryClient();
 
@@ -26,6 +28,7 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <AuthProvider>
+          <ChurnScoreConfigProvider>
           <Routes>
             <Route path="/auth" element={<Auth />} />
             <Route
@@ -116,8 +119,19 @@ const App = () => (
                 </ProtectedRoute>
               }
             />
+            <Route
+              path="/configuracoes/churn-score"
+              element={
+                <ProtectedRoute>
+                  <MainLayout>
+                    <ConfiguracaoChurnScore />
+                  </MainLayout>
+                </ProtectedRoute>
+              }
+            />
             <Route path="*" element={<NotFound />} />
           </Routes>
+          </ChurnScoreConfigProvider>
         </AuthProvider>
       </BrowserRouter>
     </TooltipProvider>
