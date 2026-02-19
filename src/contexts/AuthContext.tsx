@@ -39,57 +39,71 @@ export const useAuth = () => useContext(AuthContext);
  * 2. isps → isp_nome, instancia_isp
  * 3. user_roles → role
  */
+/**
+ * Mapa estático de domínios → ISP info (mesmo do authUtils).
+ * Usado como fallback quando o profile externo não existe.
+ */
+const DOMAIN_ISP_MAP: Record<string, { isp_id: string; isp_nome: string; instancia_isp: string }> = {
+  "agytelecom.com.br": { isp_id: "agy-telecom", isp_nome: "AGY Telecom", instancia_isp: "agy" },
+  "d-kiros.com.br": { isp_id: "d-kiros", isp_nome: "D-Kiros", instancia_isp: "dkiros" },
+  "dkiros.com.br": { isp_id: "d-kiros", isp_nome: "D-Kiros", instancia_isp: "dkiros" },
+  "uniforce.com.br": { isp_id: "agy-telecom", isp_nome: "AGY Telecom", instancia_isp: "agy" },
+};
+
 async function fetchUserProfile(userId: string, email: string): Promise<AuthProfile | null> {
-  // 1. Buscar profile pelo user_id (id = auth.users.id)
-  const { data: profile, error: profileErr } = await externalSupabase
+  // 1. Tentar buscar profile no banco externo
+  const { data: profile } = await externalSupabase
     .from("profiles")
     .select("id, isp_id, full_name, email")
     .eq("id", userId)
     .maybeSingle();
 
-  if (profileErr) {
-    console.error("❌ Erro ao buscar profile:", profileErr);
-    return null;
+  // 2. Se profile existe E tem isp_id, buscar ISP e role
+  if (profile?.isp_id) {
+    const { data: isp } = await externalSupabase
+      .from("isps")
+      .select("isp_id, isp_nome, instancia_isp")
+      .eq("isp_id", profile.isp_id)
+      .maybeSingle();
+
+    const { data: roleData } = await externalSupabase
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", userId)
+      .eq("isp_id", profile.isp_id)
+      .maybeSingle();
+
+    if (isp) {
+      return {
+        user_id: userId,
+        isp_id: isp.isp_id,
+        isp_nome: isp.isp_nome,
+        instancia_isp: isp.instancia_isp,
+        full_name: profile.full_name || email,
+        email: profile.email || email,
+        role: roleData?.role || "viewer",
+      };
+    }
   }
 
-  if (!profile || !profile.isp_id) {
-    console.warn("⚠️ Profile não encontrado para user:", userId);
-    return null;
+  // 3. Fallback: derivar ISP do domínio do email
+  const domain = email.split("@")[1]?.toLowerCase();
+  const ispInfo = domain ? DOMAIN_ISP_MAP[domain] : null;
+
+  if (ispInfo) {
+    return {
+      user_id: userId,
+      isp_id: ispInfo.isp_id,
+      isp_nome: ispInfo.isp_nome,
+      instancia_isp: ispInfo.instancia_isp,
+      full_name: profile?.full_name || email.split("@")[0],
+      email: email,
+      role: "admin", // fallback for known domains
+    };
   }
 
-  // 2. Buscar ISP
-  const { data: isp, error: ispErr } = await externalSupabase
-    .from("isps")
-    .select("isp_id, isp_nome, instancia_isp")
-    .eq("isp_id", profile.isp_id)
-    .maybeSingle();
-
-  if (ispErr || !isp) {
-    console.error("❌ Erro ao buscar ISP:", ispErr);
-    return null;
-  }
-
-  // 3. Buscar role
-  const { data: roleData, error: roleErr } = await externalSupabase
-    .from("user_roles")
-    .select("role")
-    .eq("user_id", userId)
-    .eq("isp_id", profile.isp_id)
-    .maybeSingle();
-
-  if (roleErr) {
-    console.error("❌ Erro ao buscar role:", roleErr);
-  }
-
-  return {
-    user_id: userId,
-    isp_id: isp.isp_id,
-    isp_nome: isp.isp_nome,
-    instancia_isp: isp.instancia_isp,
-    full_name: profile.full_name || email,
-    email: profile.email || email,
-    role: roleData?.role || "viewer",
-  };
+  console.warn("⚠️ Nenhum ISP encontrado para:", email);
+  return null;
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
