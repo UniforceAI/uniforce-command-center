@@ -43,7 +43,7 @@ export function useEventos() {
         console.log(`🔄 Buscando eventos (isp_id=${ispId})...`);
 
         const BATCH_SIZE = 1000;
-        const MAX_BATCHES = 10; // Aumentado para cobrir ISPs com mais dados
+        const MAX_BATCHES = 15; // Até 15k registros para cobrir ISPs grandes
         let allData: any[] = [];
         let hasMore = true;
 

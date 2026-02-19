@@ -9,7 +9,9 @@ const EXTERNAL_SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3M
 export const ISP_ID = "agy-telecom";
 
 // Cliente do Supabase externo para dados
+// auth.storageKey diferente para evitar conflito com o cliente principal
 export const externalSupabase = createClient(
   EXTERNAL_SUPABASE_URL,
-  EXTERNAL_SUPABASE_ANON_KEY
+  EXTERNAL_SUPABASE_ANON_KEY,
+  { auth: { storageKey: "external-supabase-auth", persistSession: false } }
 );
