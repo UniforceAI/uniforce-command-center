@@ -39,6 +39,16 @@ const App = () => (
               element={
                 <ProtectedRoute>
                   <MainLayout>
+                    <VisaoGeral />
+                  </MainLayout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/chamados"
+              element={
+                <ProtectedRoute>
+                  <MainLayout>
                     <Index />
                   </MainLayout>
                 </ProtectedRoute>

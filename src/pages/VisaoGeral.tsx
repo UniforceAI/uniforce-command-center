@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
+import { useActiveIsp } from "@/hooks/useActiveIsp";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -164,6 +165,7 @@ const VisaoGeral = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const { profile, signOut } = useAuth();
+  const { ispNome } = useActiveIsp();
   const { eventos, isLoading, error } = useEventos();
   const { chamados, getChamadosPorCliente, isLoading: isLoadingChamados } = useChamados();
 
@@ -1042,93 +1044,121 @@ const VisaoGeral = () => {
       {/* Header Compacto com Filtros - linha única fina */}
       <header className="bg-muted/30 border-b">
         <div className="flex items-center gap-2 flex-wrap px-3 py-1.5">
-          <Filter className="h-3.5 w-3.5 text-muted-foreground" />
+          <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider mr-1">Filtros</span>
+          <Filter className="h-3 w-3 text-muted-foreground" />
           
-          <Select value={periodo} onValueChange={setPeriodo}>
-            <SelectTrigger className="w-[80px] h-6 text-xs bg-background">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="7">7 dias</SelectItem>
-              <SelectItem value="30">30 dias</SelectItem>
-              <SelectItem value="90">90 dias</SelectItem>
-              <SelectItem value="365">1 ano</SelectItem>
-              <SelectItem value="todos">Todos</SelectItem>
-            </SelectContent>
-          </Select>
+          <div className="flex items-center gap-0.5">
+            <span className="text-[9px] text-muted-foreground">Período</span>
+            <Select value={periodo} onValueChange={setPeriodo}>
+              <SelectTrigger className="w-[80px] h-6 text-xs bg-background">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="7">7 dias</SelectItem>
+                <SelectItem value="30">30 dias</SelectItem>
+                <SelectItem value="90">90 dias</SelectItem>
+                <SelectItem value="365">1 ano</SelectItem>
+                <SelectItem value="todos">Todos</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
 
-          <Select value={uf} onValueChange={setUf}>
-            <SelectTrigger className="w-[80px] h-6 text-xs bg-background">
-              <SelectValue placeholder="UF" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="todos">Todas</SelectItem>
-              {filterOptions.ufs.map(u => (
-                <SelectItem key={u} value={u}>{u}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <div className="flex items-center gap-0.5">
+            <span className="text-[9px] text-muted-foreground">UF</span>
+            <Select value={uf} onValueChange={setUf}>
+              <SelectTrigger className="w-[70px] h-6 text-xs bg-background">
+                <SelectValue placeholder="UF" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todos">Todas</SelectItem>
+                {filterOptions.ufs.map(u => (
+                  <SelectItem key={u} value={u}>{u}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
 
-          <Select value={cidade} onValueChange={setCidade}>
-            <SelectTrigger className="w-[90px] h-6 text-xs bg-background">
-              <SelectValue placeholder="Cidade" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="todos">Todas</SelectItem>
-              {filterOptions.cidades.map(c => (
-                <SelectItem key={c} value={c}>{c}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <div className="flex items-center gap-0.5">
+            <span className="text-[9px] text-muted-foreground">Cidade</span>
+            <Select value={cidade} onValueChange={setCidade}>
+              <SelectTrigger className="w-[90px] h-6 text-xs bg-background">
+                <SelectValue placeholder="Cidade" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todos">Todas</SelectItem>
+                {filterOptions.cidades.map(c => (
+                  <SelectItem key={c} value={c}>{c}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
 
-          <Select value={bairro} onValueChange={setBairro}>
-            <SelectTrigger className="w-[90px] h-6 text-xs bg-background">
-              <SelectValue placeholder="Bairro" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="todos">Todos</SelectItem>
-              {filterOptions.bairros.map(b => (
-                <SelectItem key={b} value={b}>{b}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <div className="flex items-center gap-0.5">
+            <span className="text-[9px] text-muted-foreground">Bairro</span>
+            <Select value={bairro} onValueChange={setBairro}>
+              <SelectTrigger className="w-[90px] h-6 text-xs bg-background">
+                <SelectValue placeholder="Bairro" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todos">Todos</SelectItem>
+                {filterOptions.bairros.map(b => (
+                  <SelectItem key={b} value={b}>{b}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
 
-          <Select value={plano} onValueChange={setPlano}>
-            <SelectTrigger className="w-[100px] h-6 text-xs bg-background">
-              <SelectValue placeholder="Plano" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="todos">Todos</SelectItem>
-              {filterOptions.planos.map(p => (
-                <SelectItem key={p} value={p}>{p.length > 20 ? p.substring(0, 20) + "…" : p}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <div className="flex items-center gap-0.5">
+            <span className="text-[9px] text-muted-foreground">Plano</span>
+            <Select value={plano} onValueChange={setPlano}>
+              <SelectTrigger className="w-[100px] h-6 text-xs bg-background">
+                <SelectValue placeholder="Plano" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todos">Todos</SelectItem>
+                {filterOptions.planos.map(p => (
+                  <SelectItem key={p} value={p}>{p.length > 20 ? p.substring(0, 20) + "…" : p}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
 
-          <Select value={status} onValueChange={setStatus}>
-            <SelectTrigger className="w-[80px] h-6 text-xs bg-background">
-              <SelectValue placeholder="Status" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="todos">Todos</SelectItem>
-              <SelectItem value="A">Ativo</SelectItem>
-              <SelectItem value="D">Desativado</SelectItem>
-              <SelectItem value="B">Bloqueado</SelectItem>
-              <SelectItem value="C">Cancelado</SelectItem>
-            </SelectContent>
-          </Select>
+          <div className="flex items-center gap-0.5">
+            <span className="text-[9px] text-muted-foreground">Status</span>
+            <Select value={status} onValueChange={setStatus}>
+              <SelectTrigger className="w-[80px] h-6 text-xs bg-background">
+                <SelectValue placeholder="Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todos">Todos</SelectItem>
+                <SelectItem value="A">Ativo</SelectItem>
+                <SelectItem value="D">Desativado</SelectItem>
+                <SelectItem value="B">Bloqueado</SelectItem>
+                <SelectItem value="C">Cancelado</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
 
-          <Select value={filial} onValueChange={setFilial}>
-            <SelectTrigger className="w-[90px] h-6 text-xs bg-background">
-              <SelectValue placeholder="Filial" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="todos">Todas</SelectItem>
-              {filterOptions.filiais.map(f => (
-                <SelectItem key={f} value={f}>Filial {f}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <div className="flex items-center gap-0.5">
+            <span className="text-[9px] text-muted-foreground">Filial</span>
+            <Select value={filial} onValueChange={setFilial}>
+              <SelectTrigger className="w-[90px] h-6 text-xs bg-background">
+                <SelectValue placeholder="Filial" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todos">Todas</SelectItem>
+                {filterOptions.filiais.map(f => (
+                  <SelectItem key={f} value={f}>Filial {f}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="ml-auto">
+            <Badge variant="outline" className="text-[10px] h-5 font-medium">
+              {ispNome}
+            </Badge>
+          </div>
         </div>
       </header>
 

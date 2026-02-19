@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
+import { useActiveIsp } from "@/hooks/useActiveIsp";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -40,6 +41,7 @@ const Financeiro = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const { signOut } = useAuth();
+  const { ispNome } = useActiveIsp();
   const { eventos, isLoading, error, columns } = useEventos();
 
   // Filtros
@@ -387,6 +389,7 @@ const Financeiro = () => {
               <p className="text-muted-foreground mt-1">Inadimplência e Recuperação</p>
             </div>
             <div className="flex items-center gap-4">
+              <Badge variant="outline" className="text-xs font-medium">{ispNome}</Badge>
               <div className="text-sm text-muted-foreground">
                 {filteredEventos.length} eventos financeiros
               </div>
