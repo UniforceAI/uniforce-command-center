@@ -262,10 +262,15 @@ const Financeiro = () => {
       .sort((a, b) => b.quantidade - a.quantidade);
   }, [filteredEventos]);
 
-  // Lista de clientes vencidos — pega o snapshot mais recente de cada cliente inadimplente
+  // Lista de clientes vencidos — usa TODOS os eventos sem filtro de período
+  // (inadimplência é acumulada, não depende do período selecionado)
   const clientesVencidosList = useMemo(() => {
+    const todosEventosFinanceiros = eventos.filter(e =>
+      e.event_type === "COBRANCA" ||
+      (e.event_type === "SNAPSHOT" && (e.cobranca_status || e.valor_cobranca || e.data_vencimento))
+    );
     // Pegar todos os eventos com dias_atraso > 0 (SNAPSHOT ou COBRANCA)
-    const vencidos = filteredEventos.filter(e => e.dias_atraso > 0);
+    const vencidos = todosEventosFinanceiros.filter(e => e.dias_atraso > 0);
 
     // Guardar o registro mais recente por cliente (maior dias_atraso = mais grave)
     const porCliente = new Map<number, typeof vencidos[0]>();
@@ -639,9 +644,6 @@ const Financeiro = () => {
                   <Badge variant="destructive" className="ml-2">
                     {clientesVencidosList.length} clientes
                   </Badge>
-                  <span className="text-xs font-normal text-muted-foreground ml-auto">
-                    Prova real: {clientesVencidosList.length} clientes únicos com dias_atraso &gt; 0 encontrados nos dados carregados
-                  </span>
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-0">
@@ -713,29 +715,6 @@ const Financeiro = () => {
               </CardContent>
             </Card>
 
-            {/* Fila de Cobrança */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <DollarSign className="h-5 w-5 text-orange-500" />
-                  Fila de Cobrança Inteligente
-                  <Badge variant="secondary" className="ml-2">
-                    {filaCobranca.length} clientes
-                  </Badge>
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ExpandableCobrancaTable
-                  data={filaCobranca}
-                  emptyMessage="Nenhuma cobrança pendente identificada"
-                  actions={[
-                    { label: "Ver detalhes", onClick: (item) => console.log("Detalhes:", item) },
-                    { label: "Marcar em negociação", onClick: (item) => console.log("Negociação:", item) },
-                    { label: "Gerar lembrete", onClick: (item) => console.log("Lembrete:", item) },
-                  ]}
-                />
-              </CardContent>
-            </Card>
           </>
         )}
       </main>
