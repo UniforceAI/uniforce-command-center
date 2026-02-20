@@ -9,6 +9,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useEventos } from "@/hooks/useEventos";
 import { useChamados } from "@/hooks/useChamados";
 import { useNPSData } from "@/hooks/useNPSData";
+import { useChurnData } from "@/hooks/useChurnData";
 
 import { Evento } from "@/types/evento";
 import { AlertasMapa } from "@/components/map/AlertasMapa";
@@ -171,6 +172,7 @@ const VisaoGeral = () => {
   const { eventos, isLoading, error } = useEventos();
   const { chamados, getChamadosPorCliente, isLoading: isLoadingChamados } = useChamados();
   const { npsData } = useNPSData(ispId);
+  const { churnStatus } = useChurnData();
 
   // Filtros
   const [periodo, setPeriodo] = useState("7");
@@ -482,6 +484,17 @@ const VisaoGeral = () => {
     };
   }, [chamados, getChamadosPorCliente, periodo]);
 
+  // Mapa de cliente_id cancelado vindo de churn_status (fonte de verdade para cancelamentos)
+  const canceladosChurnMap = useMemo(() => {
+    const map = new Set<number>();
+    churnStatus.forEach(cs => {
+      if (cs.status_churn === "cancelado") {
+        map.add(cs.cliente_id);
+      }
+    });
+    return map;
+  }, [churnStatus]);
+
   // Criar mapa de cliente -> plano/cidade/bairro para usar em chamados
   const clientePlanoMap = useMemo(() => {
     const map = new Map<number, { plano: string; cidade: string | null; bairro: string | null }>();
@@ -494,8 +507,18 @@ const VisaoGeral = () => {
         });
       }
     });
+    // Complementar com dados do churn_status (para clientes que cancelaram e não têm evento recente)
+    churnStatus.forEach(cs => {
+      if (!map.has(cs.cliente_id)) {
+        map.set(cs.cliente_id, {
+          plano: cs.plano_nome || "Sem plano",
+          cidade: getCidadeNome(cs.cliente_cidade),
+          bairro: cs.cliente_bairro || null,
+        });
+      }
+    });
     return map;
-  }, [eventos]);
+  }, [eventos, churnStatus]);
 
   // Mapas de lookup por celular e CPF dos eventos (para match alternativo com nps_check)
   const eventoLookupMaps = useMemo(() => {
@@ -580,28 +603,21 @@ const VisaoGeral = () => {
       key: string; 
       label: string;
       total: number; 
-      // Churn/Risco
       risco: number;
       cancelados: number;
-      // Contratos
       ativos: number;
       bloqueados: number;
-      // Financeiro - conta CLIENTES ÚNICOS vencidos NO PERÍODO
       clientesVencidos: number;
       valorVencido: number;
-      // Suporte (placeholder - aguardando dados)
       chamados: number;
       reincidentes: number;
-      // Rede
       comDowntime: number;
       comAlerta: number;
-      // NPS
       npsTotal: number;
       npsCount: number;
       detratores: number;
       neutros: number;
       promotores: number;
-      // LTV
       ltvTotal: number;
       mrrTotal: number;
       mesesTotal: number;
@@ -611,7 +627,6 @@ const VisaoGeral = () => {
 
     const clientesPorKey = new Map<string, Set<number>>();
     const clienteContado = new Map<string, Set<number>>();
-    const clientesVencidosPorKey = new Map<string, Set<number>>();
     
     const getKey = (e: Evento): string | null => {
       switch (dimension) {
@@ -636,7 +651,6 @@ const VisaoGeral = () => {
       
       if (!clientesPorKey.has(key)) {
         clientesPorKey.set(key, new Set());
-        clientesVencidosPorKey.set(key, new Set());
       }
       clientesPorKey.get(key)!.add(e.cliente_id);
       
@@ -687,11 +701,14 @@ const VisaoGeral = () => {
           }
         }
         
-        // Contratos
-        if (e.status_contrato === "C" || e.servico_status === "C") {
-          stats[key].cancelados++;
-        } else if (e.servico_status === "B" || e.status_contrato === "B") {
+        // Contratos: bloqueados identificados pelos status reais do IXC
+        if (e.servico_status === "B" || e.status_contrato === "B" || e.servico_status === "CA" || e.servico_status === "CM") {
           stats[key].bloqueados++;
+        } else if (e.servico_status === "D" || e.status_contrato === "D") {
+          // Desativados sem confirmação churn_status: conta como cancelado só se churn_status não disponível
+          if (!canceladosChurnMap.has(e.cliente_id)) {
+            stats[key].cancelados++;
+          }
         } else {
           stats[key].ativos++;
         }
@@ -724,11 +741,48 @@ const VisaoGeral = () => {
       }
     });
 
+    // Terceiro passo: integrar cancelados reais da tabela churn_status
+    if (canceladosChurnMap.size > 0) {
+      const canceladosContados = new Map<string, Set<number>>();
+      churnStatus.forEach(cs => {
+        if (cs.status_churn !== "cancelado") return;
+        const infoCliente = clientePlanoMap.get(cs.cliente_id);
+
+        let key: string | null = null;
+        switch (dimension) {
+          case "plano": key = (infoCliente?.plano) || cs.plano_nome || null; break;
+          case "cidade": key = (infoCliente?.cidade) || getCidadeNome(cs.cliente_cidade); break;
+          case "bairro": key = (infoCliente?.bairro) || cs.cliente_bairro || null; break;
+        }
+        if (!key) return;
+
+        if (!stats[key]) {
+          stats[key] = { 
+            key, label: getLabel(key, dimension),
+            total: 0, risco: 0, cancelados: 0, ativos: 0, bloqueados: 0,
+            clientesVencidos: 0, valorVencido: 0, chamados: 0, reincidentes: 0,
+            comDowntime: 0, comAlerta: 0, npsTotal: 0, npsCount: 0, detratores: 0, neutros: 0, promotores: 0,
+            ltvTotal: 0, mrrTotal: 0, mesesTotal: 0, mesesCount: 0, topClientes: []
+          };
+          clientesPorKey.set(key, new Set());
+        }
+
+        if (!canceladosContados.has(key)) canceladosContados.set(key, new Set());
+        const set = canceladosContados.get(key)!;
+        if (!set.has(cs.cliente_id)) {
+          set.add(cs.cliente_id);
+          stats[key].cancelados++;
+          if (!clientesPorKey.get(key)?.has(cs.cliente_id)) {
+            clientesPorKey.get(key)!.add(cs.cliente_id);
+            stats[key].mrrTotal += cs.valor_mensalidade || 0;
+          }
+        }
+      });
+    }
+
     // Add total count
     clientesPorKey.forEach((clientes, key) => {
-      if (stats[key]) {
-        stats[key].total = clientes.size;
-      }
+      if (stats[key]) stats[key].total = clientes.size;
     });
 
     // Integrar dados de chamados
@@ -793,7 +847,7 @@ const VisaoGeral = () => {
   // Cohort data based on selected dimension
   const cohortData = useMemo(() => {
     return calculateCohortData(cohortDimension, filteredEventos, filteredEventosPeriodo);
-  }, [filteredEventos, filteredEventosPeriodo, cohortDimension, chamadosStats, clientePlanoMap, npsDataPorCliente]);
+  }, [filteredEventos, filteredEventosPeriodo, cohortDimension, chamadosStats, clientePlanoMap, npsDataPorCliente, canceladosChurnMap, churnStatus]);
 
   // Sorted cohort data based on selected tab - FILTRAR planos com mínimo de clientes
   const sortedCohortData = useMemo(() => {
@@ -860,7 +914,7 @@ const VisaoGeral = () => {
   // Top 5 Data - calculado com sua própria dimensão independente
   const top5Data = useMemo(() => {
     return calculateCohortData(top5Dimension, filteredEventos, filteredEventosPeriodo);
-  }, [filteredEventos, filteredEventosPeriodo, top5Dimension, chamadosStats, clientePlanoMap, npsDataPorCliente]);
+  }, [filteredEventos, filteredEventosPeriodo, top5Dimension, chamadosStats, clientePlanoMap, npsDataPorCliente, canceladosChurnMap, churnStatus]);
 
   // Top 5 por métrica selecionada - mostra TAXA REAL (não distribuição)
   const top5Risco = useMemo(() => {
