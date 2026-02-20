@@ -300,9 +300,54 @@ const VisaoGeral = () => {
     return limite;
   }, [periodo, maxChamadosDate]);
 
-  // Para dados financeiros (snapshots): o período NÃO altera dados cadastrais/financeiros
-  // pois o banco tem apenas o estado atual do dia. filteredEventosPeriodo = filteredEventos.
-  const filteredEventosPeriodo = filteredEventos;
+  // Data máxima de vencimento encontrada no banco (referência para financeiro)
+  // Usamos data_vencimento como base temporal de cobranças
+  const maxVencimentoDate = useMemo(() => {
+    let maxDate = new Date(0);
+    eventos.forEach(e => {
+      if (!e.data_vencimento) return;
+      try {
+        // Suporta formatos: YYYY-MM-DD, DD/MM/YYYY
+        let d: Date | null = null;
+        const raw = String(e.data_vencimento).replace(" ", "T");
+        if (raw.includes("/")) {
+          const [dia, mes, ano] = raw.split("/");
+          d = new Date(parseInt(ano), parseInt(mes) - 1, parseInt(dia));
+        } else {
+          d = new Date(raw);
+        }
+        if (d && !isNaN(d.getTime()) && d > maxDate) maxDate = d;
+      } catch (_) {}
+    });
+    return maxDate.getTime() > 0 ? maxDate : new Date();
+  }, [eventos]);
+
+  // Data limite para financeiro: relativa ao vencimento mais recente no banco
+  const dataLimiteFinanceiro = useMemo(() => {
+    if (periodo === "todos") return null;
+    return new Date(maxVencimentoDate.getTime() - parseInt(periodo) * 24 * 60 * 60 * 1000);
+  }, [periodo, maxVencimentoDate]);
+
+  // Para dados financeiros: filtra por data_vencimento dentro do período
+  const filteredEventosPeriodo = useMemo(() => {
+    if (!dataLimiteFinanceiro) return filteredEventos;
+    return filteredEventos.filter(e => {
+      if (!e.data_vencimento) return true; // sem data de vencimento, sempre inclui
+      try {
+        const raw = String(e.data_vencimento).replace(" ", "T");
+        let d: Date | null = null;
+        if (raw.includes("/")) {
+          const [dia, mes, ano] = raw.split("/");
+          d = new Date(parseInt(ano), parseInt(mes) - 1, parseInt(dia));
+        } else {
+          d = new Date(raw);
+        }
+        return d && !isNaN(d.getTime()) && d >= dataLimiteFinanceiro;
+      } catch (_) {
+        return true;
+      }
+    });
+  }, [filteredEventos, dataLimiteFinanceiro]);
 
   // Label amigável do período para exibição
   const periodoLabel = useMemo(() => {
@@ -539,13 +584,51 @@ const VisaoGeral = () => {
     return { byCelular, byCpf };
   }, [eventos]);
 
+  // Data máxima de resposta NPS (referência para filtro de período do NPS)
+  const maxNpsDate = useMemo(() => {
+    let maxDate = new Date(0);
+    npsData.forEach(r => {
+      if (!r.data_resposta) return;
+      const d = new Date(r.data_resposta.replace(" ", "T"));
+      if (!isNaN(d.getTime()) && d > maxDate) maxDate = d;
+    });
+    return maxDate.getTime() > 0 ? maxDate : new Date();
+  }, [npsData]);
+
+  // Data limite para NPS: relativa à resposta mais recente
+  const dataLimiteNPS = useMemo(() => {
+    if (periodo === "todos") return null;
+    return new Date(maxNpsDate.getTime() - parseInt(periodo) * 24 * 60 * 60 * 1000);
+  }, [periodo, maxNpsDate]);
+
+  // NPS filtrado por período e filtros geográficos/plano
+  const npsDataFiltrado = useMemo(() => {
+    return npsData.filter(r => {
+      // Filtro de período por data_resposta
+      if (dataLimiteNPS && r.data_resposta) {
+        const d = new Date(r.data_resposta.replace(" ", "T"));
+        if (!isNaN(d.getTime()) && d < dataLimiteNPS) return false;
+      }
+      return true;
+    });
+  }, [npsData, dataLimiteNPS]);
+
   // Mapa de cliente_id → dados NPS reais (match por cliente_id, celular ou CPF)
+  // Filtrado por período (data_resposta) e respeitando filtros geográficos via clientePlanoMap
   const npsDataPorCliente = useMemo(() => {
     const map = new Map<number, { npsTotal: number; npsCount: number; detratores: number; neutros: number; promotores: number }>();
     
     let matchedById = 0, matchedByCelular = 0, unmatched = 0;
 
     const addToMap = (clienteId: number, r: typeof npsData[0]) => {
+      // Filtro geográfico: só incluir se o cliente está no mapa filtrado (geo/plano)
+      const infoCliente = clientePlanoMap.get(clienteId);
+      if (!infoCliente && clienteId > 0) {
+        // Cliente não encontrado nos eventos filtrados — verificar se filtros geo estão ativos
+        const geoFiltroAtivo = cidade !== "todos" || bairro !== "todos" || plano !== "todos" || uf !== "todos";
+        if (geoFiltroAtivo) return; // Excluir se filtro geo está ativo e cliente não tem dados
+      }
+
       const existing = map.get(clienteId);
       if (existing) {
         existing.npsTotal += r.nota;
@@ -564,7 +647,7 @@ const VisaoGeral = () => {
       }
     };
 
-    npsData.forEach(r => {
+    npsDataFiltrado.forEach(r => {
       // 1. Tentar match direto por cliente_id (se > 0 e existe nos eventos)
       if (r.cliente_id > 0 && clientePlanoMap.has(r.cliente_id)) {
         addToMap(r.cliente_id, r);
@@ -587,32 +670,31 @@ const VisaoGeral = () => {
       unmatched++;
     });
 
-    console.log("🔗 NPS match:", { matchedById, matchedByCelular, unmatched, totalNPS: npsData.length, totalMapped: map.size });
+    console.log("🔗 NPS match:", { matchedById, matchedByCelular, unmatched, totalNPS: npsDataFiltrado.length, totalMapped: map.size });
     return map;
-  }, [npsData, eventoLookupMaps, clientePlanoMap]);
+  }, [npsDataFiltrado, eventoLookupMaps, clientePlanoMap, cidade, bairro, plano, uf]);
 
-  // Cohort direto de cancelamentos via churn_status — mais preciso que inferir via eventos
-  // Agrupa cancelados por plano/cidade/bairro usando a fonte de verdade, respeitando o filtro de período
+  // Data máxima de cancelamento (referência para filtro de período de churn)
+  const maxCancelamentoDate = useMemo(() => {
+    let maxDate = new Date(0);
+    churnStatus.forEach(cs => {
+      if (cs.status_churn === "cancelado" && cs.data_cancelamento) {
+        const d = new Date(cs.data_cancelamento);
+        if (!isNaN(d.getTime()) && d > maxDate) maxDate = d;
+      }
+    });
+    return maxDate.getTime() > 0 ? maxDate : new Date();
+  }, [churnStatus]);
+
+  // Data limite para churn: relativa ao cancelamento mais recente no banco
+  const dataLimiteChurn = useMemo(() => {
+    if (periodo === "todos") return null;
+    return new Date(maxCancelamentoDate.getTime() - parseInt(periodo) * 24 * 60 * 60 * 1000);
+  }, [periodo, maxCancelamentoDate]);
+
+  // Cohort direto de cancelamentos via churn_status
   const churnCohortDirect = useMemo(() => {
     const stats: Record<string, { cancelados: number; label: string }> = {};
-
-    // Calcular data limite baseada no período selecionado
-    // Para churn, usamos data_cancelamento que é a data real do cancelamento
-    const dataLimiteChurn: Date | null = (() => {
-      if (periodo === "todos") return null;
-      // Encontrar data de cancelamento mais recente como referência
-      let maxDate = new Date(0);
-      churnStatus.forEach(cs => {
-        if (cs.status_churn === "cancelado" && cs.data_cancelamento) {
-          const d = new Date(cs.data_cancelamento);
-          if (!isNaN(d.getTime()) && d > maxDate) maxDate = d;
-        }
-      });
-      // Se não encontrar referência, usa hoje
-      const ref = maxDate.getTime() > 0 ? maxDate : new Date();
-      const limite = new Date(ref.getTime() - parseInt(periodo) * 24 * 60 * 60 * 1000);
-      return limite;
-    })();
 
     const getKey = (cs: typeof churnStatus[0]): string | null => {
       switch (cohortDimension) {
@@ -626,13 +708,11 @@ const VisaoGeral = () => {
     churnStatus.forEach(cs => {
       if (cs.status_churn !== "cancelado") return;
 
-      // Aplicar filtro de período usando data_cancelamento
       if (dataLimiteChurn && cs.data_cancelamento) {
         const dataCancelamento = new Date(cs.data_cancelamento);
         if (!isNaN(dataCancelamento.getTime()) && dataCancelamento < dataLimiteChurn) return;
       }
 
-      // Aplicar filtros geográficos/plano se selecionados
       if (cidade !== "todos" && String(cs.cliente_cidade) !== cidade && getCidadeNome(cs.cliente_cidade) !== cidade) return;
       if (bairro !== "todos" && cs.cliente_bairro !== bairro) return;
       if (plano !== "todos" && cs.plano_nome !== plano) return;
@@ -645,15 +725,17 @@ const VisaoGeral = () => {
     });
 
     return stats;
-  }, [churnStatus, cohortDimension, periodo, cidade, bairro, plano]);
+  }, [churnStatus, cohortDimension, dataLimiteChurn, cidade, bairro, plano]);
 
   // Generic function to calculate cohort data for any dimension
   // eventosBase: todos os eventos filtrados (para MRR, LTV, churn, etc.)
   // eventosPeriodo: eventos filtrados pelo período (para inadimplência financeira)
+  // dataLimiteChurnParam: data limite para filtrar cancelamentos no cohort geral
   const calculateCohortData = (
     dimension: "plano" | "cidade" | "bairro",
     eventosBase: Evento[],
-    eventosPeriodo: Evento[]
+    eventosPeriodo: Evento[],
+    dataLimiteChurnParam: Date | null = null
   ) => {
     const stats: Record<string, { 
       key: string; 
@@ -802,6 +884,13 @@ const VisaoGeral = () => {
       const canceladosContados = new Map<string, Set<number>>();
       churnStatus.forEach(cs => {
         if (cs.status_churn !== "cancelado") return;
+
+        // Aplicar filtro de período para cancelamentos no cohort geral
+        if (dataLimiteChurnParam && cs.data_cancelamento) {
+          const dataCancelamento = new Date(cs.data_cancelamento);
+          if (!isNaN(dataCancelamento.getTime()) && dataCancelamento < dataLimiteChurnParam) return;
+        }
+
         const infoCliente = clientePlanoMap.get(cs.cliente_id);
 
         let key: string | null = null;
@@ -902,8 +991,8 @@ const VisaoGeral = () => {
 
   // Cohort data based on selected dimension
   const cohortData = useMemo(() => {
-    return calculateCohortData(cohortDimension, filteredEventos, filteredEventosPeriodo);
-  }, [filteredEventos, filteredEventosPeriodo, cohortDimension, chamadosStats, clientePlanoMap, npsDataPorCliente, canceladosChurnMap, churnStatus]);
+    return calculateCohortData(cohortDimension, filteredEventos, filteredEventosPeriodo, dataLimiteChurn);
+  }, [filteredEventos, filteredEventosPeriodo, cohortDimension, chamadosStats, clientePlanoMap, npsDataPorCliente, canceladosChurnMap, churnStatus, dataLimiteChurn]);
 
   // Para o tab Churn: usar churnCohortDirect como fonte principal (todos os cancelados reais),
   // enriquecido com total de clientes do cohortData para calcular churnPct corretamente
@@ -1006,8 +1095,8 @@ const VisaoGeral = () => {
 
   // Top 5 Data - calculado com sua própria dimensão independente
   const top5Data = useMemo(() => {
-    return calculateCohortData(top5Dimension, filteredEventos, filteredEventosPeriodo);
-  }, [filteredEventos, filteredEventosPeriodo, top5Dimension, chamadosStats, clientePlanoMap, npsDataPorCliente, canceladosChurnMap, churnStatus]);
+    return calculateCohortData(top5Dimension, filteredEventos, filteredEventosPeriodo, dataLimiteChurn);
+  }, [filteredEventos, filteredEventosPeriodo, top5Dimension, chamadosStats, clientePlanoMap, npsDataPorCliente, canceladosChurnMap, churnStatus, dataLimiteChurn]);
 
   // Top 5 por métrica selecionada - mostra TAXA REAL (não distribuição)
   const top5Risco = useMemo(() => {
