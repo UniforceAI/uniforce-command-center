@@ -591,6 +591,32 @@ const VisaoGeral = () => {
     return map;
   }, [npsData, eventoLookupMaps, clientePlanoMap]);
 
+  // Cohort direto de cancelamentos via churn_status — mais preciso que inferir via eventos
+  // Agrupa TODOS os cancelados por plano/cidade/bairro usando a fonte de verdade
+  const churnCohortDirect = useMemo(() => {
+    const stats: Record<string, { cancelados: number; label: string }> = {};
+
+    const getKey = (cs: typeof churnStatus[0]): string | null => {
+      switch (cohortDimension) {
+        case "plano": return cs.plano_nome || "Sem plano";
+        case "cidade": return getCidadeNome(cs.cliente_cidade) || "Desconhecida";
+        case "bairro": return cs.cliente_bairro || "Desconhecido";
+        default: return null;
+      }
+    };
+
+    churnStatus.forEach(cs => {
+      if (cs.status_churn !== "cancelado") return;
+      const key = getKey(cs);
+      if (!key) return;
+      const label = cohortDimension === "plano" && key.length > 45 ? key.substring(0, 45) + "..." : key;
+      if (!stats[key]) stats[key] = { cancelados: 0, label };
+      stats[key].cancelados++;
+    });
+
+    return stats;
+  }, [churnStatus, cohortDimension]);
+
   // Generic function to calculate cohort data for any dimension
   // eventosBase: todos os eventos filtrados (para MRR, LTV, churn, etc.)
   // eventosPeriodo: eventos filtrados pelo período (para inadimplência financeira)
@@ -849,17 +875,54 @@ const VisaoGeral = () => {
     return calculateCohortData(cohortDimension, filteredEventos, filteredEventosPeriodo);
   }, [filteredEventos, filteredEventosPeriodo, cohortDimension, chamadosStats, clientePlanoMap, npsDataPorCliente, canceladosChurnMap, churnStatus]);
 
+  // Para o tab Churn: usar churnCohortDirect como fonte principal (todos os cancelados reais),
+  // enriquecido com total de clientes do cohortData para calcular churnPct corretamente
+  const churnSortedData = useMemo(() => {
+    // Total de clientes por chave (de eventos + churnStatus) para calcular denominador
+    const totalPorChave: Record<string, number> = {};
+    cohortData.forEach(item => {
+      totalPorChave[item.key] = item.total;
+    });
+    // Total de cancelados direto da churn_status
+    const totalCanceladosGeral = Object.values(churnCohortDirect).reduce((s, d) => s + d.cancelados, 0);
+
+    return Object.entries(churnCohortDirect)
+      .map(([key, d]) => {
+        const totalClientes = totalPorChave[key] || d.cancelados; // se só há cancelados, total = cancelados
+        const churnPct = totalClientes > 0 ? (d.cancelados / totalClientes) * 100 : 100;
+        return {
+          key,
+          label: d.label,
+          cancelados: d.cancelados,
+          total: totalClientes,
+          churnPct,
+          // campos dummy para compatibilidade
+          ativos: 0, bloqueados: 0, clientesVencidos: 0, valorVencido: 0,
+          chamados: 0, reincidentes: 0, comDowntime: 0, comAlerta: 0,
+          npsTotal: 0, npsCount: 0, detratores: 0, neutros: 0, promotores: 0,
+          ltvTotal: 0, mrrTotal: 0, mesesTotal: 0, mesesCount: 0, topClientes: [],
+          contratosPct: 0, financeiroPct: 0, suportePct: 0, redePct: 0, npsPct: 0,
+          npsMedia: 0, ltvMedio: 0, mesesMedio: 0, ticketMedio: 0,
+        };
+      })
+      .filter(item => item.cancelados > 0)
+      .sort((a, b) => b.cancelados - a.cancelados)
+      .slice(0, 15);
+  }, [churnCohortDirect, cohortData]);
+
   // Sorted cohort data based on selected tab - FILTRAR planos com mínimo de clientes
   const sortedCohortData = useMemo(() => {
+    // Para Churn: usar cálculo direto de churn_status (muito mais completo)
+    if (cohortTab === "churn") return churnSortedData;
+
     const sortKey = {
-      churn: "churnPct",
       contratos: "contratosPct", 
       financeiro: "financeiroPct",
       suporte: "chamados",
       rede: "redePct",
       nps: "npsCount",
       ltv: "ltvMedio",
-    }[cohortTab] || "churnPct";
+    }[cohortTab] || "financeiroPct";
 
     // Para NPS: filtrar grupos com ao menos 1 resposta NPS
     // Para outros: filtrar grupos com mínimo de 3 clientes
@@ -870,13 +933,13 @@ const VisaoGeral = () => {
     return [...filtered]
       .sort((a, b) => (b as any)[sortKey] - (a as any)[sortKey])
       .slice(0, 12);
-  }, [cohortData, cohortTab]);
+  }, [cohortData, cohortTab, churnSortedData]);
 
   // Metric info for current tab
   const cohortMetricInfo = useMemo(() => {
     const dimensionLabel = cohortDimension === "plano" ? "Plano" : cohortDimension === "cidade" ? "Cidade" : "Bairro";
     const info: Record<string, { dataKey: string; label: string; format: (v: number) => string }> = {
-      churn: { dataKey: "churnPct", label: `% Churn por ${dimensionLabel}`, format: (v) => `${v.toFixed(1)}%` },
+      churn: { dataKey: "cancelados", label: `Cancelamentos por ${dimensionLabel}`, format: (v) => `${v} cancelados` },
       contratos: { dataKey: "contratosPct", label: `% Bloqueados por ${dimensionLabel}`, format: (v) => `${v.toFixed(1)}%` },
       financeiro: { dataKey: "financeiroPct", label: `% Inadimplência por ${dimensionLabel}`, format: (v) => `${v.toFixed(1)}%` },
       suporte: { dataKey: "chamados", label: `Total Chamados por ${dimensionLabel}`, format: (v) => `${v}` },
@@ -1467,7 +1530,10 @@ const VisaoGeral = () => {
                         )}
                       </div>
                       <span className="text-xs text-muted-foreground">
-                        {sortedCohortData.length} {cohortDimension === "plano" ? "planos" : cohortDimension === "cidade" ? "cidades" : "bairros"} (mín. 3 clientes)
+                        {cohortTab === "churn"
+                          ? `${sortedCohortData.length} ${cohortDimension === "plano" ? "planos" : cohortDimension === "cidade" ? "cidades" : "bairros"} · ${sortedCohortData.reduce((s, d) => s + (d.cancelados || 0), 0)} cancelados (churn_status)`
+                          : `${sortedCohortData.length} ${cohortDimension === "plano" ? "planos" : cohortDimension === "cidade" ? "cidades" : "bairros"} (mín. 3 clientes)`
+                        }
                       </span>
                     </div>
                     {sortedCohortData.length > 0 ? (
@@ -1556,7 +1622,7 @@ const VisaoGeral = () => {
                           <XAxis 
                             type="number" 
                             domain={[0, 'auto']}
-                            tickFormatter={(v) => (cohortTab === "ltv") ? `R$${(v/1000).toFixed(0)}k` : cohortTab === "suporte" ? `${v}` : `${v.toFixed(1)}%`}
+                            tickFormatter={(v) => (cohortTab === "ltv") ? `R$${(v/1000).toFixed(0)}k` : (cohortTab === "suporte" || cohortTab === "churn") ? `${v}` : `${v.toFixed(1)}%`}
                             fontSize={11}
                           />
                           <YAxis 
@@ -1584,8 +1650,9 @@ const VisaoGeral = () => {
                                     )}
                                     {cohortTab === "churn" && (
                                       <>
-                                        <p><span className="text-destructive font-medium">{value.toFixed(1)}%</span> de churn</p>
-                                        <p>Cancelados: <span className="text-foreground font-medium">{data.cancelados}</span> de {data.total} clientes</p>
+                                        <p>Cancelados: <span className="text-destructive font-medium">{data.cancelados}</span> clientes</p>
+                                        <p>Churn rate: <span className="text-foreground font-medium">{data.total > 0 ? (data.cancelados / data.total * 100).toFixed(1) : "—"}%</span> ({data.cancelados} de {data.total} total)</p>
+                                        <p className="text-[10px] text-muted-foreground mt-1">Fonte: tabela churn_status</p>
                                       </>
                                     )}
                                     {cohortTab === "ltv" && (
