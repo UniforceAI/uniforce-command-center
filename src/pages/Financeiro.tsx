@@ -53,6 +53,17 @@ const Financeiro = () => {
   const [metodo, setMetodo] = useState("todos");
   const [filial, setFilial] = useState("todos");
   const [ordemPlanoDecrescente, setOrdemPlanoDecrescente] = useState(true);
+  const [sortColuna, setSortColuna] = useState<"diasAtraso" | "valor" | "nome" | "plano">("diasAtraso");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+
+  const handleSortColuna = (col: "diasAtraso" | "valor" | "nome" | "plano") => {
+    if (sortColuna === col) {
+      setSortDir(d => d === "asc" ? "desc" : "asc");
+    } else {
+      setSortColuna(col);
+      setSortDir("desc");
+    }
+  };
 
 
   // Filtrar eventos financeiros (COBRANCA ou SNAPSHOT com dados de cobrança)
@@ -262,28 +273,52 @@ const Financeiro = () => {
       .sort((a, b) => b.quantidade - a.quantidade);
   }, [filteredEventos]);
 
+  // Helper: calcular dias reais de atraso a partir de data_vencimento (não o snapshot histórico)
+  const calcDiasAtrasoReal = (e: any): number => {
+    if (!e.data_vencimento) return e.dias_atraso || 0;
+    const venc = new Date(e.data_vencimento);
+    if (isNaN(venc.getTime())) return e.dias_atraso || 0;
+    const hoje = new Date();
+    hoje.setHours(0, 0, 0, 0);
+    venc.setHours(0, 0, 0, 0);
+    const diff = Math.floor((hoje.getTime() - venc.getTime()) / (1000 * 60 * 60 * 24));
+    return diff > 0 ? diff : (e.dias_atraso || 0);
+  };
+
   // Lista de clientes vencidos — usa TODOS os eventos sem filtro de período
-  // (inadimplência é acumulada, não depende do período selecionado)
+  // Usa data_vencimento para calcular dias reais de atraso (o campo dias_atraso é snapshot histórico)
   const clientesVencidosList = useMemo(() => {
     const todosEventosFinanceiros = eventos.filter(e =>
       e.event_type === "COBRANCA" ||
       (e.event_type === "SNAPSHOT" && (e.cobranca_status || e.valor_cobranca || e.data_vencimento))
     );
-    // Pegar todos os eventos com dias_atraso > 0 (SNAPSHOT ou COBRANCA)
-    const vencidos = todosEventosFinanceiros.filter(e => e.dias_atraso > 0);
+    const vencidos = todosEventosFinanceiros.filter(e => e.dias_atraso > 0 || e.vencido === true);
 
-    // Guardar o registro mais recente por cliente (maior dias_atraso = mais grave)
-    const porCliente = new Map<number, typeof vencidos[0]>();
+    // Guardar o registro com maior atraso real por cliente
+    const porCliente = new Map<number, { evento: typeof vencidos[0]; diasReal: number }>();
     vencidos.forEach(e => {
+      const diasReal = calcDiasAtrasoReal(e);
       const existing = porCliente.get(e.cliente_id);
-      if (!existing || e.dias_atraso > existing.dias_atraso) {
-        porCliente.set(e.cliente_id, e);
+      if (!existing || diasReal > existing.diasReal) {
+        porCliente.set(e.cliente_id, { evento: e, diasReal });
       }
     });
 
-    return Array.from(porCliente.values())
-      .sort((a, b) => b.dias_atraso - a.dias_atraso);
-  }, [filteredEventos]);
+    const lista = Array.from(porCliente.values()).map(({ evento, diasReal }) => ({
+      ...evento,
+      diasAtrasoReal: diasReal,
+    }));
+
+    // Aplicar ordenação
+    return lista.sort((a, b) => {
+      let cmp = 0;
+      if (sortColuna === "diasAtraso") cmp = a.diasAtrasoReal - b.diasAtrasoReal;
+      else if (sortColuna === "valor") cmp = (a.valor_cobranca || a.valor_mensalidade || 0) - (b.valor_cobranca || b.valor_mensalidade || 0);
+      else if (sortColuna === "nome") cmp = (a.cliente_nome || "").localeCompare(b.cliente_nome || "");
+      else if (sortColuna === "plano") cmp = (a.plano_nome || "").localeCompare(b.plano_nome || "");
+      return sortDir === "desc" ? -cmp : cmp;
+    });
+  }, [eventos, sortColuna, sortDir]);
 
   // Fila de cobrança - agrupa por cliente, deduplicando por data+valor (mesma cobrança real)
   const filaCobranca = useMemo((): ClienteAgrupado[] => {
@@ -647,15 +682,55 @@ const Financeiro = () => {
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-0">
-                <div className="overflow-auto max-h-[500px]">
+                <div className="overflow-auto max-h-[600px]">
                   <Table>
                     <TableHeader className="sticky top-0 bg-card z-10">
                       <TableRow>
-                        <TableHead className="text-xs">Cliente</TableHead>
-                        <TableHead className="text-xs">Plano</TableHead>
+                        <TableHead
+                          className="text-xs cursor-pointer hover:bg-muted select-none"
+                          onClick={() => handleSortColuna("nome")}
+                        >
+                          <div className="flex items-center gap-1">
+                            Cliente
+                            {sortColuna === "nome" && (
+                              <span className="text-primary">{sortDir === "desc" ? "↓" : "↑"}</span>
+                            )}
+                          </div>
+                        </TableHead>
+                        <TableHead
+                          className="text-xs cursor-pointer hover:bg-muted select-none"
+                          onClick={() => handleSortColuna("plano")}
+                        >
+                          <div className="flex items-center gap-1">
+                            Plano
+                            {sortColuna === "plano" && (
+                              <span className="text-primary">{sortDir === "desc" ? "↓" : "↑"}</span>
+                            )}
+                          </div>
+                        </TableHead>
                         <TableHead className="text-xs text-center">Última Fatura em Aberto</TableHead>
-                        <TableHead className="text-xs text-center">Dias em Atraso</TableHead>
-                        <TableHead className="text-xs text-right">Valor Vencido</TableHead>
+                        <TableHead
+                          className="text-xs text-center cursor-pointer hover:bg-muted select-none"
+                          onClick={() => handleSortColuna("diasAtraso")}
+                        >
+                          <div className="flex items-center justify-center gap-1">
+                            Dias em Atraso
+                            <span className="text-primary">
+                              {sortColuna === "diasAtraso" ? (sortDir === "desc" ? "↓" : "↑") : "↕"}
+                            </span>
+                          </div>
+                        </TableHead>
+                        <TableHead
+                          className="text-xs text-right cursor-pointer hover:bg-muted select-none"
+                          onClick={() => handleSortColuna("valor")}
+                        >
+                          <div className="flex items-center justify-end gap-1">
+                            Valor Vencido
+                            {sortColuna === "valor" && (
+                              <span className="text-primary">{sortDir === "desc" ? "↓" : "↑"}</span>
+                            )}
+                          </div>
+                        </TableHead>
                         <TableHead className="text-xs">Status</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -667,8 +742,8 @@ const Financeiro = () => {
                           </TableCell>
                         </TableRow>
                       ) : (
-                        clientesVencidosList.map((e) => {
-                          const diasAtraso = Math.round(e.dias_atraso || 0);
+                        clientesVencidosList.map((e, idx) => {
+                          const diasAtraso = (e as any).diasAtrasoReal ?? Math.round(e.dias_atraso || 0);
                           const faixaColor = diasAtraso > 60 ? "text-destructive font-bold" :
                                             diasAtraso > 30 ? "text-orange-600 font-semibold" :
                                             diasAtraso > 15 ? "text-yellow-600 font-medium" : "text-muted-foreground";
@@ -677,7 +752,7 @@ const Financeiro = () => {
                             : "—";
                           const valor = e.valor_cobranca || e.valor_mensalidade || 0;
                           return (
-                            <TableRow key={e.cliente_id} className="hover:bg-muted/50">
+                            <TableRow key={`${e.cliente_id}-${idx}`} className="hover:bg-muted/50">
                               <TableCell className="text-xs font-medium max-w-[180px] truncate">
                                 {e.cliente_nome || "—"}
                               </TableCell>
