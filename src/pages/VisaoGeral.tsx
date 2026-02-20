@@ -592,9 +592,27 @@ const VisaoGeral = () => {
   }, [npsData, eventoLookupMaps, clientePlanoMap]);
 
   // Cohort direto de cancelamentos via churn_status — mais preciso que inferir via eventos
-  // Agrupa TODOS os cancelados por plano/cidade/bairro usando a fonte de verdade
+  // Agrupa cancelados por plano/cidade/bairro usando a fonte de verdade, respeitando o filtro de período
   const churnCohortDirect = useMemo(() => {
     const stats: Record<string, { cancelados: number; label: string }> = {};
+
+    // Calcular data limite baseada no período selecionado
+    // Para churn, usamos data_cancelamento que é a data real do cancelamento
+    const dataLimiteChurn: Date | null = (() => {
+      if (periodo === "todos") return null;
+      // Encontrar data de cancelamento mais recente como referência
+      let maxDate = new Date(0);
+      churnStatus.forEach(cs => {
+        if (cs.status_churn === "cancelado" && cs.data_cancelamento) {
+          const d = new Date(cs.data_cancelamento);
+          if (!isNaN(d.getTime()) && d > maxDate) maxDate = d;
+        }
+      });
+      // Se não encontrar referência, usa hoje
+      const ref = maxDate.getTime() > 0 ? maxDate : new Date();
+      const limite = new Date(ref.getTime() - parseInt(periodo) * 24 * 60 * 60 * 1000);
+      return limite;
+    })();
 
     const getKey = (cs: typeof churnStatus[0]): string | null => {
       switch (cohortDimension) {
@@ -607,6 +625,18 @@ const VisaoGeral = () => {
 
     churnStatus.forEach(cs => {
       if (cs.status_churn !== "cancelado") return;
+
+      // Aplicar filtro de período usando data_cancelamento
+      if (dataLimiteChurn && cs.data_cancelamento) {
+        const dataCancelamento = new Date(cs.data_cancelamento);
+        if (!isNaN(dataCancelamento.getTime()) && dataCancelamento < dataLimiteChurn) return;
+      }
+
+      // Aplicar filtros geográficos/plano se selecionados
+      if (cidade !== "todos" && String(cs.cliente_cidade) !== cidade && getCidadeNome(cs.cliente_cidade) !== cidade) return;
+      if (bairro !== "todos" && cs.cliente_bairro !== bairro) return;
+      if (plano !== "todos" && cs.plano_nome !== plano) return;
+
       const key = getKey(cs);
       if (!key) return;
       const label = cohortDimension === "plano" && key.length > 45 ? key.substring(0, 45) + "..." : key;
@@ -615,7 +645,7 @@ const VisaoGeral = () => {
     });
 
     return stats;
-  }, [churnStatus, cohortDimension]);
+  }, [churnStatus, cohortDimension, periodo, cidade, bairro, plano]);
 
   // Generic function to calculate cohort data for any dimension
   // eventosBase: todos os eventos filtrados (para MRR, LTV, churn, etc.)
