@@ -8,7 +8,7 @@ interface ProtectedRouteProps {
 }
 
 export function ProtectedRoute({ children, requireSelectedIsp = true }: ProtectedRouteProps) {
-  const { user, profile, isLoading, error, isSuperAdmin, selectedIsp } = useAuth();
+  const { user, profile, isLoading, error, isSuperAdmin, selectedIsp, signOut } = useAuth();
 
   if (isLoading) {
     return (
@@ -36,8 +36,7 @@ export function ProtectedRoute({ children, requireSelectedIsp = true }: Protecte
           </p>
           <button
             onClick={async () => {
-              const { supabase } = await import("@/integrations/supabase/client");
-              await supabase.auth.signOut();
+              await signOut();
               window.location.href = "/auth";
             }}
             className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors"

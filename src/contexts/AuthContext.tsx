@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect, ReactNode, useCallback } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { externalSupabase } from "@/integrations/supabase/external-client";
 import type { User, Session } from "@supabase/supabase-js";
 
 export interface AuthProfile {
@@ -52,7 +52,7 @@ export const useAuth = () => useContext(AuthContext);
 /** Domínios super admin (veem todos os ISPs) */
 const SUPER_ADMIN_DOMAINS = ["uniforce.com.br"];
 
-/** Mapa estático de domínios → ISP info */
+/** Mapa estático de domínios → ISP info (fallback quando perfil não existe no banco) */
 const DOMAIN_ISP_MAP: Record<string, { isp_id: string; isp_nome: string; instancia_isp: string }> = {
   "agytelecom.com.br": { isp_id: "agy-telecom", isp_nome: "AGY Telecom", instancia_isp: "agy" },
   "d-kiros.com.br": { isp_id: "d-kiros", isp_nome: "D-Kiros", instancia_isp: "dkiros" },
@@ -71,9 +71,50 @@ function isSuperAdminEmail(email: string): boolean {
   return SUPER_ADMIN_DOMAINS.includes(domain || "");
 }
 
+/**
+ * Busca perfil do usuário no banco externo.
+ * Se não existir, usa fallback estático por domínio.
+ */
 async function fetchUserProfile(userId: string, email: string): Promise<AuthProfile | null> {
-  // Derivar ISP diretamente do domínio do email — sem queries ao banco externo durante o auth
-  // Isso elimina o travamento causado por timeouts em queries ao Supabase externo
+  try {
+    // Tentar buscar profile do banco externo
+    const { data: dbProfile } = await externalSupabase
+      .from("profiles")
+      .select("id, isp_id, full_name, email")
+      .eq("id", userId)
+      .maybeSingle();
+
+    if (dbProfile && dbProfile.isp_id) {
+      // Buscar info do ISP para obter nome e instância
+      const { data: ispData } = await externalSupabase
+        .from("isps")
+        .select("isp_id, nome, instancia_isp")
+        .eq("isp_id", dbProfile.isp_id)
+        .maybeSingle();
+
+      // Buscar role
+      const { data: roleData } = await externalSupabase
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", userId)
+        .eq("isp_id", dbProfile.isp_id)
+        .maybeSingle();
+
+      return {
+        user_id: userId,
+        isp_id: dbProfile.isp_id,
+        isp_nome: ispData?.nome || dbProfile.isp_id,
+        instancia_isp: ispData?.instancia_isp || "",
+        full_name: dbProfile.full_name || email.split("@")[0],
+        email: dbProfile.email || email,
+        role: isSuperAdminEmail(email) ? "super_admin" : (roleData?.role || "viewer"),
+      };
+    }
+  } catch (err) {
+    console.warn("⚠️ Erro ao buscar profile no banco externo, usando fallback:", err);
+  }
+
+  // Fallback: derivar do domínio do email
   const domain = email.split("@")[1]?.toLowerCase();
   const ispInfo = domain ? DOMAIN_ISP_MAP[domain] : null;
 
@@ -114,9 +155,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+    // Escutar auth state do Supabase EXTERNO (backend oficial)
+    const { data: { subscription } } = externalSupabase.auth.onAuthStateChange(
       async (event, newSession) => {
-        console.log("🔐 Auth event:", event);
+        console.log("🔐 Auth event (externo):", event);
         setSession(newSession);
         setUser(newSession?.user ?? null);
 
@@ -158,7 +200,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     );
 
-    supabase.auth.getSession().then(({ data: { session: currentSession } }) => {
+    externalSupabase.auth.getSession().then(({ data: { session: currentSession } }) => {
       setSession(currentSession);
       setUser(currentSession?.user ?? null);
       if (!currentSession) {
@@ -170,7 +212,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signOut = async () => {
-    await supabase.auth.signOut();
+    await externalSupabase.auth.signOut();
     setUser(null);
     setSession(null);
     setProfile(null);
