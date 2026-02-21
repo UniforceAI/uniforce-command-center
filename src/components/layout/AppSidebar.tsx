@@ -50,7 +50,7 @@ export function AppSidebar() {
         <div className="px-3 py-5 flex items-center justify-center gap-2">
           {collapsed ? (
             <button onClick={toggleSidebar} className="mx-auto">
-              <img src={unforceIcon} alt="Uniforce" className="h-7 w-7" />
+              <img src={unforceIcon} alt="Uniforce" className="h-9 w-9" />
             </button>
           ) : (
             <div className="flex items-center justify-between w-full">
@@ -82,8 +82,8 @@ export function AppSidebar() {
                       isActive={isActive}
                       tooltip={item.title}
                     >
-                      <NavLink to={item.url}>
-                        <item.icon className="h-4 w-4" />
+                      <NavLink to={item.url} className="text-[13px]">
+                        <item.icon className={collapsed ? "h-6 w-6" : "h-5 w-5"} />
                         <span>{item.title}</span>
                       </NavLink>
                     </SidebarMenuButton>
@@ -109,7 +109,7 @@ export function AppSidebar() {
                     tooltip="Configurações"
                   >
                     <NavLink to="/configuracoes/churn-score">
-                      <Settings className="h-4 w-4" />
+                      <Settings className="h-6 w-6" />
                       <span>Configurações</span>
                     </NavLink>
                   </SidebarMenuButton>
@@ -123,7 +123,7 @@ export function AppSidebar() {
                         tooltip="Configurações"
                         className="w-full"
                       >
-                        <Settings className="h-4 w-4" />
+                        <Settings className="h-5 w-5" />
                         <span>Configurações</span>
                         <ChevronRight className={`ml-auto h-3 w-3 transition-transform ${configOpen ? "rotate-90" : ""}`} />
                       </SidebarMenuButton>
