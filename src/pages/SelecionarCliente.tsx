@@ -3,6 +3,7 @@ import { useAuth, IspOption } from "@/contexts/AuthContext";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Building2, Wifi, LogOut, ArrowRight } from "lucide-react";
+import uniforceLogo from "@/assets/uniforce-logo.png";
 
 const ISP_ICONS: Record<string, typeof Building2> = {
   "agy-telecom": Wifi,
@@ -24,7 +25,7 @@ export default function SelecionarCliente() {
       <header className="border-b bg-card/80 backdrop-blur-sm">
         <div className="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between">
           <div>
-            <h1 className="text-xl font-bold text-foreground">Uniforce Ops</h1>
+            <img src={uniforceLogo} alt="Uniforce" className="h-8" />
             <p className="text-sm text-muted-foreground">
               Olá, {profile?.full_name || "Admin"}
             </p>
