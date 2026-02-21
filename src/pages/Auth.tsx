@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
+import uniforceLogo from "@/assets/uniforce-logo.png";
 
 export default function Auth() {
   const navigate = useNavigate();
@@ -141,8 +142,9 @@ export default function Auth() {
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background to-muted p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
+          <img src={uniforceLogo} alt="Uniforce" className="h-12 mx-auto mb-2" />
           <CardTitle className="text-2xl">
-            {isLogin ? "Uniforce Ops" : "Criar Conta"}
+            {isLogin ? "" : "Criar Conta"}
           </CardTitle>
           <CardDescription>
             {isLogin
