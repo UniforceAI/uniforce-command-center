@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+import { externalSupabase } from "@/integrations/supabase/external-client";
 import { useAuth } from "@/contexts/AuthContext";
 import { validateEmailDomain } from "@/lib/authUtils";
 import { Button } from "@/components/ui/button";
@@ -35,7 +35,8 @@ export default function Auth() {
         return;
       }
 
-      const { data, error } = await supabase.auth.signInWithPassword({
+      // Login via Supabase EXTERNO (backend oficial)
+      const { data, error } = await externalSupabase.auth.signInWithPassword({
         email,
         password,
       });
@@ -47,7 +48,7 @@ export default function Auth() {
       }
 
       if (data.user) {
-        const { externalSupabase } = await import("@/integrations/supabase/external-client");
+        // Garantir que profile existe no banco externo
         const { data: existingProfile } = await externalSupabase
           .from("profiles")
           .select("id")
