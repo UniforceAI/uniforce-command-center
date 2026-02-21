@@ -32,7 +32,7 @@ export function IspActions({ className }: IspActionsProps) {
 
   return (
     <div className={`flex items-center gap-2 ${className ?? ""}`}>
-      <Badge variant="outline" className="text-xs font-medium px-2 py-0.5">
+      <Badge variant="outline" className="text-xs font-medium px-2 py-0.5 border-primary/30 text-primary">
         {ispNome}
       </Badge>
 

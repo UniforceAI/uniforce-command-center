@@ -18,6 +18,8 @@ import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { ChevronRight } from "lucide-react";
 import { useState } from "react";
+import uniforceLogo from "@/assets/uniforce-logo.png";
+import unforceIcon from "@/assets/uniforce-icon.png";
 
 const menuItems = [
   { title: "Visão Geral", url: "/", icon: LayoutDashboard },
@@ -42,26 +44,31 @@ export function AppSidebar() {
   const [configOpen, setConfigOpen] = useState(isConfigActive);
 
   return (
-    <Sidebar collapsible="icon" className="border-r" style={{ borderColor: 'hsl(213 81% 54% / 0.1)' }}>
+    <Sidebar collapsible="icon" className="border-r border-border/50">
       <SidebarContent className="pt-2">
-        {/* Toggle button at top of sidebar */}
-        <div className="px-2 mb-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={toggleSidebar}
-            className="w-full justify-center h-8"
-          >
-            {collapsed ? (
-              <PanelLeft className="h-4 w-4" />
-            ) : (
-              <PanelLeftClose className="h-4 w-4" />
-            )}
-          </Button>
+        {/* Logo + Toggle */}
+        <div className="px-3 mb-3 flex items-center gap-2">
+          {collapsed ? (
+            <button onClick={toggleSidebar} className="mx-auto">
+              <img src={unforceIcon} alt="Uniforce" className="h-7 w-7" />
+            </button>
+          ) : (
+            <>
+              <img src={uniforceLogo} alt="Uniforce" className="h-7" />
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={toggleSidebar}
+                className="ml-auto h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
+              >
+                <PanelLeftClose className="h-4 w-4" />
+              </Button>
+            </>
+          )}
         </div>
         
         <SidebarGroup>
-          <SidebarGroupLabel className={collapsed ? "sr-only" : ""}>
+          <SidebarGroupLabel className={collapsed ? "sr-only" : "text-[10px] uppercase tracking-widest text-muted-foreground/60 font-semibold"}>
             Command Center
           </SidebarGroupLabel>
           <SidebarGroupContent>
@@ -89,13 +96,12 @@ export function AppSidebar() {
 
         {/* Configurações */}
         <SidebarGroup className="mt-auto">
-          <SidebarGroupLabel className={collapsed ? "sr-only" : ""}>
+          <SidebarGroupLabel className={collapsed ? "sr-only" : "text-[10px] uppercase tracking-widest text-muted-foreground/60 font-semibold"}>
             Configurações
           </SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               {collapsed ? (
-                // Em modo colapsado: mostra apenas ícone com tooltip
                 <SidebarMenuItem>
                   <SidebarMenuButton
                     asChild
@@ -109,7 +115,6 @@ export function AppSidebar() {
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ) : (
-                // Em modo expandido: mostra grupo colapsável com sub-itens
                 <Collapsible open={configOpen} onOpenChange={setConfigOpen}>
                   <SidebarMenuItem>
                     <CollapsibleTrigger asChild>

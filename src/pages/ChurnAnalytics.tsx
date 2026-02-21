@@ -135,9 +135,9 @@ const ChurnAnalytics = () => {
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
-      <header className="border-b bg-card px-6 py-4 flex items-center justify-between">
+      <header className="border-b border-border/50 bg-card/80 backdrop-blur-sm px-6 py-4 flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold text-foreground">Churn Analytics</h1>
+          <h1 className="text-xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">Churn Analytics</h1>
           <p className="text-xs text-muted-foreground mt-0.5">
             {ativos.length.toLocaleString()} ativos · {emRisco.length.toLocaleString()} em risco · base de {churnStatus.length.toLocaleString()} clientes
           </p>

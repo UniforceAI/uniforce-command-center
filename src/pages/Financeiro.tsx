@@ -437,14 +437,14 @@ const Financeiro = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="border-b bg-card shadow-sm">
-        <div className="container mx-auto px-6 py-6">
+      <header className="border-b border-border/50 bg-card/80 backdrop-blur-sm shadow-sm">
+        <div className="container mx-auto px-6 py-5">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent">
+              <h1 className="text-2xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
                 Financeiro
               </h1>
-              <p className="text-muted-foreground mt-1">Inadimplência e Recuperação</p>
+              <p className="text-muted-foreground text-sm mt-0.5">Inadimplência e Recuperação</p>
             </div>
             <div className="flex items-center gap-4">
               <div className="text-sm text-muted-foreground">

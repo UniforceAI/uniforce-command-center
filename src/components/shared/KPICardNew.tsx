@@ -20,10 +20,10 @@ interface KPICardNewProps {
 
 const variantStyles = {
   default: "border-l-primary",
-  success: "border-l-green-500",
-  warning: "border-l-yellow-500",
-  danger: "border-l-red-500",
-  info: "border-l-blue-500",
+  success: "border-l-success",
+  warning: "border-l-warning",
+  danger: "border-l-destructive",
+  info: "border-l-primary",
 };
 
 export function KPICardNew({
@@ -68,7 +68,7 @@ export function KPICardNew({
             {trend !== undefined && disponivel && (
               <p className={cn(
                 "text-xs font-medium",
-                trend >= 0 ? "text-green-600" : "text-red-600"
+                trend >= 0 ? "text-success" : "text-destructive"
               )}>
                 {trend >= 0 ? "↑" : "↓"} {Math.abs(trend)}% vs período anterior
               </p>
@@ -77,10 +77,10 @@ export function KPICardNew({
           {Icon && (
             <div className={cn(
               "p-2 rounded-lg",
-              variant === "danger" ? "bg-red-100 text-red-600" :
-              variant === "success" ? "bg-green-100 text-green-600" :
-              variant === "warning" ? "bg-yellow-100 text-yellow-600" :
-              variant === "info" ? "bg-blue-100 text-blue-600" :
+              variant === "danger" ? "bg-destructive/10 text-destructive" :
+              variant === "success" ? "bg-success/10 text-success" :
+              variant === "warning" ? "bg-warning/10 text-warning" :
+              variant === "info" ? "bg-primary/10 text-primary" :
               "bg-primary/10 text-primary"
             )}>
               <Icon className="h-5 w-5" />
