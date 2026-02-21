@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { KPICard } from "@/components/dashboard/KPICard";
 import { IspActions } from "@/components/shared/IspActions";
+import { LoadingScreen } from "@/components/shared/LoadingScreen";
 import { DashboardFilters } from "@/components/dashboard/DashboardFilters";
 import { ClientesTable } from "@/components/dashboard/ClientesTable";
 import { ClienteDetailsSheet } from "@/components/dashboard/ClienteDetailsSheet";
@@ -518,12 +519,7 @@ const Index = () => {
 
       <main className="container mx-auto px-6 py-8 space-y-8">
         {isLoading ? (
-          <div className="flex items-center justify-center py-12">
-            <div className="text-center space-y-4">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
-              <p className="text-muted-foreground">Carregando dados...</p>
-            </div>
-          </div>
+          <LoadingScreen />
         ) : chamados.length === 0 ? (
           <div className="flex items-center justify-center py-12">
             <div className="text-center space-y-4">

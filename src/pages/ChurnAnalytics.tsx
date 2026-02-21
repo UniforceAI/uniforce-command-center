@@ -2,6 +2,7 @@ import { useState, useMemo } from "react";
 import { useChurnData } from "@/hooks/useChurnData";
 import { useChamados } from "@/hooks/useChamados";
 import { IspActions } from "@/components/shared/IspActions";
+import { LoadingScreen } from "@/components/shared/LoadingScreen";
 import {
   AlertTriangle, Users, Percent, Target, DollarSign, TrendingDown,
   AlertCircle, Info,
@@ -126,8 +127,8 @@ const ChurnAnalytics = () => {
   const activeFiltersCount = [plano, cidade, bairro, bucket].filter((v) => v !== "todos").length;
 
   if (isLoading) return (
-    <div className="min-h-screen bg-background flex items-center justify-center">
-      <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary mx-auto" />
+    <div className="min-h-screen bg-background">
+      <LoadingScreen />
     </div>
   );
 

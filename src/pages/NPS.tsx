@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { ThumbsUp, Gauge, Wrench, Headphones, AlertCircle } from "lucide-react";
 import { NPSFilters } from "@/components/nps/NPSFilters";
 import { IspActions } from "@/components/shared/IspActions";
+import { LoadingScreen } from "@/components/shared/LoadingScreen";
 import { NPSKPICard } from "@/components/nps/NPSKPICard";
 import { NPSCharts } from "@/components/nps/NPSCharts";
 import { NPSTable } from "@/components/nps/NPSTable";
@@ -204,12 +205,7 @@ const NPS = () => {
 
       <main className="container mx-auto px-6 py-8 space-y-8">
         {isLoading ? (
-          <div className="flex items-center justify-center py-12">
-            <div className="text-center space-y-4">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
-              <p className="text-muted-foreground">Carregando dados NPS...</p>
-            </div>
-          </div>
+          <LoadingScreen />
         ) : respostasNPS.length === 0 ? (
           <div className="flex items-center justify-center py-12">
             <div className="text-center space-y-4">

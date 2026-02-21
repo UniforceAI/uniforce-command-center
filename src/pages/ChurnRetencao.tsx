@@ -9,6 +9,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useEventos } from "@/hooks/useEventos";
 import { GlobalFilters } from "@/components/shared/GlobalFilters";
 import { IspActions } from "@/components/shared/IspActions";
+import { LoadingScreen } from "@/components/shared/LoadingScreen";
 import { KPICardNew } from "@/components/shared/KPICardNew";
 import { DataTable, RiskBadge, Column } from "@/components/shared/DataTable";
 import { Evento } from "@/types/evento";
@@ -436,12 +437,7 @@ const ChurnRetencao = () => {
 
       <main className="container mx-auto px-6 py-8 space-y-6">
         {isLoading ? (
-          <div className="flex items-center justify-center py-12">
-            <div className="text-center space-y-4">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
-              <p className="text-muted-foreground">Analisando risco de churn...</p>
-            </div>
-          </div>
+          <LoadingScreen />
         ) : error ? (
           <div className="flex items-center justify-center py-12">
             <div className="text-center space-y-4">
