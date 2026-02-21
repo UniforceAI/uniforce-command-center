@@ -45,25 +45,25 @@ export function AppSidebar() {
 
   return (
     <Sidebar collapsible="icon" className="border-r border-border/50">
-      <SidebarContent className="pt-2">
+      <SidebarContent>
         {/* Logo + Toggle */}
-        <div className="px-3 mb-3 flex items-center gap-2">
+        <div className="px-3 py-5 flex items-center justify-center gap-2">
           {collapsed ? (
             <button onClick={toggleSidebar} className="mx-auto">
               <img src={unforceIcon} alt="Uniforce" className="h-7 w-7" />
             </button>
           ) : (
-            <>
-              <img src={uniforceLogo} alt="Uniforce" className="h-7" />
+            <div className="flex items-center justify-between w-full">
+              <img src={uniforceLogo} alt="Uniforce" className="h-7 mx-auto" />
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={toggleSidebar}
-                className="ml-auto h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
+                className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground shrink-0"
               >
                 <PanelLeftClose className="h-4 w-4" />
               </Button>
-            </>
+            </div>
           )}
         </div>
         
