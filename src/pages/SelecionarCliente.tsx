@@ -24,12 +24,7 @@ export default function SelecionarCliente() {
       {/* Header */}
       <header className="border-b bg-card/80 backdrop-blur-sm">
         <div className="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div>
-            <img src={uniforceLogo} alt="Uniforce" className="h-8" />
-            <p className="text-sm text-muted-foreground">
-              Olá, {profile?.full_name || "Admin"}
-            </p>
-          </div>
+          <img src={uniforceLogo} alt="Uniforce" className="h-8" />
           <Button variant="ghost" size="sm" onClick={signOut} className="text-muted-foreground">
             <LogOut className="h-4 w-4 mr-2" />
             Sair
@@ -41,6 +36,9 @@ export default function SelecionarCliente() {
       <main className="flex-1 flex items-center justify-center p-6">
         <div className="max-w-3xl w-full space-y-8">
           <div className="text-center space-y-2">
+            <p className="text-lg text-muted-foreground" style={{ marginBottom: '4px' }}>
+              Olá, {profile?.full_name || "Admin"}
+            </p>
             <h2 className="text-3xl font-bold text-foreground">
               Selecione um cliente
             </h2>
@@ -61,7 +59,7 @@ export default function SelecionarCliente() {
                 >
                   <CardHeader className="pb-3">
                     <div className="flex items-center gap-3">
-                      <div className="h-12 w-12 rounded-xl bg-primary/10 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
+                      <div className="h-12 w-12 rounded-xl flex items-center justify-center group-hover:opacity-80 transition-colors" style={{ background: 'linear-gradient(135deg, hsl(213 81% 54% / 0.15), hsl(126 91% 65% / 0.15))' }}>
                         <Icon className="h-6 w-6 text-primary" />
                       </div>
                       <div className="flex-1">
@@ -86,6 +84,13 @@ export default function SelecionarCliente() {
           </div>
         </div>
       </main>
+
+      {/* Footer */}
+      <footer className="border-t bg-card/80 backdrop-blur-sm py-4 text-center">
+        <p className="text-xs text-muted-foreground">
+          © {new Date().getFullYear()} Uniforce
+        </p>
+      </footer>
     </div>
   );
 }
