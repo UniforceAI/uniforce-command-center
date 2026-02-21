@@ -80,7 +80,7 @@ export default function Auth() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-background to-muted p-4">
+    <div className="min-h-screen flex flex-col items-center justify-center p-4" style={{ background: 'linear-gradient(135deg, hsl(210 100% 6%) 0%, hsl(213 81% 20%) 100%)' }}>
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
           <img src={uniforceLogo} alt="Uniforce" className="h-12 mx-auto mb-2" />
@@ -114,7 +114,7 @@ export default function Auth() {
               />
             </div>
 
-            <Button type="submit" className="w-full" disabled={loading}>
+            <Button type="submit" className="w-full bg-gradient-to-r from-[hsl(213,81%,54%)] to-[hsl(126,91%,65%)] hover:opacity-90 text-white font-semibold" disabled={loading}>
               {loading ? "Carregando..." : "Entrar"}
             </Button>
           </form>

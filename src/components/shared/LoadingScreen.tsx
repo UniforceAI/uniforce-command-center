@@ -25,7 +25,7 @@ export function LoadingScreen() {
     <div className="min-h-[60vh] flex flex-col items-center justify-center px-6">
       {/* Icon with pulse */}
       <div className="relative mb-8">
-        <div className="absolute inset-0 rounded-full bg-primary/10 animate-ping" style={{ animationDuration: "2s" }} />
+        <div className="absolute inset-0 rounded-full bg-accent/20 animate-ping" style={{ animationDuration: "2s" }} />
         <img
           src={uniconIcon}
           alt="Uniforce"
@@ -40,7 +40,7 @@ export function LoadingScreen() {
 
       {/* Progress bar */}
       <div className="w-48 h-0.5 bg-muted rounded-full overflow-hidden mb-8">
-        <div className="h-full bg-primary/60 rounded-full animate-[loading_2s_ease-in-out_infinite]" />
+        <div className="h-full rounded-full animate-[loading_2s_ease-in-out_infinite]" style={{ background: 'linear-gradient(90deg, hsl(213 81% 54%), hsl(126 91% 65%))' }} />
       </div>
 
       {/* Rotating phrase */}

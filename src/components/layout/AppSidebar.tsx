@@ -42,7 +42,7 @@ export function AppSidebar() {
   const [configOpen, setConfigOpen] = useState(isConfigActive);
 
   return (
-    <Sidebar collapsible="icon" className="border-r">
+    <Sidebar collapsible="icon" className="border-r" style={{ borderColor: 'hsl(213 81% 54% / 0.1)' }}>
       <SidebarContent className="pt-2">
         {/* Toggle button at top of sidebar */}
         <div className="px-2 mb-2">
