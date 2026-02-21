@@ -82,8 +82,8 @@ export function AppSidebar() {
                       isActive={isActive}
                       tooltip={item.title}
                     >
-                      <NavLink to={item.url} className={collapsed ? "" : "text-[16px]"}>
-                        <item.icon className={collapsed ? "!h-[22px] !w-[22px]" : "h-5 w-5"} />
+                      <NavLink to={item.url} className={collapsed ? "" : "text-[22px]"}>
+                        <item.icon className={collapsed ? "!h-[30px] !w-[30px]" : "h-5 w-5"} />
                         <span>{item.title}</span>
                       </NavLink>
                     </SidebarMenuButton>
@@ -109,7 +109,7 @@ export function AppSidebar() {
                     tooltip="Configurações"
                   >
                     <NavLink to="/configuracoes/churn-score">
-                      <Settings className="!h-[22px] !w-[22px]" />
+                      <Settings className="!h-[30px] !w-[30px]" />
                       <span>Configurações</span>
                     </NavLink>
                   </SidebarMenuButton>
