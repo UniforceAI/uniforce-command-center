@@ -54,7 +54,7 @@ export function AppSidebar() {
             </button>
           ) : (
             <div className="flex items-center justify-between w-full">
-              <img src={uniforceLogo} alt="Uniforce" className="h-7 mx-auto" />
+              <img src={uniforceLogo} alt="Uniforce" className="h-9 mx-auto" />
               <Button
                 variant="ghost"
                 size="sm"
