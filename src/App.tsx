@@ -18,6 +18,8 @@ import ClientesEmRisco from "./pages/ClientesEmRisco";
 import Cancelamentos from "./pages/Cancelamentos";
 import SelecionarCliente from "./pages/SelecionarCliente";
 import ConfiguracaoChurnScore from "./pages/ConfiguracaoChurnScore";
+import PerfilISP from "./pages/PerfilISP";
+import ContasAcesso from "./pages/ContasAcesso";
 
 const queryClient = new QueryClient();
 
@@ -125,6 +127,26 @@ const App = () => (
                 <ProtectedRoute>
                   <MainLayout>
                     <ConfiguracaoChurnScore />
+                  </MainLayout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/configuracoes/perfil"
+              element={
+                <ProtectedRoute>
+                  <MainLayout>
+                    <PerfilISP />
+                  </MainLayout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/configuracoes/contas"
+              element={
+                <ProtectedRoute>
+                  <MainLayout>
+                    <ContasAcesso />
                   </MainLayout>
                 </ProtectedRoute>
               }

@@ -1,4 +1,4 @@
-import { AlertTriangle, ThumbsUp, LayoutDashboard, DollarSign, BarChart2, UserX, XCircle, PanelLeftClose, PanelLeft, Settings, SlidersHorizontal } from "lucide-react";
+import { AlertTriangle, ThumbsUp, LayoutDashboard, DollarSign, BarChart2, UserX, XCircle, PanelLeftClose, PanelLeft, Settings, SlidersHorizontal, Building2, Users } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
 import {
   Sidebar,
@@ -32,7 +32,9 @@ const menuItems = [
 ];
 
 const configSubItems = [
-  { title: "Ajustar Churn Risk Score", url: "/configuracoes/churn-score", icon: SlidersHorizontal },
+  { title: "Perfil do ISP", url: "/configuracoes/perfil", icon: Building2 },
+  { title: "Contas de Acesso", url: "/configuracoes/contas", icon: Users },
+  { title: "Setup de Churn", url: "/configuracoes/churn-score", icon: SlidersHorizontal },
 ];
 
 export function AppSidebar() {
@@ -69,7 +71,7 @@ export function AppSidebar() {
         
         <SidebarGroup>
           <SidebarGroupLabel className={collapsed ? "sr-only" : "text-[10px] uppercase tracking-widest text-muted-foreground/60 font-semibold"}>
-            Command Center
+            Meu Provedor
           </SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
