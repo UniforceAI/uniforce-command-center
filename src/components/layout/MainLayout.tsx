@@ -11,7 +11,14 @@ export function MainLayout({ children }: MainLayoutProps) {
     <SidebarProvider>
       <div className="min-h-screen flex w-full">
         <AppSidebar />
-        <main className="flex-1 overflow-auto">{children}</main>
+        <div className="flex-1 flex flex-col overflow-auto">
+          <main className="flex-1">{children}</main>
+          <footer className="border-t border-border/50 bg-card/50 py-3 px-6 text-center">
+            <p className="text-[11px] text-muted-foreground">
+              © {new Date().getFullYear()} Uniforce
+            </p>
+          </footer>
+        </div>
       </div>
     </SidebarProvider>
   );

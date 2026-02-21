@@ -1352,7 +1352,7 @@ const VisaoGeral = () => {
   return (
     <div className="min-h-screen bg-background">
       {/* Header Compacto com Filtros */}
-      <header className="bg-muted/30 border-b">
+      <header className="bg-card/80 backdrop-blur-sm border-b border-border/50">
         {/* Linha 1: Filtros de período e geo */}
         <div className="flex items-center gap-2 flex-wrap px-3 py-1.5 border-b border-border/40">
           <Filter className="h-3 w-3 text-muted-foreground" />

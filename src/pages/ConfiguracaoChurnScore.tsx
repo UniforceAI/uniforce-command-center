@@ -124,14 +124,14 @@ export default function ConfiguracaoChurnScore() {
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="border-b bg-card shadow-sm">
+      <header className="border-b border-border/50 bg-card/80 backdrop-blur-sm shadow-sm">
         <div className="container mx-auto px-6 py-4">
           <div className="flex items-center gap-3">
             <div className="p-2 rounded-lg bg-primary/10">
               <Settings2 className="h-5 w-5 text-primary" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold">Ajustar Churn Risk Score</h1>
+              <h1 className="text-2xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">Ajustar Churn Risk Score</h1>
               <p className="text-muted-foreground text-sm mt-0.5">
                 Configure os pesos de cada gatilho de risco — o sistema recalculará os scores automaticamente
               </p>
