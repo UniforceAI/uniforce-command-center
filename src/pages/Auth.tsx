@@ -93,12 +93,34 @@ export default function Auth() {
     }
   };
 
-  if (isLoading) {
+  const [authStuck, setAuthStuck] = useState(false);
+
+  useEffect(() => {
+    if (isLoading) {
+      const timer = setTimeout(() => setAuthStuck(true), 6000);
+      return () => clearTimeout(timer);
+    }
+    setAuthStuck(false);
+  }, [isLoading]);
+
+  const handleForceReset = () => {
+    localStorage.removeItem("uniforce-auth");
+    sessionStorage.removeItem("uniforce_selected_isp");
+    window.location.href = "/auth";
+  };
+
+  if (isLoading && !authStuck) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary" />
       </div>
     );
+  }
+
+  if (isLoading && authStuck) {
+    // Force clear and show login
+    handleForceReset();
+    return null;
   }
 
   return (
