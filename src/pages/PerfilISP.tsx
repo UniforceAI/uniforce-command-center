@@ -57,9 +57,9 @@ function getQuarterKey() {
 /** Map lead_status → progress step (0-2) */
 function statusToStep(status: string): number {
   const s = status?.toLowerCase().trim() || "";
-  if (s === "ativo" || s === "concluído" || s === "concluido") return 2;
-  if (s.includes("implantação") || s.includes("implantacao") || s.includes("andamento")) return 1;
-  return 0; // "Em análise", empty, "Pausado", "Cancelado" etc.
+  if (s === "concluído" || s === "concluido") return 2;
+  if (s === "em andamento") return 1;
+  return 0; // "Não iniciada", empty, etc.
 }
 
 const STEP_LABELS = ["Não iniciado", "Em implantação", "Concluído"];
@@ -256,50 +256,7 @@ export default function PerfilISP() {
           </div>
         )}
 
-        {/* Logo Upload Card */}
-        <Card>
-          <CardContent className="py-5">
-            <div className="flex items-center gap-5">
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                className="relative group shrink-0"
-                disabled={uploadingLogo}
-                title="Alterar logotipo"
-              >
-                <Avatar className="h-20 w-20 border-2 border-border shadow-sm">
-                  {logoUrl ? <AvatarImage src={logoUrl} alt={ispNome} /> : null}
-                  <AvatarFallback className="bg-primary/10 text-primary text-2xl font-bold">
-                    {ispNome?.charAt(0) || "?"}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="absolute inset-0 rounded-full bg-foreground/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                  {uploadingLogo ? (
-                    <Loader2 className="h-5 w-5 text-primary-foreground animate-spin" />
-                  ) : (
-                    <Camera className="h-5 w-5 text-primary-foreground" />
-                  )}
-                </div>
-                <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} />
-              </button>
-              <div className="flex-1 min-w-0">
-                <h3 className="text-sm font-semibold text-foreground">Logotipo do Provedor</h3>
-                <p className="text-xs text-muted-foreground mt-0.5">PNG, JPG ou SVG (máx. 2MB).</p>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="mt-2 gap-1.5 text-xs"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={uploadingLogo}
-                >
-                  {uploadingLogo ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
-                  {uploadingLogo ? "Enviando..." : "Enviar logotipo"}
-                </Button>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Status de Implementação - Progress Bar */}
+        {/* Status de Implementação - TOPO da página */}
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-base">Status de Implementação</CardTitle>
@@ -328,7 +285,7 @@ export default function PerfilISP() {
         </Card>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Dados da Empresa */}
+          {/* Dados da Empresa (com logo integrado) */}
           <Card>
             <CardHeader className="pb-4">
               <CardTitle className="text-base flex items-center gap-2">
@@ -338,6 +295,45 @@ export default function PerfilISP() {
               <CardDescription>Informações comerciais do provedor.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
+              {/* Logo Upload integrado */}
+              <div className="flex items-center gap-4 pb-3 border-b border-border/50">
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="relative group shrink-0"
+                  disabled={uploadingLogo}
+                  title="Alterar logotipo"
+                >
+                  <Avatar className="h-16 w-16 border-2 border-border shadow-sm">
+                    {logoUrl ? <AvatarImage src={logoUrl} alt={ispNome} /> : null}
+                    <AvatarFallback className="bg-primary/10 text-primary text-xl font-bold">
+                      {ispNome?.charAt(0) || "?"}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="absolute inset-0 rounded-full bg-foreground/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                    {uploadingLogo ? (
+                      <Loader2 className="h-4 w-4 text-primary-foreground animate-spin" />
+                    ) : (
+                      <Camera className="h-4 w-4 text-primary-foreground" />
+                    )}
+                  </div>
+                  <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} />
+                </button>
+                <div className="flex-1 min-w-0">
+                  <h3 className="text-sm font-semibold text-foreground">Logotipo</h3>
+                  <p className="text-xs text-muted-foreground">PNG, JPG ou SVG (máx. 2MB)</p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="mt-1.5 gap-1.5 text-xs h-7"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={uploadingLogo}
+                  >
+                    {uploadingLogo ? <Loader2 className="h-3 w-3 animate-spin" /> : <Upload className="h-3 w-3" />}
+                    {uploadingLogo ? "Enviando..." : "Alterar"}
+                  </Button>
+                </div>
+              </div>
+
               <FormField label="Nome Fantasia" icon={Building2} loading={loading}>
                 <Input value={form.nome_fantasia} onChange={(e) => handleChange("nome_fantasia", e.target.value)} placeholder="Meu Provedor" className="h-9" />
               </FormField>
