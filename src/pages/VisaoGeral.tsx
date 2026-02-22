@@ -241,7 +241,8 @@ const VisaoGeral = () => {
       if (e.cliente_cidade) cidades.add(e.cliente_cidade);
       if (e.cliente_bairro) bairros.add(e.cliente_bairro);
       if (e.plano_nome) planos.add(e.plano_nome);
-      if (e.filial_id !== null && e.filial_id !== undefined) filiais.add(String(e.filial_id));
+      const fid = e.filial_id !== null && e.filial_id !== undefined ? String(e.filial_id).trim() : "";
+      if (fid) filiais.add(fid);
     });
     return {
       ufs: Array.from(ufs).sort(),
