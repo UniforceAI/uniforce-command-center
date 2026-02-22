@@ -6,14 +6,16 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
+import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Building2, Save, Mail, Phone, FileText, User, Globe, Loader2,
-  Package, CalendarDays, Link2, CheckCircle2, Upload, Camera, ExternalLink,
+  Package, CalendarDays, Link2, Upload, Camera, ExternalLink, Users, Server,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useActiveIsp } from "@/hooks/useActiveIsp";
 import { supabase } from "@/integrations/supabase/client";
+import { externalSupabase } from "@/integrations/supabase/external-client";
 
 interface IspProfileData {
   nome_fantasia: string;
@@ -47,21 +49,34 @@ const EMPTY_FORM: IspProfileData = {
 
 const PAYMENT_DAYS = ["5", "10", "15", "20", "25"];
 
-const STATUS_OPTIONS = [
-  { value: "Em análise", color: "bg-muted text-muted-foreground" },
-  { value: "Em implantação", color: "bg-primary/15 text-primary" },
-  { value: "Ativo", color: "bg-accent/20 text-accent-foreground" },
-  { value: "Pausado", color: "bg-warning/15 text-warning" },
-  { value: "Cancelado", color: "bg-destructive/15 text-destructive" },
-];
-
 function getQuarterKey() {
   const now = new Date();
   return `${now.getFullYear()}-Q${Math.ceil((now.getMonth() + 1) / 3)}`;
 }
 
+/** Map lead_status → progress step (0-2) */
+function statusToStep(status: string): number {
+  const s = status?.toLowerCase().trim() || "";
+  if (s === "ativo" || s === "concluído" || s === "concluido") return 2;
+  if (s.includes("implantação") || s.includes("implantacao") || s.includes("andamento")) return 1;
+  return 0; // "Em análise", empty, "Pausado", "Cancelado" etc.
+}
+
+const STEP_LABELS = ["Não iniciado", "Em implantação", "Concluído"];
+
+/** Friendly ERP display names */
+function erpDisplayName(instancia: string): string {
+  const map: Record<string, string> = {
+    ispbox: "ISPBox",
+    ixc: "IXC Provedor",
+    mk: "MK Solutions",
+    uniforce: "Uniforce",
+  };
+  return map[instancia?.toLowerCase()] || instancia || "—";
+}
+
 export default function PerfilISP() {
-  const { ispNome } = useActiveIsp();
+  const { ispId, ispNome, instanciaIsp } = useActiveIsp();
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -72,13 +87,14 @@ export default function PerfilISP() {
   const [notFound, setNotFound] = useState(false);
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [uploadingLogo, setUploadingLogo] = useState(false);
-
-  // Quarterly lock for payment day
   const [paymentLocked, setPaymentLocked] = useState(false);
+  const [profileCount, setProfileCount] = useState<number | null>(null);
 
   const hasChanges = JSON.stringify(form) !== JSON.stringify(originalForm);
 
   useEffect(() => {
+    if (!ispNome) return;
+
     async function loadProfile() {
       setLoading(true);
       setNotFound(false);
@@ -98,7 +114,7 @@ export default function PerfilISP() {
         }
       } catch (err) {
         console.error("Failed to load profile from Notion:", err);
-        toast({ title: "Erro ao carregar perfil", description: "Não foi possível buscar os dados do Notion.", variant: "destructive" });
+        toast({ title: "Erro ao carregar perfil", description: "Não foi possível buscar os dados.", variant: "destructive" });
       } finally {
         setLoading(false);
       }
@@ -107,7 +123,6 @@ export default function PerfilISP() {
     async function loadLogo() {
       const slug = ispNome.toLowerCase().replace(/\s+/g, "-");
       const { data } = supabase.storage.from("cliente-logos").getPublicUrl(`${slug}/logo`);
-      // Check if logo exists by trying to fetch it
       try {
         const res = await fetch(data.publicUrl, { method: "HEAD" });
         if (res.ok) setLogoUrl(data.publicUrl + `?t=${Date.now()}`);
@@ -116,18 +131,27 @@ export default function PerfilISP() {
       }
     }
 
-    // Check quarterly lock
+    async function loadProfileCount() {
+      try {
+        const { count, error } = await externalSupabase
+          .from("profiles")
+          .select("id", { count: "exact", head: true })
+          .eq("isp_id", ispId);
+        if (!error && count !== null) setProfileCount(count);
+      } catch {
+        // ignore
+      }
+    }
+
     const lockKey = `payment_day_lock_${ispNome}`;
-    const savedQuarter = localStorage.getItem(lockKey);
-    if (savedQuarter === getQuarterKey()) {
+    if (localStorage.getItem(lockKey) === getQuarterKey()) {
       setPaymentLocked(true);
     }
 
-    if (ispNome) {
-      loadProfile();
-      loadLogo();
-    }
-  }, [ispNome]);
+    loadProfile();
+    loadLogo();
+    loadProfileCount();
+  }, [ispNome, ispId]);
 
   const handleChange = (key: keyof IspProfileData, value: string) => {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -142,10 +166,8 @@ export default function PerfilISP() {
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
 
-      // If payment day changed, lock for the quarter
       if (form.data_pagamento !== originalForm.data_pagamento && form.data_pagamento) {
-        const lockKey = `payment_day_lock_${ispNome}`;
-        localStorage.setItem(lockKey, getQuarterKey());
+        localStorage.setItem(`payment_day_lock_${ispNome}`, getQuarterKey());
         setPaymentLocked(true);
       }
 
@@ -162,7 +184,6 @@ export default function PerfilISP() {
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
     if (!file.type.startsWith("image/")) {
       toast({ title: "Arquivo inválido", description: "Selecione uma imagem (PNG, JPG, SVG).", variant: "destructive" });
       return;
@@ -171,15 +192,12 @@ export default function PerfilISP() {
       toast({ title: "Arquivo muito grande", description: "O logo deve ter no máximo 2MB.", variant: "destructive" });
       return;
     }
-
     setUploadingLogo(true);
     try {
       const slug = ispNome.toLowerCase().replace(/\s+/g, "-");
       const path = `${slug}/logo`;
-
       const { error } = await supabase.storage.from("cliente-logos").upload(path, file, { upsert: true, contentType: file.type });
       if (error) throw error;
-
       const { data } = supabase.storage.from("cliente-logos").getPublicUrl(path);
       setLogoUrl(data.publicUrl + `?t=${Date.now()}`);
       toast({ title: "Logo atualizado", description: "O logotipo foi salvo com sucesso." });
@@ -192,7 +210,7 @@ export default function PerfilISP() {
     }
   };
 
-  const statusBadge = STATUS_OPTIONS.find((s) => s.value === form.lead_status);
+  const step = statusToStep(form.lead_status);
 
   return (
     <div className="min-h-screen bg-background">
@@ -210,17 +228,22 @@ export default function PerfilISP() {
               </div>
               <div>
                 <h1 className="text-2xl font-bold text-foreground">Perfil do Provedor</h1>
-                <p className="text-muted-foreground text-sm mt-0.5">Dados sincronizados com o Notion</p>
+                <p className="text-muted-foreground text-sm mt-0.5">{ispNome}</p>
               </div>
             </div>
 
-            <div className="flex items-center gap-3">
-              {statusBadge && !loading && (
-                <Badge className={`${statusBadge.color} border-0 text-xs px-3 py-1`}>
-                  {statusBadge.value}
+            <div className="flex items-center gap-2">
+              {form.produto && !loading && (
+                <Badge className="bg-primary text-primary-foreground border-0 text-xs px-3 py-1 font-semibold">
+                  {form.produto}
                 </Badge>
               )}
-              <Badge variant="outline" className="text-xs">{ispNome}</Badge>
+              {instanciaIsp && (
+                <Badge variant="outline" className="text-xs gap-1">
+                  <Server className="h-3 w-3" />
+                  {erpDisplayName(instanciaIsp)}
+                </Badge>
+              )}
             </div>
           </div>
         </div>
@@ -244,9 +267,7 @@ export default function PerfilISP() {
                 title="Alterar logotipo"
               >
                 <Avatar className="h-20 w-20 border-2 border-border shadow-sm">
-                  {logoUrl ? (
-                    <AvatarImage src={logoUrl} alt={ispNome} />
-                  ) : null}
+                  {logoUrl ? <AvatarImage src={logoUrl} alt={ispNome} /> : null}
                   <AvatarFallback className="bg-primary/10 text-primary text-2xl font-bold">
                     {ispNome?.charAt(0) || "?"}
                   </AvatarFallback>
@@ -262,7 +283,7 @@ export default function PerfilISP() {
               </button>
               <div className="flex-1 min-w-0">
                 <h3 className="text-sm font-semibold text-foreground">Logotipo do Provedor</h3>
-                <p className="text-xs text-muted-foreground mt-0.5">Clique na imagem ou no botão para enviar o logo da sua empresa. PNG, JPG ou SVG (máx. 2MB).</p>
+                <p className="text-xs text-muted-foreground mt-0.5">PNG, JPG ou SVG (máx. 2MB).</p>
                 <Button
                   variant="outline"
                   size="sm"
@@ -278,7 +299,34 @@ export default function PerfilISP() {
           </CardContent>
         </Card>
 
-        {/* Top row: Dados da Empresa + Produto & Contrato */}
+        {/* Status de Implementação - Progress Bar */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">Status de Implementação</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {loading ? (
+              <Skeleton className="h-10 w-full" />
+            ) : (
+              <div className="space-y-3">
+                <div className="flex justify-between text-xs text-muted-foreground">
+                  {STEP_LABELS.map((label, i) => (
+                    <span key={label} className={i <= step ? "text-primary font-semibold" : ""}>
+                      {label}
+                    </span>
+                  ))}
+                </div>
+                <Progress value={step === 0 ? 0 : step === 1 ? 50 : 100} className="h-2.5" />
+                <p className="text-xs text-muted-foreground">
+                  {step === 0 && "A implementação ainda não foi iniciada."}
+                  {step === 1 && "Implementação em andamento — acompanhe o progresso com seu gerente de sucesso."}
+                  {step === 2 && "Implementação concluída — serviço entregue e estável. ✓"}
+                </p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Dados da Empresa */}
           <Card>
@@ -297,13 +345,36 @@ export default function PerfilISP() {
                 <FormField label="CNPJ" icon={FileText} loading={loading}>
                   <Input value={form.cnpj} onChange={(e) => handleChange("cnpj", e.target.value)} placeholder="00.000.000/0001-00" className="h-9" />
                 </FormField>
-                <FormField label="Área de Atuação" icon={Globe} loading={loading}>
-                  <Input value={form.area} onChange={(e) => handleChange("area", e.target.value)} placeholder="Região / Estado" className="h-9" />
-                </FormField>
+                {/* Área de Atuação - read only */}
+                <div>
+                  <Label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5 mb-1.5">
+                    <Globe className="h-3.5 w-3.5" />
+                    Área de Atuação
+                  </Label>
+                  {loading ? (
+                    <Skeleton className="h-9 w-full" />
+                  ) : (
+                    <div className="flex items-center h-9 px-3 rounded-md border border-border bg-muted/50">
+                      <span className="text-sm text-foreground">{form.area || "—"}</span>
+                    </div>
+                  )}
+                </div>
               </div>
-              <FormField label="Atendentes" icon={User} loading={loading}>
-                <Input value={form.atendentes} onChange={(e) => handleChange("atendentes", e.target.value)} placeholder="Nº de atendentes" className="h-9" />
-              </FormField>
+              {/* Atendentes - dynamic from profiles count */}
+              <div>
+                <Label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5 mb-1.5">
+                  <Users className="h-3.5 w-3.5" />
+                  Contas de Acesso
+                </Label>
+                {loading || profileCount === null ? (
+                  <Skeleton className="h-9 w-full" />
+                ) : (
+                  <div className="flex items-center gap-2 h-9 px-3 rounded-md border border-border bg-muted/50">
+                    <span className="text-sm font-medium text-foreground">{profileCount}</span>
+                    <span className="text-xs text-muted-foreground">usuários ativos</span>
+                  </div>
+                )}
+              </div>
             </CardContent>
           </Card>
 
@@ -314,57 +385,61 @@ export default function PerfilISP() {
                 <Package className="h-4 w-4 text-primary" />
                 Produto & Contrato
               </CardTitle>
-              <CardDescription>Informações do produto e contrato (somente leitura).</CardDescription>
+              <CardDescription>Informações do produto e contrato.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              {/* Produto - read only */}
+              {/* Produto - badge emphasis */}
               <div>
-                <Label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5 mb-1.5">
-                  <Package className="h-3.5 w-3.5" />
+                <Label className="text-xs font-medium text-muted-foreground mb-1.5 block">
                   Produto Contratado
                 </Label>
                 {loading ? (
                   <Skeleton className="h-9 w-full" />
                 ) : (
-                  <div className="flex items-center gap-2 h-9 px-3 rounded-md border border-border bg-muted/50">
-                    <span className="text-sm text-foreground">{form.produto || "—"}</span>
+                  <div className="flex items-center h-9">
+                    <Badge className="bg-primary text-primary-foreground border-0 px-4 py-1.5 text-sm font-semibold">
+                      {form.produto || "Não definido"}
+                    </Badge>
                   </div>
                 )}
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <FormField label="Dia de Pagamento" icon={CalendarDays} loading={loading}>
-                  <Select
-                    value={form.data_pagamento}
-                    onValueChange={(v) => handleChange("data_pagamento", v)}
-                    disabled={paymentLocked}
-                  >
-                    <SelectTrigger className="h-9">
-                      <SelectValue placeholder={paymentLocked ? `Dia ${form.data_pagamento} (bloqueado)` : "Selecionar dia"} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {PAYMENT_DAYS.map((d) => (
-                        <SelectItem key={d} value={d}>Dia {d}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {paymentLocked && (
-                    <p className="text-[11px] text-muted-foreground mt-1">Alteração disponível no próximo trimestre.</p>
-                  )}
-                </FormField>
+              {/* Dia de Pagamento */}
+              <FormField label="Dia de Pagamento" icon={CalendarDays} loading={loading}>
+                <Select
+                  value={form.data_pagamento}
+                  onValueChange={(v) => handleChange("data_pagamento", v)}
+                  disabled={paymentLocked}
+                >
+                  <SelectTrigger className="h-9">
+                    <SelectValue placeholder={paymentLocked ? `Dia ${form.data_pagamento} (bloqueado)` : "Selecionar dia"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {PAYMENT_DAYS.map((d) => (
+                      <SelectItem key={d} value={d}>Dia {d}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {paymentLocked && (
+                  <p className="text-[11px] text-muted-foreground mt-1">Alteração disponível no próximo trimestre.</p>
+                )}
+              </FormField>
 
-                <FormField label="Status de Implementação" icon={CheckCircle2} loading={loading}>
-                  <Select value={form.lead_status} onValueChange={(v) => handleChange("lead_status", v)}>
-                    <SelectTrigger className="h-9">
-                      <SelectValue placeholder="Selecionar status" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {STATUS_OPTIONS.map((s) => (
-                        <SelectItem key={s.value} value={s.value}>{s.value}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </FormField>
+              {/* ERP Integrado */}
+              <div>
+                <Label className="text-xs font-medium text-muted-foreground mb-1.5 block">
+                  ERP Integrado
+                </Label>
+                {loading ? (
+                  <Skeleton className="h-9 w-full" />
+                ) : (
+                  <div className="flex items-center h-9">
+                    <Badge variant="outline" className="gap-1.5 px-3 py-1.5 text-sm">
+                      <Server className="h-3.5 w-3.5" />
+                      {erpDisplayName(instanciaIsp)}
+                    </Badge>
+                  </div>
+                )}
               </div>
 
               {/* Link do contrato - read only */}
