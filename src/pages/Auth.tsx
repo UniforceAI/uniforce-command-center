@@ -118,6 +118,15 @@ export default function Auth() {
             <Button type="submit" className="w-full bg-gradient-to-r from-[hsl(213,81%,54%)] to-[hsl(126,91%,65%)] hover:opacity-90 text-white font-semibold" disabled={loading}>
               {loading ? "Carregando..." : "Entrar"}
             </Button>
+
+            <div className="text-center">
+              <a
+                href="/esqueci-senha"
+                className="text-sm text-muted-foreground hover:text-primary transition-colors"
+              >
+                Esqueceu a senha?
+              </a>
+            </div>
           </form>
 
           <p className="text-xs text-muted-foreground text-center mt-6">

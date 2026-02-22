@@ -10,6 +10,8 @@ import { MainLayout } from "@/components/layout/MainLayout";
 import Index from "./pages/Index";
 import NPS from "./pages/NPS";
 import Auth from "./pages/Auth";
+import EsqueciSenha from "./pages/EsqueciSenha";
+import ResetSenha from "./pages/ResetSenha";
 import NotFound from "./pages/NotFound";
 import VisaoGeral from "./pages/VisaoGeral";
 import Financeiro from "./pages/Financeiro";
@@ -33,6 +35,8 @@ const App = () => (
           <ChurnScoreConfigProvider>
           <Routes>
             <Route path="/auth" element={<Auth />} />
+            <Route path="/esqueci-senha" element={<EsqueciSenha />} />
+            <Route path="/reset-senha" element={<ResetSenha />} />
             <Route
               path="/selecionar-cliente"
               element={
