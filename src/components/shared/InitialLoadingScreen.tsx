@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import uniconIcon from "@/assets/uniforce-icon.png";
-import uniforceLogo from "@/assets/uniforce-logo.png";
+
 
 const SCENES = [
   {
@@ -185,10 +185,6 @@ export function InitialLoadingScreen() {
           </p>
         </div>
 
-        {/* Logo signature */}
-        <div className="mt-14 opacity-40">
-          <img src={uniforceLogo} alt="Uniforce" className="h-6" style={{ filter: "brightness(2)" }} />
-        </div>
       </div>
 
       <style>{`
