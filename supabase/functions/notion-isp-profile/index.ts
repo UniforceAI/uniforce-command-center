@@ -10,15 +10,19 @@ const NOTION_API = "https://api.notion.com/v1";
 const DATABASE_ID = "229d9215a80c8017b0d2d9b597f4f314";
 
 // Notion field mapping: form key → Notion property name + type
-const FIELD_MAP: Record<string, { notion: string; type: "title" | "rich_text" | "email" | "phone_number" }> = {
-  nome_fantasia:            { notion: "Cliente",            type: "rich_text" },
-  cnpj:                     { notion: "CNPJ",               type: "rich_text" },
-  contato_oficial_nome:     { notion: "Representante Legal", type: "title" },
-  contato_oficial_telefone: { notion: "Phone Number",        type: "phone_number" },
-  email_oficial:            { notion: "Contact Email",       type: "email" },
-  email_financeiro:         { notion: "Email Cobrança",      type: "email" },
-  area:                     { notion: "area",                type: "rich_text" },
-  atendentes:               { notion: "atendentes",          type: "rich_text" },
+const FIELD_MAP: Record<string, { notion: string; type: "title" | "rich_text" | "email" | "phone_number" | "url" | "select" | "date" }> = {
+  nome_fantasia:            { notion: "Cliente",              type: "rich_text" },
+  cnpj:                     { notion: "CNPJ",                 type: "rich_text" },
+  contato_oficial_nome:     { notion: "Representante Legal",  type: "title" },
+  contato_oficial_telefone: { notion: "Phone Number",         type: "phone_number" },
+  email_oficial:            { notion: "Contact Email",        type: "email" },
+  email_financeiro:         { notion: "Email Cobrança",       type: "email" },
+  area:                     { notion: "area",                 type: "rich_text" },
+  atendentes:               { notion: "atendentes",           type: "rich_text" },
+  produto:                  { notion: "Produto",              type: "rich_text" },
+  data_pagamento:           { notion: "Data de pagamento",    type: "rich_text" },
+  link_contrato:            { notion: "Link do contrato",     type: "url" },
+  lead_status:              { notion: "Lead Status",          type: "select" },
 };
 
 function notionHeaders(token: string) {
@@ -59,6 +63,12 @@ function extractValue(prop: any): string {
       return prop.email ?? "";
     case "phone_number":
       return prop.phone_number ?? "";
+    case "url":
+      return prop.url ?? "";
+    case "select":
+      return prop.select?.name ?? "";
+    case "date":
+      return prop.date?.start ?? "";
     default:
       return "";
   }
@@ -98,6 +108,15 @@ function buildProperties(formData: Record<string, string>) {
         break;
       case "phone_number":
         properties[notion] = { phone_number: value || null };
+        break;
+      case "url":
+        properties[notion] = { url: value || null };
+        break;
+      case "select":
+        properties[notion] = value ? { select: { name: value } } : { select: null };
+        break;
+      case "date":
+        properties[notion] = value ? { date: { start: value } } : { date: null };
         break;
     }
   }
