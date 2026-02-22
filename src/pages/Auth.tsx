@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { externalSupabase } from "@/integrations/supabase/external-client";
 import { useAuth } from "@/contexts/AuthContext";
 import { validateEmailDomain } from "@/lib/authUtils";
@@ -120,12 +120,12 @@ export default function Auth() {
             </Button>
 
             <div className="text-center">
-              <a
-                href="/esqueci-senha"
+              <Link
+                to="/esqueci-senha"
                 className="text-sm text-muted-foreground hover:text-primary transition-colors"
               >
                 Esqueceu a senha?
-              </a>
+              </Link>
             </div>
           </form>
 
