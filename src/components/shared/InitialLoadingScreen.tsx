@@ -4,61 +4,62 @@ import uniforceLogo from "@/assets/uniforce-logo.png";
 
 const SCENES = [
   {
-    text: "Liberte seu time para o que importa.",
-    subtitle: "Bem-vindo à era da inteligência.",
-    delay: 0,
+    text: "Não automatizamos o óbvio,",
+    emphasis: null,
   },
   {
-    text: "Não automatizamos o óbvio, criamos inteligência que libera seu time para o estratégico,",
-    subtitle: "para o que é humano.",
-    delay: 4500,
+    text: "Criamos inteligência que libera seu time para o estratégico,",
+    emphasis: "para o que é humano!",
   },
   {
-    text: "…e transforma a qualidade e eficiência do seu provedor.",
-    subtitle: "",
-    delay: 9000,
+    text: "…e transforma a qualidade e eficiência",
+    emphasis: "do seu provedor.",
   },
 ];
 
 export function InitialLoadingScreen() {
-  const [sceneIndex, setSceneIndex] = useState(0);
+  const [sceneIndex, setSceneIndex] = useState(-1); // -1 = chamada
   const [visible, setVisible] = useState(true);
   const [progress, setProgress] = useState(0);
 
-  // Scene rotation
   useEffect(() => {
-    const timers: NodeJS.Timeout[] = [];
-    SCENES.forEach((scene, i) => {
-      if (i === 0) return;
-      timers.push(
-        setTimeout(() => {
-          setVisible(false);
-          setTimeout(() => {
-            setSceneIndex(i);
-            setVisible(true);
-          }, 800);
-        }, scene.delay)
-      );
-    });
+    const timers: ReturnType<typeof setTimeout>[] = [];
+
+    // Chamada → Scene 0 at 3s
+    timers.push(setTimeout(() => {
+      setVisible(false);
+      setTimeout(() => { setSceneIndex(0); setVisible(true); }, 700);
+    }, 3000));
+
+    // Scene 0 → Scene 1 at 6.5s
+    timers.push(setTimeout(() => {
+      setVisible(false);
+      setTimeout(() => { setSceneIndex(1); setVisible(true); }, 700);
+    }, 6500));
+
+    // Scene 1 → Scene 2 at 10s
+    timers.push(setTimeout(() => {
+      setVisible(false);
+      setTimeout(() => { setSceneIndex(2); setVisible(true); }, 700);
+    }, 10000));
+
     return () => timers.forEach(clearTimeout);
   }, []);
 
   // Progress bar
   useEffect(() => {
     const interval = setInterval(() => {
-      setProgress((p) => {
-        if (p >= 95) return 95;
-        return p + Math.random() * 3 + 0.5;
-      });
-    }, 200);
+      setProgress((p) => (p >= 95 ? 95 : p + Math.random() * 3 + 0.5));
+    }, 250);
     return () => clearInterval(interval);
   }, []);
 
-  const scene = SCENES[sceneIndex];
+  const isChamada = sceneIndex === -1;
+  const scene = sceneIndex >= 0 ? SCENES[sceneIndex] : null;
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col items-center justify-center overflow-hidden">
-      {/* Background with brand gradient */}
+      {/* Background */}
       <div
         className="absolute inset-0"
         style={{
@@ -107,40 +108,69 @@ export function InitialLoadingScreen() {
           />
         </div>
 
-        {/* Scene text — large, bold, cinematic */}
-        <div
-          className={`transition-all duration-700 ease-in-out ${
-            visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"
-          }`}
-        >
-          <h1
-            className="text-3xl md:text-5xl font-bold leading-tight mb-4"
-            style={{
-              background: "linear-gradient(135deg, hsl(0 0% 100%) 0%, hsl(213 81% 74%) 100%)",
-              WebkitBackgroundClip: "text",
-              WebkitTextFillColor: "transparent",
-              backgroundClip: "text",
-            }}
+        {/* Narrative — same sizing, poetic flow */}
+        <div className="h-36 flex items-center justify-center">
+          <div
+            className={`transition-all duration-700 ease-in-out ${
+              visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"
+            }`}
           >
-            {scene.text}
-          </h1>
-          {scene.subtitle && (
-            <p
-              className="text-xl md:text-2xl font-light"
-              style={{
-                background: "linear-gradient(90deg, hsl(126 91% 65%) 0%, hsl(213 81% 74%) 100%)",
-                WebkitBackgroundClip: "text",
-                WebkitTextFillColor: "transparent",
-                backgroundClip: "text",
-              }}
-            >
-              {scene.subtitle}
-            </p>
-          )}
+            {isChamada ? (
+              <>
+                <h1
+                  className="text-2xl md:text-4xl font-semibold leading-tight mb-3"
+                  style={{
+                    background: "linear-gradient(135deg, hsl(0 0% 100%) 0%, hsl(213 81% 74%) 100%)",
+                    WebkitBackgroundClip: "text",
+                    WebkitTextFillColor: "transparent",
+                    backgroundClip: "text",
+                  }}
+                >
+                  Liberte seu time para o que importa.
+                </h1>
+                <p
+                  className="text-lg md:text-xl font-light"
+                  style={{
+                    background: "linear-gradient(90deg, hsl(126 91% 65%) 0%, hsl(213 81% 74%) 100%)",
+                    WebkitBackgroundClip: "text",
+                    WebkitTextFillColor: "transparent",
+                    backgroundClip: "text",
+                  }}
+                >
+                  Bem-vindo à era da inteligência.
+                </p>
+              </>
+            ) : scene ? (
+              <p
+                className="text-2xl md:text-4xl leading-relaxed font-light"
+                style={{
+                  background: "linear-gradient(135deg, hsl(0 0% 100% / 0.85) 0%, hsl(213 81% 74%) 100%)",
+                  WebkitBackgroundClip: "text",
+                  WebkitTextFillColor: "transparent",
+                  backgroundClip: "text",
+                }}
+              >
+                {scene.text}
+                {scene.emphasis && (
+                  <span
+                    className="font-semibold"
+                    style={{
+                      background: "linear-gradient(90deg, hsl(213 81% 54%), hsl(126 91% 65%))",
+                      WebkitBackgroundClip: "text",
+                      WebkitTextFillColor: "transparent",
+                      backgroundClip: "text",
+                    }}
+                  >
+                    {" "}{scene.emphasis}
+                  </span>
+                )}
+              </p>
+            ) : null}
+          </div>
         </div>
 
-        {/* Progress bar — subtle at the bottom */}
-        <div className="mt-16 w-64">
+        {/* Progress bar */}
+        <div className="mt-12 w-64">
           <div className="h-[2px] bg-white/10 rounded-full overflow-hidden">
             <div
               className="h-full rounded-full transition-all duration-300 ease-out"
@@ -155,8 +185,8 @@ export function InitialLoadingScreen() {
           </p>
         </div>
 
-        {/* Logo signature at bottom */}
-        <div className="mt-16 opacity-40">
+        {/* Logo signature */}
+        <div className="mt-14 opacity-40">
           <img src={uniforceLogo} alt="Uniforce" className="h-6" style={{ filter: "brightness(2)" }} />
         </div>
       </div>
