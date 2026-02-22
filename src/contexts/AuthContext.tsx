@@ -248,7 +248,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // ── Session initialisation & auth listener ─────────────────
   useEffect(() => {
+    let mounted = true;
+
     async function handleSession(newSession: Session | null) {
+      if (!mounted) return;
       setSession(newSession);
       const newUser = newSession?.user ?? null;
       setUser(newUser);
@@ -266,11 +269,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         const email = newUser.email || "";
 
-        // Load profile & ISPs concurrently
-        const [p, isps] = await Promise.all([
-          loadUserProfile(newUser.id, email),
-          isSuperAdminEmail(email) ? loadAvailableIsps() : Promise.resolve<IspOption[]>([]),
-        ]);
+        // Load profile & ISPs concurrently with a timeout
+        const timeoutPromise = new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("timeout")), 10000)
+        );
+
+        const [p, isps] = await Promise.race([
+          Promise.all([
+            loadUserProfile(newUser.id, email),
+            isSuperAdminEmail(email) ? loadAvailableIsps() : Promise.resolve<IspOption[]>([]),
+          ]),
+          timeoutPromise,
+        ]) as [AuthProfile | null, IspOption[]];
+
+        if (!mounted) return;
 
         setProfile(p);
         setAvailableIsps(isps);
@@ -289,7 +301,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           if (stored) {
             try {
               const parsed: IspOption = JSON.parse(stored);
-              // Re-validate against freshly loaded ISP list
               const stillValid = isps.find((i) => i.isp_id === parsed.isp_id);
               setSelectedIsp(stillValid ? parsed : null);
               if (!stillValid) sessionStorage.removeItem("uniforce_selected_isp");
@@ -299,27 +310,63 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }
         }
       } catch (err: unknown) {
+        if (!mounted) return;
         console.error("❌ Auth session error:", err);
-        setError("Erro ao carregar perfil do usuário.");
+        // On timeout/error, try domain fallback directly
+        const email = newUser.email || "";
+        const domain = emailDomain(email);
+        const fallback = DOMAIN_ISP_FALLBACK[domain];
+        if (fallback) {
+          setProfile({
+            user_id: newUser.id,
+            isp_id: fallback.isp_id,
+            isp_nome: fallback.isp_nome,
+            instancia_isp: fallback.instancia_isp,
+            full_name: email.split("@")[0],
+            email,
+            role: isSuperAdminEmail(email) ? "super_admin" : "viewer",
+          });
+          setError(null);
+        } else {
+          setError("Erro ao carregar perfil do usuário.");
+        }
       } finally {
-        setIsLoading(false);
+        if (mounted) setIsLoading(false);
       }
     }
 
-    // Subscribe to auth state changes
+    // Subscribe to auth state changes FIRST
     const {
       data: { subscription },
     } = externalSupabase.auth.onAuthStateChange(async (_event, newSession) => {
+      if (!mounted) return;
       setIsLoading(true);
       await handleSession(newSession);
     });
 
     // Bootstrap from persisted session
     externalSupabase.auth.getSession().then(({ data: { session: s } }) => {
-      handleSession(s);
+      if (mounted) handleSession(s);
     });
 
-    return () => subscription.unsubscribe();
+    // Safety timeout: if isLoading is still true after 15s, force it off
+    const safetyTimer = setTimeout(() => {
+      if (mounted) {
+        setIsLoading((current) => {
+          if (current) {
+            console.warn("⚠️ Auth safety timeout: forcing isLoading=false");
+            return false;
+          }
+          return current;
+        });
+      }
+    }, 15000);
+
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+      clearTimeout(safetyTimer);
+    };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Sign out ───────────────────────────────────────────────
