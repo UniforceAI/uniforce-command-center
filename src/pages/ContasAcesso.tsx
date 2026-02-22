@@ -160,33 +160,36 @@ export default function ContasAcesso() {
     setLoadError(null);
 
     try {
-      const query = externalSupabase
+      // Query profiles and roles separately (no FK relationship between tables)
+      const profileQuery = externalSupabase
         .from("profiles")
-        .select(`
-          id,
-          full_name,
-          email,
-          isp_id,
-          instancia_isp,
-          created_at,
-          user_roles ( role )
-        `)
+        .select("id, full_name, email, isp_id, instancia_isp, created_at")
         .order("created_at", { ascending: false });
 
       if (ispId !== "uniforce") {
-        query.eq("isp_id", ispId);
+        profileQuery.eq("isp_id", ispId);
       }
 
-      const { data, error } = await query;
-      if (error) throw error;
+      const [profilesResult, rolesResult] = await Promise.all([
+        profileQuery,
+        externalSupabase.from("user_roles").select("user_id, role"),
+      ]);
 
-      const mapped: UserAccount[] = (data || []).map((row: any) => ({
+      if (profilesResult.error) throw profilesResult.error;
+
+      // Build role lookup map
+      const roleMap = new Map<string, string>();
+      (rolesResult.data || []).forEach((r: any) => {
+        roleMap.set(r.user_id, r.role);
+      });
+
+      const mapped: UserAccount[] = (profilesResult.data || []).map((row: any) => ({
         id: row.id,
         full_name: row.full_name,
         email: row.email,
         isp_id: row.isp_id,
         instancia_isp: row.instancia_isp,
-        role: (row.user_roles?.[0]?.role as AppRole) ?? null,
+        role: (roleMap.get(row.id) as AppRole) ?? null,
         created_at: row.created_at,
       }));
 
