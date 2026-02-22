@@ -61,7 +61,7 @@ export default function ResetSenha() {
       } else {
         setSuccess(true);
         toast.success("Senha alterada com sucesso!");
-        setTimeout(() => navigate("/auth"), 3000);
+        setTimeout(() => navigate("/auth"), 1500);
       }
     } catch (err: any) {
       toast.error("Erro inesperado: " + err.message);
