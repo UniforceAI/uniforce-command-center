@@ -1,33 +1,103 @@
 import { useState, useEffect } from "react";
 import uniconIcon from "@/assets/uniforce-icon.png";
 
-const PHRASES = [
-  "Não automatizamos o óbvio, criamos inteligência que libera seu time para o estratégico, para o que é humano,",
-  "…e transforma a qualidade e eficiência do seu provedor.",
+const SCENES = [
+  {
+    text: "Não automatizamos o óbvio,",
+    emphasis: null,
+  },
+  {
+    text: "Criamos inteligência que libera seu time para o estratégico,",
+    emphasis: "para o que é humano!",
+  },
+  {
+    text: "…e transforma a qualidade e eficiência",
+    emphasis: "do seu provedor.",
+  },
 ];
 
 export function LoadingScreen() {
-  const [phraseIndex, setPhraseIndex] = useState(0);
-  const [fadeIn, setFadeIn] = useState(true);
+  const [sceneIndex, setSceneIndex] = useState(-1); // -1 = chamada
+  const [visible, setVisible] = useState(true);
   const [progress, setProgress] = useState(0);
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      setFadeIn(false);
+    // Start with chamada, then rotate through scenes
+    const timers: ReturnType<typeof setTimeout>[] = [];
+
+    // After 3s, fade to scene 0
+    timers.push(
       setTimeout(() => {
-        setPhraseIndex((prev) => (prev + 1) % PHRASES.length);
-        setFadeIn(true);
-      }, 500);
-    }, 4000);
-    return () => clearInterval(interval);
+        setVisible(false);
+        setTimeout(() => { setSceneIndex(0); setVisible(true); }, 600);
+      }, 3000)
+    );
+
+    // Scene 1 at 6.5s
+    timers.push(
+      setTimeout(() => {
+        setVisible(false);
+        setTimeout(() => { setSceneIndex(1); setVisible(true); }, 600);
+      }, 6500)
+    );
+
+    // Scene 2 at 10s
+    timers.push(
+      setTimeout(() => {
+        setVisible(false);
+        setTimeout(() => { setSceneIndex(2); setVisible(true); }, 600);
+      }, 10000)
+    );
+
+    // Loop back to chamada at 13.5s
+    timers.push(
+      setTimeout(() => {
+        setVisible(false);
+        setTimeout(() => { setSceneIndex(-1); setVisible(true); }, 600);
+      }, 13500)
+    );
+
+    // Restart cycle
+    const cycle = setInterval(() => {
+      let step = 0;
+      const inner: ReturnType<typeof setTimeout>[] = [];
+
+      inner.push(setTimeout(() => {
+        setVisible(false);
+        setTimeout(() => { setSceneIndex(0); setVisible(true); }, 600);
+      }, 3000));
+
+      inner.push(setTimeout(() => {
+        setVisible(false);
+        setTimeout(() => { setSceneIndex(1); setVisible(true); }, 600);
+      }, 6500));
+
+      inner.push(setTimeout(() => {
+        setVisible(false);
+        setTimeout(() => { setSceneIndex(2); setVisible(true); }, 600);
+      }, 10000));
+
+      inner.push(setTimeout(() => {
+        setVisible(false);
+        setTimeout(() => { setSceneIndex(-1); setVisible(true); }, 600);
+      }, 13500));
+    }, 17000);
+
+    return () => {
+      timers.forEach(clearTimeout);
+      clearInterval(cycle);
+    };
   }, []);
 
   useEffect(() => {
     const interval = setInterval(() => {
-      setProgress((p) => (p >= 95 ? 95 : p + Math.random() * 4 + 1));
-    }, 250);
+      setProgress((p) => (p >= 95 ? 95 : p + Math.random() * 3 + 0.5));
+    }, 300);
     return () => clearInterval(interval);
   }, []);
+
+  const isChamada = sceneIndex === -1;
+  const scene = sceneIndex >= 0 ? SCENES[sceneIndex] : null;
 
   return (
     <div className="min-h-[50vh] flex flex-col items-center justify-center px-6 py-12">
@@ -38,7 +108,7 @@ export function LoadingScreen() {
           style={{
             background: "linear-gradient(135deg, hsl(213 81% 54%), hsl(126 91% 65%))",
             transform: "scale(3)",
-            animation: "pulse-secondary 2.5s ease-in-out infinite",
+            animation: "pulse-loading 2.5s ease-in-out infinite",
           }}
         />
         <img
@@ -49,24 +119,61 @@ export function LoadingScreen() {
         />
       </div>
 
-      {/* Main tagline */}
-      <h2
-        className="text-xl md:text-2xl font-semibold text-center max-w-lg mb-3 animate-fade-in"
-        style={{
-          background: "linear-gradient(135deg, hsl(var(--foreground)) 0%, hsl(213 81% 54%) 100%)",
-          WebkitBackgroundClip: "text",
-          WebkitTextFillColor: "transparent",
-          backgroundClip: "text",
-        }}
-      >
-        Liberte seu time para o que importa.
-      </h2>
-      <p className="text-sm text-muted-foreground mb-8 animate-fade-in">
-        Bem-vindo à era da inteligência.
-      </p>
+      {/* Narrative content area — fixed height to prevent layout shift */}
+      <div className="h-28 flex items-center justify-center mb-6">
+        <div
+          className={`text-center max-w-lg transition-all duration-500 ease-in-out ${
+            visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-3"
+          }`}
+        >
+          {isChamada ? (
+            <>
+              <h2
+                className="text-xl md:text-2xl font-semibold mb-2"
+                style={{
+                  background: "linear-gradient(135deg, hsl(var(--foreground)) 0%, hsl(213 81% 54%) 100%)",
+                  WebkitBackgroundClip: "text",
+                  WebkitTextFillColor: "transparent",
+                  backgroundClip: "text",
+                }}
+              >
+                Liberte seu time para o que importa.
+              </h2>
+              <p className="text-sm text-muted-foreground">
+                Bem-vindo à era da inteligência.
+              </p>
+            </>
+          ) : scene ? (
+            <p
+              className="text-lg md:text-xl leading-relaxed font-light"
+              style={{
+                background: "linear-gradient(135deg, hsl(var(--foreground) / 0.85) 0%, hsl(213 81% 54%) 100%)",
+                WebkitBackgroundClip: "text",
+                WebkitTextFillColor: "transparent",
+                backgroundClip: "text",
+              }}
+            >
+              {scene.text}
+              {scene.emphasis && (
+                <span
+                  className="font-semibold"
+                  style={{
+                    background: "linear-gradient(90deg, hsl(213 81% 54%), hsl(126 91% 65%))",
+                    WebkitBackgroundClip: "text",
+                    WebkitTextFillColor: "transparent",
+                    backgroundClip: "text",
+                  }}
+                >
+                  {" "}{scene.emphasis}
+                </span>
+              )}
+            </p>
+          ) : null}
+        </div>
+      </div>
 
       {/* Progress bar */}
-      <div className="w-56 mb-8">
+      <div className="w-56 mb-4">
         <div className="h-[2px] bg-muted rounded-full overflow-hidden">
           <div
             className="h-full rounded-full transition-all duration-300 ease-out"
@@ -81,17 +188,8 @@ export function LoadingScreen() {
         </p>
       </div>
 
-      {/* Rotating phrase */}
-      <p
-        className={`text-base md:text-lg text-muted-foreground text-center max-w-md leading-relaxed font-light transition-all duration-500 ${
-          fadeIn ? "opacity-70 translate-y-0" : "opacity-0 translate-y-2"
-        }`}
-      >
-        {PHRASES[phraseIndex]}
-      </p>
-
       <style>{`
-        @keyframes pulse-secondary {
+        @keyframes pulse-loading {
           0%, 100% { opacity: 0.2; transform: scale(3); }
           50% { opacity: 0.4; transform: scale(3.5); }
         }
