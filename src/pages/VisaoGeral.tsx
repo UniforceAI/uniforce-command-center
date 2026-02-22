@@ -168,8 +168,18 @@ const MapTabs = ({ activeTab, onTabChange, availableTabs }: MapTabsProps) => {
 };
 
 // Session-level flag — resets on new tab/login but persists across navigation
-const getHasShownInitial = () => sessionStorage.getItem("uf_initial_shown") === "true";
-const setHasShownInitial = () => sessionStorage.setItem("uf_initial_shown", "true");
+// Show initial screen once per calendar day (resets daily for fresh data loads)
+const getHasShownInitial = () => {
+  const stored = sessionStorage.getItem("uf_initial_shown");
+  if (!stored) return false;
+  // Check if it was set today
+  const today = new Date().toISOString().slice(0, 10);
+  return stored === today;
+};
+const setHasShownInitial = () => {
+  const today = new Date().toISOString().slice(0, 10);
+  sessionStorage.setItem("uf_initial_shown", today);
+};
 
 const VisaoGeral = () => {
   const navigate = useNavigate();

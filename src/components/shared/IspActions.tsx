@@ -49,7 +49,7 @@ export function IspActions({ className }: IspActionsProps) {
       {/* Logo + Nome do ISP */}
       <div className="flex flex-col items-center gap-0.5">
         <Avatar className="h-9 w-9 border-2 border-primary/20 shadow-sm">
-          {logoUrl ? <AvatarImage src={logoUrl} alt={ispNome} className="object-contain p-0.5" /> : null}
+          {logoUrl ? <AvatarImage src={logoUrl} alt={ispNome} className="object-cover scale-[1.4]" /> : null}
           <AvatarFallback className="bg-primary/10 text-primary text-sm font-bold">
             {ispNome?.charAt(0) || "?"}
           </AvatarFallback>
