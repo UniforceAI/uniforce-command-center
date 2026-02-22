@@ -2,9 +2,8 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useActiveIsp } from "@/hooks/useActiveIsp";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
-import { LogOut, RefreshCcw, Building2 } from "lucide-react";
+import { LogOut, RefreshCcw } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useState, useEffect } from "react";
 
@@ -14,7 +13,7 @@ interface IspActionsProps {
 
 /**
  * Componente padronizado exibido em todos os headers:
- * - Logo + Badge com nome do ISP
+ * - Logo grande + nome do ISP abaixo
  * - Botão "Trocar Cliente" (apenas super admins)
  * - Botão "Sair"
  */
@@ -46,16 +45,19 @@ export function IspActions({ className }: IspActionsProps) {
   };
 
   return (
-    <div className={`flex items-center gap-2 ${className ?? ""}`}>
-      <Badge variant="outline" className="text-xs font-medium px-2 py-0.5 border-primary/30 text-primary gap-1.5">
-        <Avatar className="h-4 w-4">
-          {logoUrl ? <AvatarImage src={logoUrl} alt={ispNome} /> : null}
-          <AvatarFallback className="bg-primary/10 text-primary text-[8px] font-bold">
+    <div className={`flex items-center gap-3 ${className ?? ""}`}>
+      {/* Logo + Nome do ISP */}
+      <div className="flex flex-col items-center gap-0.5">
+        <Avatar className="h-9 w-9 border-2 border-primary/20 shadow-sm">
+          {logoUrl ? <AvatarImage src={logoUrl} alt={ispNome} className="object-contain p-0.5" /> : null}
+          <AvatarFallback className="bg-primary/10 text-primary text-sm font-bold">
             {ispNome?.charAt(0) || "?"}
           </AvatarFallback>
         </Avatar>
-        {ispNome}
-      </Badge>
+        <span className="text-[10px] font-semibold text-foreground leading-none max-w-[80px] truncate text-center">
+          {ispNome}
+        </span>
+      </div>
 
       {isSuperAdmin && (
         <Button
@@ -65,7 +67,7 @@ export function IspActions({ className }: IspActionsProps) {
           className="h-7 gap-1.5 text-xs text-muted-foreground hover:text-foreground"
         >
           <RefreshCcw className="h-3.5 w-3.5" />
-          Trocar Cliente
+          Trocar
         </Button>
       )}
 

@@ -1,8 +1,8 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { AlertTriangle, ArrowRight, DollarSign, Users, Zap, HelpCircle } from "lucide-react";
+import { AlertTriangle, ArrowRight, DollarSign, Users, Zap, HelpCircle, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   Tooltip,
@@ -14,7 +14,7 @@ interface Driver {
   id: string;
   label: string;
   count: number;
-  unit?: string; // "faturas", "clientes", etc.
+  unit?: string;
   icon?: React.ReactNode;
   severity: "critical" | "high" | "medium" | "low";
   onClick?: () => void;
@@ -50,6 +50,8 @@ export function ExecutiveSummary({
   hasRiskScore = false,
   alertLevel = "normal",
 }: ExecutiveSummaryProps) {
+  const [dismissed, setDismissed] = useState(false);
+
   const topDrivers = useMemo(() => {
     return drivers
       .filter((d) => d.count > 0)
@@ -66,16 +68,27 @@ export function ExecutiveSummary({
   const formatCurrency = (value: number) =>
     value.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
 
-  // Determina cor de fundo baseado no nível de alerta real
   const bgClass = useMemo(() => {
     if (alertLevel === "critical") return "bg-destructive/5 border-destructive/20";
     if (alertLevel === "warning") return "bg-warning/5 border-warning/20";
     return "bg-card border-border";
   }, [alertLevel]);
 
+  if (dismissed) return null;
+
   return (
-    <Card className={cn("border", bgClass)}>
-      <CardContent className="p-3 sm:p-4">
+    <Card className={cn("border relative", bgClass)}>
+      {/* Close button */}
+      <Button
+        variant="ghost"
+        size="icon"
+        onClick={() => setDismissed(true)}
+        className="absolute top-2 right-2 h-6 w-6 text-muted-foreground hover:text-foreground z-10"
+      >
+        <X className="h-3.5 w-3.5" />
+      </Button>
+
+      <CardContent className="p-3 sm:p-4 pr-10">
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
           {/* Título e Insight */}
           <div className="flex-1 space-y-2">
@@ -86,7 +99,6 @@ export function ExecutiveSummary({
               </span>
             </h2>
 
-            {/* Drivers Principais - Chips clicáveis */}
             {topDrivers.length > 0 && (
               <div className="flex flex-wrap gap-1.5 items-center">
                 <span className="text-xs text-muted-foreground">
@@ -152,7 +164,7 @@ export function ExecutiveSummary({
           </div>
         </div>
 
-        {/* Botões de Ação - Linha separada, mais compacta */}
+        {/* Botões de Ação */}
         <div className="flex flex-wrap gap-2 mt-3 pt-2 border-t border-border/50">
           {onVerFilaRisco && (
             <Button onClick={onVerFilaRisco} size="sm" variant="default" className="h-7 text-xs">

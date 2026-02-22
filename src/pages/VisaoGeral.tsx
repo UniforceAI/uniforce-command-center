@@ -18,6 +18,7 @@ import { RiskKPICard } from "@/components/shared/RiskKPICard";
 import { ActionMenu, QuickActions } from "@/components/shared/ActionMenu";
 import { EmptyState, NAValue } from "@/components/shared/EmptyState";
 import { IspActions } from "@/components/shared/IspActions";
+import { GlobalFilters } from "@/components/shared/GlobalFilters";
 import { LoadingScreen } from "@/components/shared/LoadingScreen";
 import { InitialLoadingScreen } from "@/components/shared/InitialLoadingScreen";
 import { 
@@ -1369,147 +1370,34 @@ const VisaoGeral = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header Compacto com Filtros */}
+      {/* Header Compacto */}
       <header className="bg-card/80 backdrop-blur-sm border-b border-border/50">
-        {/* Linha 1: Filtros de período e geo */}
-        <div className="flex items-center gap-2 flex-wrap px-3 py-1.5 border-b border-border/40">
-          <Filter className="h-3 w-3 text-muted-foreground" />
-          <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">Filtros</span>
-          
-          {/* Período com badge informativo */}
-          <div className="flex items-center gap-1 bg-primary/10 border border-primary/20 rounded px-1.5 py-0.5">
-            <span className="text-[9px] text-primary font-semibold">Período</span>
-            <Select value={periodo} onValueChange={setPeriodo}>
-              <SelectTrigger className="w-[75px] h-5 text-xs bg-transparent border-0 shadow-none p-0 pl-1 text-primary font-medium">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="7">7 dias</SelectItem>
-                <SelectItem value="30">30 dias</SelectItem>
-                <SelectItem value="90">90 dias</SelectItem>
-                <SelectItem value="365">1 ano</SelectItem>
-                <SelectItem value="todos">Todos</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          {/* Separador */}
-          <span className="text-muted-foreground/30 text-xs">|</span>
-
-          {/* Filtros geográficos e de dados */}
-          <div className="flex items-center gap-0.5">
-            <span className="text-[9px] text-muted-foreground">UF</span>
-            <Select value={uf} onValueChange={setUf}>
-              <SelectTrigger className="w-[70px] h-6 text-xs bg-background">
-                <SelectValue placeholder="UF" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="todos">Todas</SelectItem>
-                {filterOptions.ufs.map(u => (
-                  <SelectItem key={u} value={u}>{u}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="flex items-center gap-0.5">
-            <span className="text-[9px] text-muted-foreground">Cidade</span>
-            <Select value={cidade} onValueChange={setCidade}>
-              <SelectTrigger className="w-[90px] h-6 text-xs bg-background">
-                <SelectValue placeholder="Cidade" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="todos">Todas</SelectItem>
-                {filterOptions.cidades.map(c => (
-                  <SelectItem key={c} value={c}>{c}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="flex items-center gap-0.5">
-            <span className="text-[9px] text-muted-foreground">Bairro</span>
-            <Select value={bairro} onValueChange={setBairro}>
-              <SelectTrigger className="w-[90px] h-6 text-xs bg-background">
-                <SelectValue placeholder="Bairro" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="todos">Todos</SelectItem>
-                {filterOptions.bairros.map(b => (
-                  <SelectItem key={b} value={b}>{b}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="flex items-center gap-0.5">
-            <span className="text-[9px] text-muted-foreground">Plano</span>
-            <Select value={plano} onValueChange={setPlano}>
-              <SelectTrigger className="w-[100px] h-6 text-xs bg-background">
-                <SelectValue placeholder="Plano" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="todos">Todos</SelectItem>
-                {filterOptions.planos.map(p => (
-                  <SelectItem key={p} value={p}>{p.length > 20 ? p.substring(0, 20) + "…" : p}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="flex items-center gap-0.5">
-            <span className="text-[9px] text-muted-foreground">Status</span>
-            <Select value={status} onValueChange={setStatus}>
-              <SelectTrigger className="w-[80px] h-6 text-xs bg-background">
-                <SelectValue placeholder="Status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="todos">Todos</SelectItem>
-                <SelectItem value="A">Ativo</SelectItem>
-                <SelectItem value="D">Desativado</SelectItem>
-                <SelectItem value="B">Bloqueado</SelectItem>
-                <SelectItem value="C">Cancelado</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="flex items-center gap-0.5">
-            <span className="text-[9px] text-muted-foreground">Filial</span>
-            <Select value={filial} onValueChange={setFilial}>
-              <SelectTrigger className="w-[90px] h-6 text-xs bg-background">
-                <SelectValue placeholder="Filial" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="todos">Todas</SelectItem>
-                {filterOptions.filiais.map(f => (
-                  <SelectItem key={f} value={f}>Filial {f}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <IspActions className="ml-auto" />
-          {snapshotDate && (
-            <span className="text-[9px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded border">
-              Atualizado: {snapshotDate.toLocaleDateString("pt-BR")} {snapshotDate.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
-            </span>
-          )}
-        </div>
-
-        {/* Linha 2: Período selecionado — afeta chamados e novos clientes */}
-        <div className="flex items-center gap-2 px-3 py-1 text-[10px] text-muted-foreground">
-          <span className="font-semibold text-primary">{periodoLabel}</span>
-          {periodoInicio && (
-            <span>({periodoInicio.toLocaleDateString("pt-BR")} → {maxChamadosDate.toLocaleDateString("pt-BR")})</span>
-          )}
-          <span className="text-muted-foreground/40">·</span>
-          <span>Chamados no período: <strong className="text-foreground">{chamadosStats.totalChamados.toLocaleString()}</strong></span>
-          {kpis.novosClientes > 0 && (
-            <>
+        <div className="flex items-center justify-between px-4 py-3">
+          <div>
+            <h1 className="text-lg font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+              Visão Geral
+            </h1>
+            <div className="flex items-center gap-2 text-[10px] text-muted-foreground mt-0.5">
+              <span className="font-semibold text-primary">{periodoLabel}</span>
+              {periodoInicio && (
+                <span>({periodoInicio.toLocaleDateString("pt-BR")} → {maxChamadosDate.toLocaleDateString("pt-BR")})</span>
+              )}
               <span className="text-muted-foreground/40">·</span>
-              <span>Novos clientes: <strong className="text-foreground">{kpis.novosClientes}</strong></span>
-            </>
-          )}
+              <span>Chamados: <strong className="text-foreground">{chamadosStats.totalChamados.toLocaleString()}</strong></span>
+              {kpis.novosClientes > 0 && (
+                <>
+                  <span className="text-muted-foreground/40">·</span>
+                  <span>Novos: <strong className="text-foreground">{kpis.novosClientes}</strong></span>
+                </>
+              )}
+              {snapshotDate && (
+                <span className="bg-muted px-1.5 py-0.5 rounded border">
+                  Atualizado: {snapshotDate.toLocaleDateString("pt-BR")} {snapshotDate.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+                </span>
+              )}
+            </div>
+          </div>
+          <IspActions />
         </div>
       </header>
 
@@ -1528,6 +1416,88 @@ const VisaoGeral = () => {
           </div>
         ) : (
           <>
+            {/* Filtros - acima do resumo executivo */}
+            <GlobalFilters filters={[
+              {
+                id: "periodo",
+                label: "Período",
+                value: periodo,
+                onChange: setPeriodo,
+                options: [
+                  { value: "7", label: "7 dias" },
+                  { value: "30", label: "30 dias" },
+                  { value: "90", label: "90 dias" },
+                  { value: "365", label: "1 ano" },
+                  { value: "todos", label: "Todos" },
+                ],
+              },
+              {
+                id: "uf",
+                label: "UF",
+                value: uf,
+                onChange: setUf,
+                options: [
+                  { value: "todos", label: "Todas" },
+                  ...filterOptions.ufs.map(u => ({ value: u, label: u })),
+                ],
+              },
+              {
+                id: "cidade",
+                label: "Cidade",
+                value: cidade,
+                onChange: setCidade,
+                options: [
+                  { value: "todos", label: "Todas" },
+                  ...filterOptions.cidades.map(c => ({ value: c, label: c })),
+                ],
+              },
+              {
+                id: "bairro",
+                label: "Bairro",
+                value: bairro,
+                onChange: setBairro,
+                options: [
+                  { value: "todos", label: "Todos" },
+                  ...filterOptions.bairros.map(b => ({ value: b, label: b })),
+                ],
+              },
+              {
+                id: "plano",
+                label: "Plano",
+                value: plano,
+                onChange: setPlano,
+                options: [
+                  { value: "todos", label: "Todos" },
+                  ...filterOptions.planos.map(p => ({ value: p, label: p.length > 20 ? p.substring(0, 20) + "…" : p })),
+                ],
+              },
+              {
+                id: "status",
+                label: "Status",
+                value: status,
+                onChange: setStatus,
+                options: [
+                  { value: "todos", label: "Todos" },
+                  { value: "A", label: "Ativo" },
+                  { value: "D", label: "Desativado" },
+                  { value: "B", label: "Bloqueado" },
+                  { value: "C", label: "Cancelado" },
+                ],
+              },
+              {
+                id: "filial",
+                label: "Filial",
+                value: filial,
+                onChange: setFilial,
+                disabled: filterOptions.filiais.length === 0,
+                tooltip: "Campo filial não encontrado nos dados",
+                options: [
+                  { value: "todos", label: "Todas" },
+                  ...filterOptions.filiais.map(f => ({ value: f, label: `Filial ${f}` })),
+                ],
+              },
+            ]} />
+
             {/* Resumo Executivo */}
             <ExecutiveSummary
               clientesEmAlerta={vencidosStats.totalVencidos + filaRisco.filter(r => r.driver.includes("técnico")).length}
