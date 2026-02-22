@@ -5,6 +5,7 @@ import {
   useEffect,
   ReactNode,
   useCallback,
+  useRef,
 } from "react";
 import { externalSupabase } from "@/integrations/supabase/external-client";
 import type { User, Session } from "@supabase/supabase-js";
@@ -45,10 +46,6 @@ interface AuthContextType {
   refreshProfile: () => Promise<void>;
 }
 
-// ─────────────────────────────────────────────────────────────
-// Context default
-// ─────────────────────────────────────────────────────────────
-
 const AuthContext = createContext<AuthContextType>({
   user: null,
   session: null,
@@ -70,37 +67,21 @@ export const useAuth = () => useContext(AuthContext);
 // Constants
 // ─────────────────────────────────────────────────────────────
 
-/** Email domains that grant super_admin access (full multi-tenant visibility). */
 const SUPER_ADMIN_DOMAINS = ["uniforce.com.br"];
-
-/**
- * Sentinel ISP ID used internally for Uniforce team members.
- * It is never shown as a selectable ISP in the UI.
- */
 const UNIFORCE_SENTINEL_ISP = "uniforce";
 
-/**
- * Static domain→ISP fallback map.
- * Used only when the user's profile doesn't yet exist in the DB.
- * Values MUST match the `isps` table (isp_id, instancia_isp).
- */
 const DOMAIN_ISP_FALLBACK: Record<
   string,
   { isp_id: string; isp_nome: string; instancia_isp: string }
 > = {
-  // AGY Telecom
   "agytelecom.com.br":  { isp_id: "agy-telecom", isp_nome: "AGY Telecom", instancia_isp: "ispbox" },
   "agy-telecom.com.br": { isp_id: "agy-telecom", isp_nome: "AGY Telecom", instancia_isp: "ispbox" },
-  // D-Kiros
   "d-kiros.com.br":     { isp_id: "d-kiros",     isp_nome: "D-Kiros",     instancia_isp: "ixc"    },
   "dkiros.com.br":      { isp_id: "d-kiros",     isp_nome: "D-Kiros",     instancia_isp: "ixc"    },
-  // Zen Telecom
   "zentelecom.com.br":  { isp_id: "zen-telecom", isp_nome: "Zen Telecom", instancia_isp: "ixc"    },
   "zen-telecom.com.br": { isp_id: "zen-telecom", isp_nome: "Zen Telecom", instancia_isp: "ixc"    },
-  // IGP Fibra
   "igpfibra.com.br":    { isp_id: "igp-fibra",   isp_nome: "IGP Fibra",   instancia_isp: "ixc"    },
   "igp-fibra.com.br":   { isp_id: "igp-fibra",   isp_nome: "IGP Fibra",   instancia_isp: "ixc"    },
-  // Uniforce (super admin — fallback selects first real ISP at runtime)
   "uniforce.com.br":    { isp_id: "uniforce",    isp_nome: "Uniforce",    instancia_isp: "uniforce" },
 };
 
@@ -116,41 +97,31 @@ function isSuperAdminEmail(email: string): boolean {
   return SUPER_ADMIN_DOMAINS.includes(emailDomain(email));
 }
 
-/**
- * Loads all active ISPs from the database (excluding the internal sentinel).
- * Falls back to an empty list on network failure (UI should handle gracefully).
- * ISP list is always authoritative from the DB — no hardcoded list needed.
- */
 async function loadAvailableIsps(): Promise<IspOption[]> {
-  const { data, error } = await externalSupabase
-    .from("isps")
-    .select("isp_id, isp_nome, instancia_isp")
-    .eq("ativo", true)
-    .neq("isp_id", UNIFORCE_SENTINEL_ISP)
-    .order("isp_nome");
+  try {
+    const { data, error } = await externalSupabase
+      .from("isps")
+      .select("isp_id, isp_nome, instancia_isp")
+      .eq("ativo", true)
+      .neq("isp_id", UNIFORCE_SENTINEL_ISP)
+      .order("isp_nome");
 
-  if (error || !data?.length) {
-    console.warn("⚠️ Could not load ISPs from DB:", error?.message);
+    if (error || !data?.length) return [];
+    return data.map((row) => ({
+      isp_id: row.isp_id,
+      isp_nome: row.isp_nome,
+      instancia_isp: row.instancia_isp,
+    }));
+  } catch {
     return [];
   }
-
-  return data.map((row) => ({
-    isp_id: row.isp_id,
-    isp_nome: row.isp_nome,
-    instancia_isp: row.instancia_isp,
-  }));
 }
 
-/**
- * Loads the authenticated user's profile, ISP info, and role from the DB.
- * Falls back to domain-based derivation when the profile row doesn't exist yet.
- */
 async function loadUserProfile(
   userId: string,
   email: string
 ): Promise<AuthProfile | null> {
   try {
-    // 1. Fetch profile row
     const { data: profile } = await externalSupabase
       .from("profiles")
       .select("id, isp_id, instancia_isp, full_name, email")
@@ -158,7 +129,6 @@ async function loadUserProfile(
       .maybeSingle();
 
     if (profile?.isp_id) {
-      // 2. Fetch ISP metadata AND role in PARALLEL (not sequentially)
       const [ispResult, roleResult] = await Promise.all([
         externalSupabase
           .from("isps")
@@ -175,28 +145,21 @@ async function loadUserProfile(
           .maybeSingle(),
       ]);
 
-      const isp = ispResult.data;
-      const roleRow = roleResult.data;
-
-      const resolvedRole =
-        roleRow?.role ||
-        (isSuperAdminEmail(email) ? "super_admin" : "viewer");
-
       return {
         user_id: userId,
         isp_id: profile.isp_id,
-        isp_nome: isp?.isp_nome || profile.isp_id,
-        instancia_isp: profile.instancia_isp || isp?.instancia_isp || "",
+        isp_nome: ispResult.data?.isp_nome || profile.isp_id,
+        instancia_isp: profile.instancia_isp || ispResult.data?.instancia_isp || "",
         full_name: profile.full_name || email.split("@")[0],
         email: profile.email || email,
-        role: resolvedRole,
+        role: roleResult.data?.role || (isSuperAdminEmail(email) ? "super_admin" : "viewer"),
       };
     }
   } catch (err) {
-    console.warn("⚠️ Error loading profile from DB, trying domain fallback:", err);
+    console.warn("⚠️ Profile DB error, using domain fallback:", err);
   }
 
-  // Domain fallback — used only when DB profile doesn't exist
+  // Domain fallback
   const domain = emailDomain(email);
   const fallback = DOMAIN_ISP_FALLBACK[domain];
   if (fallback) {
@@ -211,7 +174,6 @@ async function loadUserProfile(
     };
   }
 
-  console.error("❌ Unknown email domain:", domain, "for user:", email);
   return null;
 }
 
@@ -228,6 +190,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [selectedIsp, setSelectedIsp] = useState<IspOption | null>(null);
   const [availableIsps, setAvailableIsps] = useState<IspOption[]>([]);
 
+  // Refs to track state across async boundaries without re-renders
+  const mountedRef = useRef(true);
+  const profileLoadedRef = useRef(false);
+  const initialLoadDoneRef = useRef(false);
+
   const isSuperAdmin = !!(user?.email && isSuperAdminEmail(user.email));
 
   // ── ISP selection ──────────────────────────────────────────
@@ -241,159 +208,161 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     sessionStorage.removeItem("uniforce_selected_isp");
   }, []);
 
-  // ── Profile refresh (callable externally) ─────────────────
-  const refreshProfile = useCallback(async () => {
-    if (!user) return;
-    const p = await loadUserProfile(user.id, user.email || "");
-    setProfile(p);
-  }, [user]);
+  // ── Profile loader (used by initial load & refresh) ────────
+  const loadFullProfile = useCallback(async (targetUser: User) => {
+    const email = targetUser.email || "";
+    try {
+      const [p, isps] = await Promise.all([
+        loadUserProfile(targetUser.id, email),
+        isSuperAdminEmail(email) ? loadAvailableIsps() : Promise.resolve<IspOption[]>([]),
+      ]);
 
-  // ── Session initialisation & auth listener ─────────────────
-  useEffect(() => {
-    let mounted = true;
-    let profileLoaded = false; // prevents redundant profile fetches on token refresh
+      if (!mountedRef.current) return;
 
-    async function handleSession(newSession: Session | null, isTokenRefresh = false) {
-      if (!mounted) return;
-      setSession(newSession);
-      const newUser = newSession?.user ?? null;
-      setUser(newUser);
+      setProfile(p);
+      setAvailableIsps(isps);
+      profileLoadedRef.current = true;
 
-      if (!newUser) {
-        setProfile(null);
+      if (!p) {
+        setError("Usuário não vinculado a um ISP. Entre em contato com o administrador.");
+      } else {
         setError(null);
-        setSelectedIsp(null);
-        setAvailableIsps([]);
-        sessionStorage.removeItem("uniforce_selected_isp");
-        profileLoaded = false;
-        setIsLoading(false);
-        return;
       }
 
-      // On token refresh, only update session/user — skip full profile reload
-      if (isTokenRefresh && profileLoaded) {
-        setIsLoading(false);
-        return;
-      }
-
-      try {
-        const email = newUser.email || "";
-
-        // Load profile & ISPs concurrently with a generous timeout
-        const timeoutPromise = new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error("timeout")), 15000)
-        );
-
-        const [p, isps] = await Promise.race([
-          Promise.all([
-            loadUserProfile(newUser.id, email),
-            isSuperAdminEmail(email) ? loadAvailableIsps() : Promise.resolve<IspOption[]>([]),
-          ]),
-          timeoutPromise,
-        ]) as [AuthProfile | null, IspOption[]];
-
-        if (!mounted) return;
-
-        setProfile(p);
-        setAvailableIsps(isps);
-        profileLoaded = true;
-
-        if (!p) {
-          setError(
-            "Usuário não vinculado a um ISP. Entre em contato com o administrador."
-          );
-        } else {
-          setError(null);
-        }
-
-        // Restore previously selected ISP for super admins
-        if (isSuperAdminEmail(email)) {
-          const stored = sessionStorage.getItem("uniforce_selected_isp");
-          if (stored) {
-            try {
-              const parsed: IspOption = JSON.parse(stored);
-              const stillValid = isps.find((i) => i.isp_id === parsed.isp_id);
-              setSelectedIsp(stillValid ? parsed : null);
-              if (!stillValid) sessionStorage.removeItem("uniforce_selected_isp");
-            } catch {
-              sessionStorage.removeItem("uniforce_selected_isp");
-            }
+      // Restore selected ISP for super admins
+      if (isSuperAdminEmail(email)) {
+        const stored = sessionStorage.getItem("uniforce_selected_isp");
+        if (stored) {
+          try {
+            const parsed: IspOption = JSON.parse(stored);
+            const valid = isps.find((i) => i.isp_id === parsed.isp_id);
+            setSelectedIsp(valid ? parsed : null);
+            if (!valid) sessionStorage.removeItem("uniforce_selected_isp");
+          } catch {
+            sessionStorage.removeItem("uniforce_selected_isp");
           }
         }
-      } catch (err: unknown) {
-        if (!mounted) return;
-        console.error("❌ Auth session error:", err);
-        // On timeout/error, try domain fallback directly
-        const email = newUser.email || "";
-        const domain = emailDomain(email);
-        const fallback = DOMAIN_ISP_FALLBACK[domain];
-        if (fallback) {
-          setProfile({
-            user_id: newUser.id,
-            isp_id: fallback.isp_id,
-            isp_nome: fallback.isp_nome,
-            instancia_isp: fallback.instancia_isp,
-            full_name: email.split("@")[0],
-            email,
-            role: isSuperAdminEmail(email) ? "super_admin" : "viewer",
-          });
-          profileLoaded = true;
-          setError(null);
-        } else {
-          setError("Erro ao carregar perfil do usuário.");
-        }
-      } finally {
-        if (mounted) setIsLoading(false);
+      }
+    } catch (err) {
+      if (!mountedRef.current) return;
+      console.error("❌ Profile load failed:", err);
+
+      // Fallback by domain
+      const domain = emailDomain(email);
+      const fallback = DOMAIN_ISP_FALLBACK[domain];
+      if (fallback) {
+        setProfile({
+          user_id: targetUser.id,
+          isp_id: fallback.isp_id,
+          isp_nome: fallback.isp_nome,
+          instancia_isp: fallback.instancia_isp,
+          full_name: email.split("@")[0],
+          email,
+          role: isSuperAdminEmail(email) ? "super_admin" : "viewer",
+        });
+        profileLoadedRef.current = true;
+        setError(null);
+      } else {
+        setError("Erro ao carregar perfil do usuário.");
       }
     }
+  }, []);
 
-    // Subscribe to auth state changes FIRST
-    const {
-      data: { subscription },
-    } = externalSupabase.auth.onAuthStateChange(async (event, newSession) => {
-      if (!mounted) return;
+  // ── Public refresh ─────────────────────────────────────────
+  const refreshProfile = useCallback(async () => {
+    if (!user) return;
+    await loadFullProfile(user);
+  }, [user, loadFullProfile]);
 
-      // Skip full profile loading for password recovery events
-      if (event === "PASSWORD_RECOVERY") {
+  // ── Auth lifecycle ─────────────────────────────────────────
+  useEffect(() => {
+    mountedRef.current = true;
+    profileLoadedRef.current = false;
+    initialLoadDoneRef.current = false;
+
+    // 1. LISTENER — NEVER await inside this callback (prevents deadlock)
+    const { data: { subscription } } = externalSupabase.auth.onAuthStateChange(
+      (event, newSession) => {
+        if (!mountedRef.current) return;
+
+        // Always sync session/user synchronously
         setSession(newSession);
         setUser(newSession?.user ?? null);
+
+        if (event === "PASSWORD_RECOVERY") {
+          setIsLoading(false);
+          return;
+        }
+
+        // TOKEN_REFRESHED: silently update session, skip profile reload
+        if (event === "TOKEN_REFRESHED") {
+          // Session/user already updated above — nothing else to do
+          return;
+        }
+
+        // SIGNED_OUT: clear everything
+        if (event === "SIGNED_OUT" || !newSession?.user) {
+          setProfile(null);
+          setError(null);
+          setSelectedIsp(null);
+          setAvailableIsps([]);
+          sessionStorage.removeItem("uniforce_selected_isp");
+          profileLoadedRef.current = false;
+          setIsLoading(false);
+          return;
+        }
+
+        // SIGNED_IN (after initial load already ran): reload profile
+        // Use setTimeout(0) to dispatch AFTER the callback completes
+        if (initialLoadDoneRef.current) {
+          setIsLoading(true);
+          setTimeout(() => {
+            if (!mountedRef.current) return;
+            loadFullProfile(newSession.user).finally(() => {
+              if (mountedRef.current) setIsLoading(false);
+            });
+          }, 0);
+        }
+      }
+    );
+
+    // 2. INITIAL LOAD — runs once, controls isLoading
+    externalSupabase.auth.getSession().then(({ data: { session: s } }) => {
+      if (!mountedRef.current) return;
+
+      setSession(s);
+      setUser(s?.user ?? null);
+
+      if (!s?.user) {
         setIsLoading(false);
+        initialLoadDoneRef.current = true;
         return;
       }
 
-      // Token refresh: silently update session without full reload or loading state
-      const isTokenRefresh = event === "TOKEN_REFRESHED";
-      if (!isTokenRefresh) {
-        setIsLoading(true);
-      }
-
-      await handleSession(newSession, isTokenRefresh);
+      loadFullProfile(s.user).finally(() => {
+        if (mountedRef.current) {
+          setIsLoading(false);
+          initialLoadDoneRef.current = true;
+        }
+      });
     });
 
-    // Bootstrap from persisted session
-    externalSupabase.auth.getSession().then(({ data: { session: s } }) => {
-      if (mounted) handleSession(s, false);
-    });
-
-    // Safety timeout: if isLoading is still true after 20s, force it off
+    // Safety timeout (fallback for extreme edge cases)
     const safetyTimer = setTimeout(() => {
-      if (mounted) {
-        setIsLoading((current) => {
-          if (current) {
-            console.warn("⚠️ Auth safety timeout: forcing isLoading=false");
-            return false;
-          }
-          return current;
+      if (mountedRef.current) {
+        setIsLoading((c) => {
+          if (c) console.warn("⚠️ Auth safety timeout: forcing isLoading=false");
+          return false;
         });
       }
     }, 20000);
 
     return () => {
-      mounted = false;
+      mountedRef.current = false;
       subscription.unsubscribe();
       clearTimeout(safetyTimer);
     };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [loadFullProfile]);
 
   // ── Sign out ───────────────────────────────────────────────
   const signOut = async () => {
@@ -405,6 +374,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setSelectedIsp(null);
     setAvailableIsps([]);
     sessionStorage.removeItem("uniforce_selected_isp");
+    profileLoadedRef.current = false;
   };
 
   return (
