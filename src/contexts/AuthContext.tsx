@@ -251,8 +251,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // ── Session initialisation & auth listener ─────────────────
   useEffect(() => {
     let mounted = true;
+    let profileLoaded = false; // prevents redundant profile fetches on token refresh
 
-    async function handleSession(newSession: Session | null) {
+    async function handleSession(newSession: Session | null, isTokenRefresh = false) {
       if (!mounted) return;
       setSession(newSession);
       const newUser = newSession?.user ?? null;
@@ -264,6 +265,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setSelectedIsp(null);
         setAvailableIsps([]);
         sessionStorage.removeItem("uniforce_selected_isp");
+        profileLoaded = false;
+        setIsLoading(false);
+        return;
+      }
+
+      // On token refresh, only update session/user — skip full profile reload
+      if (isTokenRefresh && profileLoaded) {
         setIsLoading(false);
         return;
       }
@@ -271,9 +279,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         const email = newUser.email || "";
 
-        // Load profile & ISPs concurrently with a timeout
+        // Load profile & ISPs concurrently with a generous timeout
         const timeoutPromise = new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error("timeout")), 10000)
+          setTimeout(() => reject(new Error("timeout")), 15000)
         );
 
         const [p, isps] = await Promise.race([
@@ -288,6 +296,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         setProfile(p);
         setAvailableIsps(isps);
+        profileLoaded = true;
 
         if (!p) {
           setError(
@@ -328,6 +337,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             email,
             role: isSuperAdminEmail(email) ? "super_admin" : "viewer",
           });
+          profileLoaded = true;
           setError(null);
         } else {
           setError("Erro ao carregar perfil do usuário.");
@@ -342,23 +352,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       data: { subscription },
     } = externalSupabase.auth.onAuthStateChange(async (event, newSession) => {
       if (!mounted) return;
-      // Skip full profile loading for password recovery events — user is just resetting password
+
+      // Skip full profile loading for password recovery events
       if (event === "PASSWORD_RECOVERY") {
         setSession(newSession);
         setUser(newSession?.user ?? null);
         setIsLoading(false);
         return;
       }
-      setIsLoading(true);
-      await handleSession(newSession);
+
+      // Token refresh: silently update session without full reload or loading state
+      const isTokenRefresh = event === "TOKEN_REFRESHED";
+      if (!isTokenRefresh) {
+        setIsLoading(true);
+      }
+
+      await handleSession(newSession, isTokenRefresh);
     });
 
     // Bootstrap from persisted session
     externalSupabase.auth.getSession().then(({ data: { session: s } }) => {
-      if (mounted) handleSession(s);
+      if (mounted) handleSession(s, false);
     });
 
-    // Safety timeout: if isLoading is still true after 15s, force it off
+    // Safety timeout: if isLoading is still true after 20s, force it off
     const safetyTimer = setTimeout(() => {
       if (mounted) {
         setIsLoading((current) => {
@@ -369,7 +386,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           return current;
         });
       }
-    }, 15000);
+    }, 20000);
 
     return () => {
       mounted = false;
