@@ -45,7 +45,7 @@ const EMPTY_FORM: IspProfileData = {
   lead_status: "",
 };
 
-const PAYMENT_DAYS = Array.from({ length: 28 }, (_, i) => String(i + 1));
+const PAYMENT_DAYS = ["5", "10", "15", "20", "25"];
 
 const STATUS_OPTIONS = [
   { value: "Em análise", color: "bg-muted text-muted-foreground" },
@@ -201,31 +201,13 @@ export default function PerfilISP() {
         <div className="container mx-auto px-6 py-5">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
-              {/* Logo avatar */}
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                className="relative group"
-                disabled={uploadingLogo}
-                title="Alterar logotipo"
-              >
-                <Avatar className="h-14 w-14 border-2 border-border shadow-sm">
-                  {logoUrl ? (
-                    <AvatarImage src={logoUrl} alt={ispNome} />
-                  ) : null}
-                  <AvatarFallback className="bg-primary/10 text-primary text-lg font-bold">
-                    {ispNome?.charAt(0) || "?"}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="absolute inset-0 rounded-full bg-foreground/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                  {uploadingLogo ? (
-                    <Loader2 className="h-5 w-5 text-primary-foreground animate-spin" />
-                  ) : (
-                    <Camera className="h-5 w-5 text-primary-foreground" />
-                  )}
-                </div>
-                <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} />
-              </button>
-
+              <div className="flex items-center justify-center h-14 w-14 rounded-full border-2 border-border bg-primary/10 shadow-sm overflow-hidden">
+                {logoUrl ? (
+                  <img src={logoUrl} alt={ispNome} className="h-full w-full object-cover" />
+                ) : (
+                  <Building2 className="h-6 w-6 text-primary" />
+                )}
+              </div>
               <div>
                 <h1 className="text-2xl font-bold text-foreground">Perfil do Provedor</h1>
                 <p className="text-muted-foreground text-sm mt-0.5">Dados sincronizados com o Notion</p>
@@ -250,6 +232,51 @@ export default function PerfilISP() {
             ISP "{ispNome}" não encontrado na tabela do Notion. Os dados não serão salvos até que o registro seja criado.
           </div>
         )}
+
+        {/* Logo Upload Card */}
+        <Card>
+          <CardContent className="py-5">
+            <div className="flex items-center gap-5">
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="relative group shrink-0"
+                disabled={uploadingLogo}
+                title="Alterar logotipo"
+              >
+                <Avatar className="h-20 w-20 border-2 border-border shadow-sm">
+                  {logoUrl ? (
+                    <AvatarImage src={logoUrl} alt={ispNome} />
+                  ) : null}
+                  <AvatarFallback className="bg-primary/10 text-primary text-2xl font-bold">
+                    {ispNome?.charAt(0) || "?"}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="absolute inset-0 rounded-full bg-foreground/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                  {uploadingLogo ? (
+                    <Loader2 className="h-5 w-5 text-primary-foreground animate-spin" />
+                  ) : (
+                    <Camera className="h-5 w-5 text-primary-foreground" />
+                  )}
+                </div>
+                <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} />
+              </button>
+              <div className="flex-1 min-w-0">
+                <h3 className="text-sm font-semibold text-foreground">Logotipo do Provedor</h3>
+                <p className="text-xs text-muted-foreground mt-0.5">Clique na imagem ou no botão para enviar o logo da sua empresa. PNG, JPG ou SVG (máx. 2MB).</p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="mt-2 gap-1.5 text-xs"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploadingLogo}
+                >
+                  {uploadingLogo ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+                  {uploadingLogo ? "Enviando..." : "Enviar logotipo"}
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
 
         {/* Top row: Dados da Empresa + Produto & Contrato */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -287,12 +314,23 @@ export default function PerfilISP() {
                 <Package className="h-4 w-4 text-primary" />
                 Produto & Contrato
               </CardTitle>
-              <CardDescription>Detalhes do produto contratado e contrato.</CardDescription>
+              <CardDescription>Informações do produto e contrato (somente leitura).</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <FormField label="Produto Contratado" icon={Package} loading={loading}>
-                <Input value={form.produto} onChange={(e) => handleChange("produto", e.target.value)} placeholder="Nome do produto / plano" className="h-9" />
-              </FormField>
+              {/* Produto - read only */}
+              <div>
+                <Label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5 mb-1.5">
+                  <Package className="h-3.5 w-3.5" />
+                  Produto Contratado
+                </Label>
+                {loading ? (
+                  <Skeleton className="h-9 w-full" />
+                ) : (
+                  <div className="flex items-center gap-2 h-9 px-3 rounded-md border border-border bg-muted/50">
+                    <span className="text-sm text-foreground">{form.produto || "—"}</span>
+                  </div>
+                )}
+              </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <FormField label="Dia de Pagamento" icon={CalendarDays} loading={loading}>
@@ -329,23 +367,30 @@ export default function PerfilISP() {
                 </FormField>
               </div>
 
-              <FormField label="Link do Contrato" icon={Link2} loading={loading}>
-                <div className="flex gap-2">
-                  <Input
-                    value={form.link_contrato}
-                    onChange={(e) => handleChange("link_contrato", e.target.value)}
-                    placeholder="https://..."
-                    className="h-9 flex-1"
-                  />
-                  {form.link_contrato && (
-                    <Button variant="outline" size="sm" className="h-9 px-3" asChild>
-                      <a href={form.link_contrato} target="_blank" rel="noopener noreferrer">
-                        <ExternalLink className="h-3.5 w-3.5" />
-                      </a>
-                    </Button>
-                  )}
-                </div>
-              </FormField>
+              {/* Link do contrato - read only */}
+              <div>
+                <Label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5 mb-1.5">
+                  <Link2 className="h-3.5 w-3.5" />
+                  Link do Contrato
+                </Label>
+                {loading ? (
+                  <Skeleton className="h-9 w-full" />
+                ) : form.link_contrato ? (
+                  <a
+                    href={form.link_contrato}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-2 h-9 px-3 rounded-md border border-border bg-muted/50 text-sm text-primary hover:bg-muted transition-colors"
+                  >
+                    <ExternalLink className="h-3.5 w-3.5 shrink-0" />
+                    <span className="truncate">{form.link_contrato}</span>
+                  </a>
+                ) : (
+                  <div className="flex items-center gap-2 h-9 px-3 rounded-md border border-border bg-muted/50">
+                    <span className="text-sm text-muted-foreground">Nenhum contrato vinculado</span>
+                  </div>
+                )}
+              </div>
             </CardContent>
           </Card>
         </div>
