@@ -166,6 +166,9 @@ const MapTabs = ({ activeTab, onTabChange, availableTabs }: MapTabsProps) => {
   );
 };
 
+// Module-level flag — survives component remounts during session
+let hasShownInitialScreen = false;
+
 const VisaoGeral = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -176,23 +179,18 @@ const VisaoGeral = () => {
   const { npsData } = useNPSData(ispId);
   const { churnStatus } = useChurnData();
 
-  // Detect first load (after login) vs sub-page navigation
-  const isFirstLoad = useRef(true);
-  const [showInitialScreen, setShowInitialScreen] = useState(true);
+  // Detect first load (after login) vs sub-page navigation — module-level flag survives remounts
+  const [showInitialScreen, setShowInitialScreen] = useState(() => !hasShownInitialScreen);
 
   useEffect(() => {
-    if (!isLoading && isFirstLoad.current) {
-      // Keep initial screen visible for minimum duration for branding impact
-      const timer = setTimeout(() => {
-        setShowInitialScreen(false);
-        isFirstLoad.current = false;
-      }, 4000);
-      return () => clearTimeout(timer);
-    }
-    if (!isFirstLoad.current) {
+    if (!showInitialScreen) return;
+    // Show for a minimum branding duration, then hide once data is ready
+    const timer = setTimeout(() => {
       setShowInitialScreen(false);
-    }
-  }, [isLoading]);
+      hasShownInitialScreen = true;
+    }, isLoading ? 12000 : 4000);
+    return () => clearTimeout(timer);
+  }, [isLoading, showInitialScreen]);
 
   // Filtros
   const [periodo, setPeriodo] = useState("7");
@@ -1517,7 +1515,7 @@ const VisaoGeral = () => {
       <main className="p-3 space-y-3">
 
         {isLoading || showInitialScreen ? (
-          showInitialScreen && isFirstLoad.current ? (
+          showInitialScreen ? (
             <InitialLoadingScreen />
           ) : (
             <LoadingScreen />
