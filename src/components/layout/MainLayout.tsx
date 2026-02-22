@@ -15,7 +15,7 @@ export function MainLayout({ children }: MainLayoutProps) {
           <main className="flex-1">{children}</main>
           <footer className="border-t border-border/50 bg-card/50 py-3 px-6 text-center">
             <p className="text-[11px] text-muted-foreground">
-              © {new Date().getFullYear()} Uniforce
+              2026 © Uniforce - v1.1 Beta
             </p>
           </footer>
         </div>

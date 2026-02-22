@@ -32,7 +32,7 @@ const menuItems = [
 ];
 
 const configSubItems = [
-  { title: "Perfil do ISP", url: "/configuracoes/perfil", icon: Building2 },
+  { title: "Perfil do Provedor", url: "/configuracoes/perfil", icon: Building2 },
   { title: "Contas de Acesso", url: "/configuracoes/contas", icon: Users },
   { title: "Setup de Churn", url: "/configuracoes/churn-score", icon: SlidersHorizontal },
 ];
