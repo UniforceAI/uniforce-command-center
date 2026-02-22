@@ -86,7 +86,8 @@ const Financeiro = () => {
       if (e.plano_nome) planos.add(e.plano_nome);
       if (e.metodo_cobranca) metodos.add(e.metodo_cobranca);
       if (e.cobranca_status) statusCobranca.add(e.cobranca_status);
-      if (e.filial_id !== null && e.filial_id !== undefined) filiais.add(String(e.filial_id));
+      const fid = e.filial_id !== null && e.filial_id !== undefined ? String(e.filial_id).trim() : "";
+      if (fid) filiais.add(fid);
     });
 
     return {
