@@ -337,25 +337,9 @@ export default function PerfilISP() {
               <FormField label="Nome Fantasia" icon={Building2} loading={loading}>
                 <Input value={form.nome_fantasia} onChange={(e) => handleChange("nome_fantasia", e.target.value)} placeholder="Meu Provedor" className="h-9" />
               </FormField>
-              <div className="grid grid-cols-2 gap-3">
-                <FormField label="CNPJ" icon={FileText} loading={loading}>
-                  <Input value={form.cnpj} onChange={(e) => handleChange("cnpj", e.target.value)} placeholder="00.000.000/0001-00" className="h-9" />
-                </FormField>
-                {/* Área de Atuação - read only */}
-                <div>
-                  <Label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5 mb-1.5">
-                    <Globe className="h-3.5 w-3.5" />
-                    Área de Atuação
-                  </Label>
-                  {loading ? (
-                    <Skeleton className="h-9 w-full" />
-                  ) : (
-                    <div className="flex items-center h-9 px-3 rounded-md border border-border bg-muted/50">
-                      <span className="text-sm text-foreground">{form.area || "—"}</span>
-                    </div>
-                  )}
-                </div>
-              </div>
+              <FormField label="CNPJ" icon={FileText} loading={loading}>
+                <Input value={form.cnpj} onChange={(e) => handleChange("cnpj", e.target.value)} placeholder="00.000.000/0001-00" className="h-9" />
+              </FormField>
               {/* Atendentes - dynamic from profiles count */}
               <div>
                 <Label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5 mb-1.5">
@@ -374,66 +358,68 @@ export default function PerfilISP() {
             </CardContent>
           </Card>
 
-          {/* Produto & Contrato */}
+          {/* Produto & Plano */}
           <Card>
             <CardHeader className="pb-4">
               <CardTitle className="text-base flex items-center gap-2">
                 <Package className="h-4 w-4 text-primary" />
-                Produto & Contrato
+                Produto & Plano
               </CardTitle>
-              <CardDescription>Informações do produto e contrato.</CardDescription>
+              <CardDescription>Informações do produto, plano e contrato.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              {/* Produto - badge emphasis */}
-              <div>
-                <Label className="text-xs font-medium text-muted-foreground mb-1.5 block">
-                  Produto Contratado
-                </Label>
-                {loading ? (
-                  <Skeleton className="h-9 w-full" />
-                ) : (
-                  <div className="flex items-center h-9">
-                    <Badge className="bg-primary text-primary-foreground border-0 px-4 py-1.5 text-sm font-semibold">
-                      {form.produto || "Não definido"}
-                    </Badge>
-                  </div>
-                )}
-              </div>
-
-              {/* Dia de Pagamento */}
-              <FormField label="Dia de Pagamento" icon={CalendarDays} loading={loading}>
-                <Select
-                  value={form.data_pagamento}
-                  onValueChange={(v) => handleChange("data_pagamento", v)}
-                  disabled={paymentLocked}
-                >
-                  <SelectTrigger className="h-9">
-                    <SelectValue placeholder={paymentLocked ? `Dia ${form.data_pagamento} (bloqueado)` : "Selecionar dia"} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {PAYMENT_DAYS.map((d) => (
-                      <SelectItem key={d} value={d}>Dia {d}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {paymentLocked && (
-                  <p className="text-[11px] text-muted-foreground mt-1">Alteração disponível no próximo trimestre.</p>
-                )}
-              </FormField>
-
-              {/* ERP Integrado */}
-              <div>
-                <Label className="text-xs font-medium text-muted-foreground mb-1.5 block">
-                  ERP Integrado
-                </Label>
-                {loading ? (
-                  <Skeleton className="h-9 w-full" />
-                ) : (
-                  <div className="flex items-center h-9">
+              {/* Badges unificados: Produto + ERP + Área */}
+              {loading ? (
+                <Skeleton className="h-9 w-full" />
+              ) : (
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge className="bg-primary text-primary-foreground border-0 px-3 py-1.5 text-sm font-semibold">
+                    {form.produto || "Não definido"}
+                  </Badge>
+                  {instanciaIsp && (
                     <Badge variant="outline" className="gap-1.5 px-3 py-1.5 text-sm">
                       <Server className="h-3.5 w-3.5" />
                       {erpDisplayName(instanciaIsp)}
                     </Badge>
+                  )}
+                  {form.area && (
+                    <Badge variant="secondary" className="gap-1.5 px-3 py-1.5 text-sm">
+                      <Globe className="h-3.5 w-3.5" />
+                      {form.area}
+                    </Badge>
+                  )}
+                </div>
+              )}
+
+              {/* Dia de Pagamento - mostra valor atual e permite alteração */}
+              <div>
+                <Label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5 mb-1.5">
+                  <CalendarDays className="h-3.5 w-3.5" />
+                  Dia de Pagamento
+                </Label>
+                {loading ? (
+                  <Skeleton className="h-9 w-full" />
+                ) : (
+                  <div className="space-y-1">
+                    <Select
+                      value={form.data_pagamento}
+                      onValueChange={(v) => handleChange("data_pagamento", v)}
+                      disabled={paymentLocked}
+                    >
+                      <SelectTrigger className="h-9">
+                        <SelectValue>
+                          {form.data_pagamento || "Selecionar dia"}
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        {PAYMENT_DAYS.map((d) => (
+                          <SelectItem key={d} value={d}>{d}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {paymentLocked && (
+                      <p className="text-[11px] text-muted-foreground">Alteração disponível no próximo trimestre.</p>
+                    )}
                   </div>
                 )}
               </div>
