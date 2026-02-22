@@ -166,8 +166,9 @@ const MapTabs = ({ activeTab, onTabChange, availableTabs }: MapTabsProps) => {
   );
 };
 
-// Module-level flag — survives component remounts during session
-let hasShownInitialScreen = false;
+// Session-level flag — resets on new tab/login but persists across navigation
+const getHasShownInitial = () => sessionStorage.getItem("uf_initial_shown") === "true";
+const setHasShownInitial = () => sessionStorage.setItem("uf_initial_shown", "true");
 
 const VisaoGeral = () => {
   const navigate = useNavigate();
@@ -180,14 +181,14 @@ const VisaoGeral = () => {
   const { churnStatus } = useChurnData();
 
   // Detect first load (after login) vs sub-page navigation — module-level flag survives remounts
-  const [showInitialScreen, setShowInitialScreen] = useState(() => !hasShownInitialScreen);
+  const [showInitialScreen, setShowInitialScreen] = useState(() => !getHasShownInitial());
 
   useEffect(() => {
     if (!showInitialScreen) return;
     // Show for a minimum branding duration, then hide once data is ready
     const timer = setTimeout(() => {
       setShowInitialScreen(false);
-      hasShownInitialScreen = true;
+      setHasShownInitial();
     }, isLoading ? 12000 : 4000);
     return () => clearTimeout(timer);
   }, [isLoading, showInitialScreen]);
