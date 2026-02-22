@@ -158,24 +158,26 @@ async function loadUserProfile(
       .maybeSingle();
 
     if (profile?.isp_id) {
-      // 2. Fetch ISP metadata (correct column: isp_nome)
-      const { data: isp } = await externalSupabase
-        .from("isps")
-        .select("isp_id, isp_nome, instancia_isp")
-        .eq("isp_id", profile.isp_id)
-        .maybeSingle();
+      // 2. Fetch ISP metadata AND role in PARALLEL (not sequentially)
+      const [ispResult, roleResult] = await Promise.all([
+        externalSupabase
+          .from("isps")
+          .select("isp_id, isp_nome, instancia_isp")
+          .eq("isp_id", profile.isp_id)
+          .maybeSingle(),
+        externalSupabase
+          .from("user_roles")
+          .select("role")
+          .eq("user_id", userId)
+          .eq("isp_id", profile.isp_id)
+          .order("role")
+          .limit(1)
+          .maybeSingle(),
+      ]);
 
-      // 3. Fetch role (most privileged role for this user in this ISP)
-      const { data: roleRow } = await externalSupabase
-        .from("user_roles")
-        .select("role")
-        .eq("user_id", userId)
-        .eq("isp_id", profile.isp_id)
-        .order("role") // super_admin > admin > support_staff > user
-        .limit(1)
-        .maybeSingle();
+      const isp = ispResult.data;
+      const roleRow = roleResult.data;
 
-      // Always trust DB role; if user is uniforce domain and has no role yet, default to super_admin
       const resolvedRole =
         roleRow?.role ||
         (isSuperAdminEmail(email) ? "super_admin" : "viewer");
@@ -338,8 +340,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Subscribe to auth state changes FIRST
     const {
       data: { subscription },
-    } = externalSupabase.auth.onAuthStateChange(async (_event, newSession) => {
+    } = externalSupabase.auth.onAuthStateChange(async (event, newSession) => {
       if (!mounted) return;
+      // Skip full profile loading for password recovery events — user is just resetting password
+      if (event === "PASSWORD_RECOVERY") {
+        setSession(newSession);
+        setUser(newSession?.user ?? null);
+        setIsLoading(false);
+        return;
+      }
       setIsLoading(true);
       await handleSession(newSession);
     });
