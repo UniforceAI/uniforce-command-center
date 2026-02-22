@@ -20,7 +20,7 @@ export default function EsqueciSenha() {
 
     try {
       const { error } = await externalSupabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}/reset-senha`,
+        redirectTo: "https://attendant-analytics.lovable.app/reset-senha",
       });
 
       if (error) {
