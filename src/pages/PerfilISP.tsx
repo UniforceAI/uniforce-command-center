@@ -372,21 +372,30 @@ export default function PerfilISP() {
               {loading ? (
                 <Skeleton className="h-9 w-full" />
               ) : (
-                <div className="flex flex-wrap items-center gap-2">
-                  <Badge className="bg-primary text-primary-foreground border-0 px-3 py-1.5 text-sm font-semibold">
-                    {form.produto || "Não definido"}
-                  </Badge>
-                  {instanciaIsp && (
-                    <Badge variant="outline" className="gap-1.5 px-3 py-1.5 text-sm">
-                      <Server className="h-3.5 w-3.5" />
-                      {erpDisplayName(instanciaIsp)}
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className="flex flex-col items-start gap-1">
+                    <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">Plano</span>
+                    <Badge className="bg-primary text-primary-foreground border-0 px-3 py-1.5 text-sm font-semibold">
+                      {form.produto || "Não definido"}
                     </Badge>
+                  </div>
+                  {instanciaIsp && (
+                    <div className="flex flex-col items-start gap-1">
+                      <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">ERP</span>
+                      <Badge variant="outline" className="gap-1.5 px-3 py-1.5 text-sm">
+                        <Server className="h-3.5 w-3.5" />
+                        {erpDisplayName(instanciaIsp)}
+                      </Badge>
+                    </div>
                   )}
                   {form.area && (
-                    <Badge variant="secondary" className="gap-1.5 px-3 py-1.5 text-sm">
-                      <Globe className="h-3.5 w-3.5" />
-                      {form.area}
-                    </Badge>
+                    <div className="flex flex-col items-start gap-1">
+                      <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">Mercado</span>
+                      <Badge variant="secondary" className="gap-1.5 px-3 py-1.5 text-sm">
+                        <Globe className="h-3.5 w-3.5" />
+                        {form.area}
+                      </Badge>
+                    </div>
                   )}
                 </div>
               )}
