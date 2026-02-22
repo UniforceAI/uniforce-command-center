@@ -1,128 +1,273 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Users, Plus, MoreHorizontal, Trash2, Pencil, ShieldCheck, User, Mail, KeyRound, Search } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  Users,
+  Plus,
+  MoreHorizontal,
+  Trash2,
+  Pencil,
+  ShieldCheck,
+  User,
+  Mail,
+  KeyRound,
+  Search,
+  RefreshCw,
+  AlertCircle,
+  Shield,
+  Building2,
+} from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useActiveIsp } from "@/hooks/useActiveIsp";
+import { useAuth } from "@/contexts/AuthContext";
+import { externalSupabase } from "@/integrations/supabase/external-client";
 
-interface Account {
+// ─────────────────────────────────────────────────────────────
+// Types
+// ─────────────────────────────────────────────────────────────
+
+type AppRole = "super_admin" | "admin" | "support_staff" | "user" | "viewer";
+
+interface UserAccount {
   id: string;
-  name: string;
-  email: string;
-  role: "admin" | "operador" | "viewer";
-  status: "ativo" | "inativo";
-  created_at: string;
+  full_name: string | null;
+  email: string | null;
+  isp_id: string | null;
+  instancia_isp: string | null;
+  role: AppRole | null;
+  created_at: string | null;
 }
 
-const ROLE_LABELS: Record<string, { label: string; color: string }> = {
-  admin: { label: "Administrador", color: "bg-primary/10 text-primary border-primary/20" },
-  operador: { label: "Operador", color: "bg-accent/10 text-accent-foreground border-accent/20" },
-  viewer: { label: "Visualizador", color: "bg-muted text-muted-foreground border-border" },
+// ─────────────────────────────────────────────────────────────
+// Constants
+// ─────────────────────────────────────────────────────────────
+
+const ROLE_META: Record<string, { label: string; color: string; icon: typeof Shield }> = {
+  super_admin:   { label: "Super Admin",    color: "bg-purple-100 text-purple-800 border-purple-200 dark:bg-purple-900/30 dark:text-purple-300", icon: Shield },
+  admin:         { label: "Administrador",  color: "bg-primary/10 text-primary border-primary/20",                                               icon: ShieldCheck },
+  support_staff: { label: "Suporte",        color: "bg-blue-100 text-blue-800 border-blue-200 dark:bg-blue-900/30 dark:text-blue-300",           icon: User },
+  user:          { label: "Usuário",        color: "bg-muted text-muted-foreground border-border",                                                icon: User },
+  viewer:        { label: "Visualizador",   color: "bg-muted text-muted-foreground border-border",                                                icon: User },
 };
 
-const STATUS_LABELS: Record<string, { label: string; color: string }> = {
-  ativo: { label: "Ativo", color: "bg-green-100 text-green-800 border-green-200" },
-  inativo: { label: "Inativo", color: "bg-red-100 text-red-800 border-red-200" },
-};
+/** Roles that can be assigned by an ISP admin */
+const ASSIGNABLE_ROLES_ADMIN: AppRole[] = ["admin", "support_staff", "user"];
+/** Roles that can be assigned by a super_admin */
+const ASSIGNABLE_ROLES_SUPER: AppRole[] = ["super_admin", "admin", "support_staff", "user"];
 
-// Mock data — será substituído por dados reais do backend
-const MOCK_ACCOUNTS: Account[] = [
-  { id: "1", name: "Carlos Silva", email: "carlos@provedor.com.br", role: "admin", status: "ativo", created_at: "2024-01-15" },
-  { id: "2", name: "Ana Souza", email: "ana@provedor.com.br", role: "operador", status: "ativo", created_at: "2024-03-20" },
-  { id: "3", name: "Pedro Lima", email: "pedro@provedor.com.br", role: "viewer", status: "inativo", created_at: "2024-06-10" },
-];
+// ─────────────────────────────────────────────────────────────
+// Component
+// ─────────────────────────────────────────────────────────────
 
 export default function ContasAcesso() {
-  const { ispNome } = useActiveIsp();
+  const { ispId, ispNome } = useActiveIsp();
+  const { profile, isSuperAdmin } = useAuth();
   const { toast } = useToast();
-  const [accounts, setAccounts] = useState<Account[]>(MOCK_ACCOUNTS);
+
+  const [accounts, setAccounts] = useState<UserAccount[]>([]);
+  const [isLoadingData, setIsLoadingData] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [editingAccount, setEditingAccount] = useState<Account | null>(null);
+
+  // Edit dialog
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editingAccount, setEditingAccount] = useState<UserAccount | null>(null);
+  const [formRole, setFormRole] = useState<AppRole>("user");
+  const [isSaving, setIsSaving] = useState(false);
+
+  // Delete dialog
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [accountToDelete, setAccountToDelete] = useState<Account | null>(null);
+  const [accountToDelete, setAccountToDelete] = useState<UserAccount | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
-  // Form state
-  const [formName, setFormName] = useState("");
-  const [formEmail, setFormEmail] = useState("");
-  const [formRole, setFormRole] = useState<"admin" | "operador" | "viewer">("operador");
+  // ── Data loading ─────────────────────────────────────────
 
-  const filteredAccounts = accounts.filter(
-    (a) =>
-      a.name.toLowerCase().includes(search.toLowerCase()) ||
-      a.email.toLowerCase().includes(search.toLowerCase())
-  );
+  const loadAccounts = useCallback(async () => {
+    if (!ispId) return;
+    setIsLoadingData(true);
+    setLoadError(null);
 
-  const openCreateDialog = () => {
-    setEditingAccount(null);
-    setFormName("");
-    setFormEmail("");
-    setFormRole("operador");
-    setDialogOpen(true);
-  };
+    try {
+      // Super admins viewing the 'uniforce' ISP don't need ISP filtering
+      const query = externalSupabase
+        .from("profiles")
+        .select(`
+          id,
+          full_name,
+          email,
+          isp_id,
+          instancia_isp,
+          created_at,
+          user_roles ( role )
+        `)
+        .order("created_at", { ascending: false });
 
-  const openEditDialog = (account: Account) => {
+      // Filter: super admins see users of the currently selected ISP
+      // (or all ISPs if needed — here we respect selectedIsp scope)
+      if (ispId !== "uniforce") {
+        query.eq("isp_id", ispId);
+      }
+
+      const { data, error } = await query;
+
+      if (error) throw error;
+
+      const mapped: UserAccount[] = (data || []).map((row: any) => ({
+        id: row.id,
+        full_name: row.full_name,
+        email: row.email,
+        isp_id: row.isp_id,
+        instancia_isp: row.instancia_isp,
+        // Take the most privileged role from the array
+        role: (row.user_roles?.[0]?.role as AppRole) ?? null,
+        created_at: row.created_at,
+      }));
+
+      setAccounts(mapped);
+    } catch (err: any) {
+      console.error("Error loading accounts:", err);
+      setLoadError("Erro ao carregar contas. Tente novamente.");
+    } finally {
+      setIsLoadingData(false);
+    }
+  }, [ispId]);
+
+  useEffect(() => {
+    loadAccounts();
+  }, [loadAccounts]);
+
+  // ── Edit role ────────────────────────────────────────────
+
+  const openEditDialog = (account: UserAccount) => {
     setEditingAccount(account);
-    setFormName(account.name);
-    setFormEmail(account.email);
-    setFormRole(account.role);
-    setDialogOpen(true);
+    setFormRole((account.role as AppRole) || "user");
+    setEditDialogOpen(true);
   };
 
-  const handleSave = () => {
-    if (!formName.trim() || !formEmail.trim()) {
-      toast({ title: "Erro", description: "Preencha todos os campos obrigatórios.", variant: "destructive" });
-      return;
-    }
+  const handleSaveRole = async () => {
+    if (!editingAccount) return;
+    setIsSaving(true);
+    try {
+      // Use the RPC function which enforces permission rules server-side
+      const { error } = await externalSupabase.rpc("assign_role", {
+        _user_id: editingAccount.id,
+        _role: formRole,
+      });
 
-    if (editingAccount) {
+      if (error) throw error;
+
       setAccounts((prev) =>
-        prev.map((a) =>
-          a.id === editingAccount.id ? { ...a, name: formName, email: formEmail, role: formRole } : a
-        )
+        prev.map((a) => (a.id === editingAccount.id ? { ...a, role: formRole } : a))
       );
-      toast({ title: "Conta atualizada", description: `${formName} foi atualizado com sucesso.` });
-    } else {
-      const newAccount: Account = {
-        id: crypto.randomUUID(),
-        name: formName,
-        email: formEmail,
-        role: formRole,
-        status: "ativo",
-        created_at: new Date().toISOString().split("T")[0],
-      };
-      setAccounts((prev) => [newAccount, ...prev]);
-      toast({ title: "Conta criada", description: `${formName} foi adicionado com sucesso.` });
+      toast({
+        title: "Role atualizado",
+        description: `${editingAccount.full_name || editingAccount.email} agora tem o perfil "${ROLE_META[formRole]?.label}".`,
+      });
+      setEditDialogOpen(false);
+    } catch (err: any) {
+      toast({
+        title: "Erro ao atualizar role",
+        description: err.message || "Operação não permitida.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSaving(false);
     }
-    setDialogOpen(false);
   };
 
-  const handleDelete = () => {
+  // ── Remove user ──────────────────────────────────────────
+
+  const openDeleteDialog = (account: UserAccount) => {
+    setAccountToDelete(account);
+    setDeleteDialogOpen(true);
+  };
+
+  const handleDelete = async () => {
     if (!accountToDelete) return;
-    setAccounts((prev) => prev.filter((a) => a.id !== accountToDelete.id));
-    toast({ title: "Conta removida", description: `${accountToDelete.name} foi removido.` });
-    setDeleteDialogOpen(false);
-    setAccountToDelete(null);
+    setIsDeleting(true);
+    try {
+      // Remove role assignment (profile remains, access revoked)
+      if (accountToDelete.role) {
+        const { error } = await externalSupabase.rpc("revoke_role", {
+          _user_id: accountToDelete.id,
+          _role: accountToDelete.role,
+        });
+        if (error) throw error;
+      }
+
+      setAccounts((prev) => prev.filter((a) => a.id !== accountToDelete.id));
+      toast({
+        title: "Acesso revogado",
+        description: `${accountToDelete.full_name || accountToDelete.email} foi removido.`,
+      });
+      setDeleteDialogOpen(false);
+      setAccountToDelete(null);
+    } catch (err: any) {
+      toast({
+        title: "Erro ao remover",
+        description: err.message || "Operação não permitida.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
-  const toggleStatus = (account: Account) => {
-    const newStatus = account.status === "ativo" ? "inativo" : "ativo";
-    setAccounts((prev) => prev.map((a) => (a.id === account.id ? { ...a, status: newStatus } : a)));
-    toast({
-      title: newStatus === "ativo" ? "Conta ativada" : "Conta desativada",
-      description: `${account.name} agora está ${newStatus}.`,
-    });
-  };
+  // ── Filtered list ─────────────────────────────────────────
+
+  const filteredAccounts = accounts.filter((a) => {
+    const q = search.toLowerCase();
+    return (
+      a.full_name?.toLowerCase().includes(q) ||
+      a.email?.toLowerCase().includes(q) ||
+      a.isp_id?.toLowerCase().includes(q)
+    );
+  });
+
+  const assignableRoles = isSuperAdmin
+    ? ASSIGNABLE_ROLES_SUPER
+    : ASSIGNABLE_ROLES_ADMIN;
+
+  // ─────────────────────────────────────────────────────────
+  // Render
+  // ─────────────────────────────────────────────────────────
 
   return (
     <div className="min-h-screen bg-background">
+      {/* Header */}
       <header className="border-b border-border/50 bg-card/80 backdrop-blur-sm shadow-sm">
         <div className="container mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
@@ -135,56 +280,87 @@ export default function ContasAcesso() {
                   Contas de Acesso
                 </h1>
                 <p className="text-muted-foreground text-sm mt-0.5">
-                  Gerencie as contas de acesso dos colaboradores do seu provedor
+                  Gerencie as contas de acesso dos colaboradores do provedor
                 </p>
               </div>
             </div>
-            <Badge variant="outline" className="text-xs">
-              {ispNome}
-            </Badge>
+            <div className="flex items-center gap-2">
+              {isSuperAdmin && (
+                <Badge variant="outline" className="text-xs gap-1">
+                  <Shield className="h-3 w-3" />
+                  Super Admin
+                </Badge>
+              )}
+              <Badge variant="outline" className="text-xs gap-1">
+                <Building2 className="h-3 w-3" />
+                {ispNome}
+              </Badge>
+            </div>
           </div>
         </div>
       </header>
 
-      <main className="container mx-auto px-6 py-6 max-w-4xl space-y-6">
+      <main className="container mx-auto px-6 py-6 max-w-5xl space-y-6">
         {/* Stats */}
-        <div className="grid grid-cols-3 gap-4">
-          {[
-            { label: "Total de contas", value: accounts.length, icon: Users },
-            { label: "Ativas", value: accounts.filter((a) => a.status === "ativo").length, icon: ShieldCheck },
-            { label: "Administradores", value: accounts.filter((a) => a.role === "admin").length, icon: KeyRound },
-          ].map((s) => (
-            <Card key={s.label}>
-              <CardContent className="p-4 flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-primary/10">
-                  <s.icon className="h-4 w-4 text-primary" />
-                </div>
-                <div>
-                  <p className="text-2xl font-bold">{s.value}</p>
-                  <p className="text-xs text-muted-foreground">{s.label}</p>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+        {!isLoadingData && (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            {[
+              { label: "Total",          value: accounts.length,                                           icon: Users       },
+              { label: "Administradores", value: accounts.filter((a) => a.role === "admin" || a.role === "super_admin").length, icon: ShieldCheck },
+              { label: "Suporte",        value: accounts.filter((a) => a.role === "support_staff").length, icon: User        },
+              { label: "ISP ativo",      value: ispNome,                                                   icon: Building2   },
+            ].map((s) => (
+              <Card key={s.label}>
+                <CardContent className="p-4 flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-primary/10">
+                    <s.icon className="h-4 w-4 text-primary" />
+                  </div>
+                  <div>
+                    <p className="text-xl font-bold leading-none">{s.value}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">{s.label}</p>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
+
+        {/* Notice: user creation via dashboard */}
+        <div className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-900/50 dark:bg-amber-900/10">
+          <AlertCircle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
+          <p className="text-sm text-amber-700 dark:text-amber-400">
+            Para <strong>criar novos usuários</strong>, acesse{" "}
+            <strong>Supabase Dashboard → Authentication → Users → Add User</strong>.
+            Após criação, o perfil e role são atribuídos automaticamente pelo trigger do banco.
+          </p>
         </div>
 
-        {/* Tabela */}
+        {/* Table */}
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between">
               <div>
                 <CardTitle className="text-base">Colaboradores</CardTitle>
-                <CardDescription>Todas as contas vinculadas ao seu provedor.</CardDescription>
+                <CardDescription>
+                  Contas com acesso ao dashboard em{" "}
+                  <span className="font-medium text-foreground">{ispNome}</span>
+                </CardDescription>
               </div>
-              <Button onClick={openCreateDialog} size="sm" className="gap-1.5">
-                <Plus className="h-4 w-4" />
-                Nova conta
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={loadAccounts}
+                disabled={isLoadingData}
+                className="gap-1.5"
+              >
+                <RefreshCw className={`h-3.5 w-3.5 ${isLoadingData ? "animate-spin" : ""}`} />
+                Atualizar
               </Button>
             </div>
             <div className="relative mt-3">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Buscar por nome ou e-mail..."
+                placeholder="Buscar por nome, e-mail ou ISP..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 className="pl-9 h-9"
@@ -192,158 +368,205 @@ export default function ContasAcesso() {
             </div>
           </CardHeader>
           <CardContent className="p-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Nome</TableHead>
-                  <TableHead>E-mail</TableHead>
-                  <TableHead>Perfil</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Criado em</TableHead>
-                  <TableHead className="w-10"></TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredAccounts.length === 0 ? (
+            {loadError ? (
+              <div className="flex items-center gap-2 p-6 text-destructive">
+                <AlertCircle className="h-4 w-4" />
+                <span className="text-sm">{loadError}</span>
+              </div>
+            ) : (
+              <Table>
+                <TableHeader>
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center py-12 text-muted-foreground">
-                      Nenhuma conta encontrada.
-                    </TableCell>
+                    <TableHead>Usuário</TableHead>
+                    <TableHead>E-mail</TableHead>
+                    {isSuperAdmin && <TableHead>ISP</TableHead>}
+                    <TableHead>Perfil</TableHead>
+                    <TableHead>Criado em</TableHead>
+                    <TableHead className="w-10" />
                   </TableRow>
-                ) : (
-                  filteredAccounts.map((account) => {
-                    const roleInfo = ROLE_LABELS[account.role];
-                    const statusInfo = STATUS_LABELS[account.status];
-                    return (
-                      <TableRow key={account.id}>
-                        <TableCell className="font-medium">
-                          <div className="flex items-center gap-2">
-                            <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
-                              <User className="h-4 w-4 text-primary" />
-                            </div>
-                            {account.name}
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-muted-foreground text-sm">{account.email}</TableCell>
-                        <TableCell>
-                          <Badge variant="outline" className={`text-[10px] border ${roleInfo.color}`}>
-                            {roleInfo.label}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="outline" className={`text-[10px] border ${statusInfo.color}`}>
-                            {statusInfo.label}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-muted-foreground text-sm">{account.created_at}</TableCell>
-                        <TableCell>
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                                <MoreHorizontal className="h-4 w-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem onClick={() => openEditDialog(account)}>
-                                <Pencil className="h-3.5 w-3.5 mr-2" />
-                                Editar
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => toggleStatus(account)}>
-                                <ShieldCheck className="h-3.5 w-3.5 mr-2" />
-                                {account.status === "ativo" ? "Desativar" : "Ativar"}
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                onClick={() => {
-                                  setAccountToDelete(account);
-                                  setDeleteDialogOpen(true);
-                                }}
-                                className="text-destructive focus:text-destructive"
-                              >
-                                <Trash2 className="h-3.5 w-3.5 mr-2" />
-                                Excluir
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
+                </TableHeader>
+                <TableBody>
+                  {isLoadingData ? (
+                    Array.from({ length: 3 }).map((_, i) => (
+                      <TableRow key={i}>
+                        <TableCell colSpan={isSuperAdmin ? 6 : 5}>
+                          <div className="h-4 bg-muted animate-pulse rounded w-full" />
                         </TableCell>
                       </TableRow>
-                    );
-                  })
-                )}
-              </TableBody>
-            </Table>
+                    ))
+                  ) : filteredAccounts.length === 0 ? (
+                    <TableRow>
+                      <TableCell
+                        colSpan={isSuperAdmin ? 6 : 5}
+                        className="text-center py-12 text-muted-foreground"
+                      >
+                        {search ? "Nenhum resultado encontrado." : "Nenhuma conta registrada."}
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    filteredAccounts.map((account) => {
+                      const roleMeta = account.role
+                        ? ROLE_META[account.role]
+                        : ROLE_META.viewer;
+                      const RoleIcon = roleMeta.icon;
+                      const isCurrentUser = account.id === profile?.user_id;
+
+                      return (
+                        <TableRow key={account.id}>
+                          <TableCell className="font-medium">
+                            <div className="flex items-center gap-2">
+                              <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                                <RoleIcon className="h-4 w-4 text-primary" />
+                              </div>
+                              <span>
+                                {account.full_name || "—"}
+                                {isCurrentUser && (
+                                  <span className="ml-1.5 text-[10px] text-muted-foreground">
+                                    (você)
+                                  </span>
+                                )}
+                              </span>
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-muted-foreground text-sm">
+                            {account.email || "—"}
+                          </TableCell>
+                          {isSuperAdmin && (
+                            <TableCell>
+                              <Badge variant="outline" className="text-[10px] font-mono">
+                                {account.isp_id || "—"}
+                              </Badge>
+                            </TableCell>
+                          )}
+                          <TableCell>
+                            {account.role ? (
+                              <Badge
+                                variant="outline"
+                                className={`text-[10px] border ${roleMeta.color}`}
+                              >
+                                {roleMeta.label}
+                              </Badge>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">—</span>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-muted-foreground text-sm">
+                            {account.created_at
+                              ? new Date(account.created_at).toLocaleDateString("pt-BR")
+                              : "—"}
+                          </TableCell>
+                          <TableCell>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-8 w-8 p-0"
+                                  disabled={isCurrentUser}
+                                >
+                                  <MoreHorizontal className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem onClick={() => openEditDialog(account)}>
+                                  <Pencil className="h-3.5 w-3.5 mr-2" />
+                                  Alterar perfil
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  onClick={() => openDeleteDialog(account)}
+                                  className="text-destructive focus:text-destructive"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5 mr-2" />
+                                  Revogar acesso
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })
+                  )}
+                </TableBody>
+              </Table>
+            )}
           </CardContent>
         </Card>
       </main>
 
-      {/* Dialog Criar / Editar */}
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="sm:max-w-md">
+      {/* Edit Role Dialog */}
+      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+        <DialogContent className="sm:max-w-sm">
           <DialogHeader>
-            <DialogTitle>{editingAccount ? "Editar conta" : "Nova conta de acesso"}</DialogTitle>
+            <DialogTitle>Alterar perfil de acesso</DialogTitle>
             <DialogDescription>
-              {editingAccount
-                ? "Atualize os dados desta conta."
-                : "Crie uma nova conta para um colaborador do seu provedor."}
+              Defina o nível de acesso de{" "}
+              <strong>{editingAccount?.full_name || editingAccount?.email}</strong>.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div>
-              <Label className="text-xs flex items-center gap-1.5 mb-1.5">
-                <User className="h-3.5 w-3.5" />
-                Nome completo
-              </Label>
-              <Input value={formName} onChange={(e) => setFormName(e.target.value)} placeholder="Nome do colaborador" className="h-9" />
-            </div>
-            <div>
-              <Label className="text-xs flex items-center gap-1.5 mb-1.5">
-                <Mail className="h-3.5 w-3.5" />
-                E-mail
-              </Label>
-              <Input type="email" value={formEmail} onChange={(e) => setFormEmail(e.target.value)} placeholder="email@provedor.com.br" className="h-9" />
-            </div>
-            <div>
-              <Label className="text-xs flex items-center gap-1.5 mb-1.5">
-                <KeyRound className="h-3.5 w-3.5" />
-                Perfil de acesso
-              </Label>
-              <Select value={formRole} onValueChange={(v) => setFormRole(v as any)}>
-                <SelectTrigger className="h-9">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="admin">Administrador</SelectItem>
-                  <SelectItem value="operador">Operador</SelectItem>
-                  <SelectItem value="viewer">Visualizador</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+          <div className="py-2">
+            <Label className="text-xs flex items-center gap-1.5 mb-2">
+              <KeyRound className="h-3.5 w-3.5" />
+              Perfil de acesso
+            </Label>
+            <Select
+              value={formRole}
+              onValueChange={(v) => setFormRole(v as AppRole)}
+            >
+              <SelectTrigger className="h-9">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {assignableRoles.map((role) => (
+                  <SelectItem key={role} value={role}>
+                    {ROLE_META[role]?.label || role}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="mt-2 text-xs text-muted-foreground">
+              {formRole === "super_admin" && "Acesso total a todos os provedores e configurações."}
+              {formRole === "admin" && "Gerencia usuários e configurações do seu provedor."}
+              {formRole === "support_staff" && "Acessa dados de clientes e suporte. Sem configurações."}
+              {formRole === "user" && "Acesso básico de leitura ao dashboard."}
+            </p>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)}>
+            <Button
+              variant="outline"
+              onClick={() => setEditDialogOpen(false)}
+              disabled={isSaving}
+            >
               Cancelar
             </Button>
-            <Button onClick={handleSave}>
-              {editingAccount ? "Salvar alterações" : "Criar conta"}
+            <Button onClick={handleSaveRole} disabled={isSaving}>
+              {isSaving ? "Salvando..." : "Salvar"}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Dialog Confirmação de exclusão */}
+      {/* Delete / Revoke Dialog */}
       <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
-            <DialogTitle>Excluir conta</DialogTitle>
+            <DialogTitle>Revogar acesso</DialogTitle>
             <DialogDescription>
-              Tem certeza que deseja excluir a conta de <strong>{accountToDelete?.name}</strong>? Esta ação não pode ser desfeita.
+              O acesso de <strong>{accountToDelete?.full_name || accountToDelete?.email}</strong> ao
+              dashboard será removido. O usuário permanece no sistema de autenticação mas perde
+              todos os privilégios.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteDialogOpen(false)}>
+            <Button
+              variant="outline"
+              onClick={() => setDeleteDialogOpen(false)}
+              disabled={isDeleting}
+            >
               Cancelar
             </Button>
-            <Button variant="destructive" onClick={handleDelete}>
-              Excluir
+            <Button variant="destructive" onClick={handleDelete} disabled={isDeleting}>
+              {isDeleting ? "Removendo..." : "Revogar acesso"}
             </Button>
           </DialogFooter>
         </DialogContent>
