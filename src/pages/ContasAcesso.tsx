@@ -49,6 +49,10 @@ import {
   AlertCircle,
   Shield,
   Building2,
+  Eye,
+  EyeOff,
+  UserPlus,
+  CheckCircle,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useActiveIsp } from "@/hooks/useActiveIsp";
@@ -75,25 +79,47 @@ interface UserAccount {
 // Constants
 // ─────────────────────────────────────────────────────────────
 
-const ROLE_META: Record<string, { label: string; color: string; icon: typeof Shield }> = {
-  super_admin:   { label: "Super Admin",    color: "bg-purple-100 text-purple-800 border-purple-200 dark:bg-purple-900/30 dark:text-purple-300", icon: Shield },
-  admin:         { label: "Administrador",  color: "bg-primary/10 text-primary border-primary/20",                                               icon: ShieldCheck },
-  support_staff: { label: "Suporte",        color: "bg-blue-100 text-blue-800 border-blue-200 dark:bg-blue-900/30 dark:text-blue-300",           icon: User },
-  user:          { label: "Usuário",        color: "bg-muted text-muted-foreground border-border",                                                icon: User },
-  viewer:        { label: "Visualizador",   color: "bg-muted text-muted-foreground border-border",                                                icon: User },
+const ROLE_META: Record<string, { label: string; description: string; color: string; icon: typeof Shield }> = {
+  super_admin:   { label: "Super Admin",    description: "Acesso total a todos os provedores e configurações.", color: "bg-purple-100 text-purple-800 border-purple-200 dark:bg-purple-900/30 dark:text-purple-300", icon: Shield },
+  admin:         { label: "Administrador",  description: "Gerencia usuários e configurações do provedor.", color: "bg-primary/10 text-primary border-primary/20", icon: ShieldCheck },
+  support_staff: { label: "Suporte",        description: "Acessa dados de clientes e suporte. Sem configurações.", color: "bg-blue-100 text-blue-800 border-blue-200 dark:bg-blue-900/30 dark:text-blue-300", icon: User },
+  user:          { label: "Usuário",        description: "Acesso básico de leitura ao dashboard.", color: "bg-muted text-muted-foreground border-border", icon: User },
+  viewer:        { label: "Visualizador",   description: "Apenas visualização.", color: "bg-muted text-muted-foreground border-border", icon: User },
 };
 
-/** Roles that can be assigned by an ISP admin */
 const ASSIGNABLE_ROLES_ADMIN: AppRole[] = ["admin", "support_staff", "user"];
-/** Roles that can be assigned by a super_admin */
 const ASSIGNABLE_ROLES_SUPER: AppRole[] = ["super_admin", "admin", "support_staff", "user"];
+
+const EDGE_FN_URL = `https://ohvddptghpcrenxdpyxm.supabase.co/functions/v1/manage-users`;
+
+// ─────────────────────────────────────────────────────────────
+// Helper: call edge function with external auth token
+// ─────────────────────────────────────────────────────────────
+
+async function callManageUsers(body: Record<string, unknown>) {
+  const { data: { session } } = await externalSupabase.auth.getSession();
+  if (!session?.access_token) throw new Error("Sessão expirada. Faça login novamente.");
+
+  const res = await fetch(EDGE_FN_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${session.access_token}`,
+    },
+    body: JSON.stringify(body),
+  });
+
+  const data = await res.json();
+  if (!res.ok || data.error) throw new Error(data.error || "Erro na operação.");
+  return data;
+}
 
 // ─────────────────────────────────────────────────────────────
 // Component
 // ─────────────────────────────────────────────────────────────
 
 export default function ContasAcesso() {
-  const { ispId, ispNome } = useActiveIsp();
+  const { ispId, ispNome, instanciaIsp } = useActiveIsp();
   const { profile, isSuperAdmin } = useAuth();
   const { toast } = useToast();
 
@@ -101,6 +127,18 @@ export default function ContasAcesso() {
   const [isLoadingData, setIsLoadingData] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+
+  // Create dialog
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [createForm, setCreateForm] = useState({
+    full_name: "",
+    email: "",
+    password: "",
+    role: "user" as AppRole,
+  });
+  const [showPassword, setShowPassword] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
+  const [createSuccess, setCreateSuccess] = useState(false);
 
   // Edit dialog
   const [editDialogOpen, setEditDialogOpen] = useState(false);
@@ -112,6 +150,7 @@ export default function ContasAcesso() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [accountToDelete, setAccountToDelete] = useState<UserAccount | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteConfirmEmail, setDeleteConfirmEmail] = useState("");
 
   // ── Data loading ─────────────────────────────────────────
 
@@ -121,7 +160,6 @@ export default function ContasAcesso() {
     setLoadError(null);
 
     try {
-      // Super admins viewing the 'uniforce' ISP don't need ISP filtering
       const query = externalSupabase
         .from("profiles")
         .select(`
@@ -135,14 +173,11 @@ export default function ContasAcesso() {
         `)
         .order("created_at", { ascending: false });
 
-      // Filter: super admins see users of the currently selected ISP
-      // (or all ISPs if needed — here we respect selectedIsp scope)
       if (ispId !== "uniforce") {
         query.eq("isp_id", ispId);
       }
 
       const { data, error } = await query;
-
       if (error) throw error;
 
       const mapped: UserAccount[] = (data || []).map((row: any) => ({
@@ -151,7 +186,6 @@ export default function ContasAcesso() {
         email: row.email,
         isp_id: row.isp_id,
         instancia_isp: row.instancia_isp,
-        // Take the most privileged role from the array
         role: (row.user_roles?.[0]?.role as AppRole) ?? null,
         created_at: row.created_at,
       }));
@@ -169,6 +203,73 @@ export default function ContasAcesso() {
     loadAccounts();
   }, [loadAccounts]);
 
+  // ── Create user ─────────────────────────────────────────
+
+  const resetCreateForm = () => {
+    setCreateForm({ full_name: "", email: "", password: "", role: "user" });
+    setShowPassword(false);
+    setCreateSuccess(false);
+  };
+
+  const handleCreate = async () => {
+    const { full_name, email, password, role } = createForm;
+    if (!full_name.trim() || !email.trim() || !password.trim()) {
+      toast({ title: "Preencha todos os campos", variant: "destructive" });
+      return;
+    }
+    if (password.length < 6) {
+      toast({ title: "A senha deve ter pelo menos 6 caracteres", variant: "destructive" });
+      return;
+    }
+
+    setIsCreating(true);
+    try {
+      const result = await callManageUsers({
+        action: "create",
+        email: email.trim().toLowerCase(),
+        password,
+        full_name: full_name.trim(),
+        isp_id: ispId,
+        instancia_isp: instanciaIsp || "",
+        role,
+      });
+
+      setCreateSuccess(true);
+      toast({
+        title: "Conta criada com sucesso!",
+        description: `${full_name} agora tem acesso como ${ROLE_META[role]?.label}.`,
+      });
+
+      // Add to local list
+      setAccounts((prev) => [
+        {
+          id: result.user?.id || crypto.randomUUID(),
+          full_name,
+          email: email.trim().toLowerCase(),
+          isp_id: ispId,
+          instancia_isp: instanciaIsp || "",
+          role,
+          created_at: new Date().toISOString(),
+        },
+        ...prev,
+      ]);
+
+      // Close after brief success animation
+      setTimeout(() => {
+        setCreateDialogOpen(false);
+        resetCreateForm();
+      }, 1500);
+    } catch (err: any) {
+      toast({
+        title: "Erro ao criar conta",
+        description: err.message,
+        variant: "destructive",
+      });
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
   // ── Edit role ────────────────────────────────────────────
 
   const openEditDialog = (account: UserAccount) => {
@@ -181,37 +282,32 @@ export default function ContasAcesso() {
     if (!editingAccount) return;
     setIsSaving(true);
     try {
-      // Use the RPC function which enforces permission rules server-side
       const { error } = await externalSupabase.rpc("assign_role", {
         _user_id: editingAccount.id,
         _role: formRole,
       });
-
       if (error) throw error;
 
       setAccounts((prev) =>
         prev.map((a) => (a.id === editingAccount.id ? { ...a, role: formRole } : a))
       );
       toast({
-        title: "Role atualizado",
-        description: `${editingAccount.full_name || editingAccount.email} agora tem o perfil "${ROLE_META[formRole]?.label}".`,
+        title: "Perfil atualizado",
+        description: `${editingAccount.full_name || editingAccount.email} agora é ${ROLE_META[formRole]?.label}.`,
       });
       setEditDialogOpen(false);
     } catch (err: any) {
-      toast({
-        title: "Erro ao atualizar role",
-        description: err.message || "Operação não permitida.",
-        variant: "destructive",
-      });
+      toast({ title: "Erro ao atualizar", description: err.message, variant: "destructive" });
     } finally {
       setIsSaving(false);
     }
   };
 
-  // ── Remove user ──────────────────────────────────────────
+  // ── Delete user ──────────────────────────────────────────
 
   const openDeleteDialog = (account: UserAccount) => {
     setAccountToDelete(account);
+    setDeleteConfirmEmail("");
     setDeleteDialogOpen(true);
   };
 
@@ -219,28 +315,20 @@ export default function ContasAcesso() {
     if (!accountToDelete) return;
     setIsDeleting(true);
     try {
-      // Remove role assignment (profile remains, access revoked)
-      if (accountToDelete.role) {
-        const { error } = await externalSupabase.rpc("revoke_role", {
-          _user_id: accountToDelete.id,
-          _role: accountToDelete.role,
-        });
-        if (error) throw error;
-      }
+      await callManageUsers({
+        action: "delete",
+        user_id: accountToDelete.id,
+      });
 
       setAccounts((prev) => prev.filter((a) => a.id !== accountToDelete.id));
       toast({
-        title: "Acesso revogado",
-        description: `${accountToDelete.full_name || accountToDelete.email} foi removido.`,
+        title: "Conta excluída",
+        description: `${accountToDelete.full_name || accountToDelete.email} foi removido permanentemente.`,
       });
       setDeleteDialogOpen(false);
       setAccountToDelete(null);
     } catch (err: any) {
-      toast({
-        title: "Erro ao remover",
-        description: err.message || "Operação não permitida.",
-        variant: "destructive",
-      });
+      toast({ title: "Erro ao excluir", description: err.message, variant: "destructive" });
     } finally {
       setIsDeleting(false);
     }
@@ -257,9 +345,7 @@ export default function ContasAcesso() {
     );
   });
 
-  const assignableRoles = isSuperAdmin
-    ? ASSIGNABLE_ROLES_SUPER
-    : ASSIGNABLE_ROLES_ADMIN;
+  const assignableRoles = isSuperAdmin ? ASSIGNABLE_ROLES_SUPER : ASSIGNABLE_ROLES_ADMIN;
 
   // ─────────────────────────────────────────────────────────
   // Render
@@ -280,7 +366,7 @@ export default function ContasAcesso() {
                   Contas de Acesso
                 </h1>
                 <p className="text-muted-foreground text-sm mt-0.5">
-                  Gerencie as contas de acesso dos colaboradores do provedor
+                  Gerencie as contas dos colaboradores do provedor
                 </p>
               </div>
             </div>
@@ -305,10 +391,10 @@ export default function ContasAcesso() {
         {!isLoadingData && (
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             {[
-              { label: "Total",          value: accounts.length,                                           icon: Users       },
+              { label: "Total",           value: accounts.length,                                                             icon: Users       },
               { label: "Administradores", value: accounts.filter((a) => a.role === "admin" || a.role === "super_admin").length, icon: ShieldCheck },
-              { label: "Suporte",        value: accounts.filter((a) => a.role === "support_staff").length, icon: User        },
-              { label: "ISP ativo",      value: ispNome,                                                   icon: Building2   },
+              { label: "Suporte",         value: accounts.filter((a) => a.role === "support_staff").length,                    icon: User        },
+              { label: "ISP ativo",       value: ispNome,                                                                     icon: Building2   },
             ].map((s) => (
               <Card key={s.label}>
                 <CardContent className="p-4 flex items-center gap-3">
@@ -325,16 +411,6 @@ export default function ContasAcesso() {
           </div>
         )}
 
-        {/* Notice: user creation via dashboard */}
-        <div className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-900/50 dark:bg-amber-900/10">
-          <AlertCircle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
-          <p className="text-sm text-amber-700 dark:text-amber-400">
-            Para <strong>criar novos usuários</strong>, acesse{" "}
-            <strong>Supabase Dashboard → Authentication → Users → Add User</strong>.
-            Após criação, o perfil e role são atribuídos automaticamente pelo trigger do banco.
-          </p>
-        </div>
-
         {/* Table */}
         <Card>
           <CardHeader>
@@ -346,16 +422,26 @@ export default function ContasAcesso() {
                   <span className="font-medium text-foreground">{ispNome}</span>
                 </CardDescription>
               </div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={loadAccounts}
-                disabled={isLoadingData}
-                className="gap-1.5"
-              >
-                <RefreshCw className={`h-3.5 w-3.5 ${isLoadingData ? "animate-spin" : ""}`} />
-                Atualizar
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={loadAccounts}
+                  disabled={isLoadingData}
+                  className="gap-1.5"
+                >
+                  <RefreshCw className={`h-3.5 w-3.5 ${isLoadingData ? "animate-spin" : ""}`} />
+                  Atualizar
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={() => { resetCreateForm(); setCreateDialogOpen(true); }}
+                  className="gap-1.5 bg-gradient-to-r from-[hsl(213,81%,54%)] to-[hsl(126,91%,65%)] hover:opacity-90 text-white font-semibold"
+                >
+                  <UserPlus className="h-3.5 w-3.5" />
+                  Nova conta
+                </Button>
+              </div>
             </div>
             <div className="relative mt-3">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -400,14 +486,12 @@ export default function ContasAcesso() {
                         colSpan={isSuperAdmin ? 6 : 5}
                         className="text-center py-12 text-muted-foreground"
                       >
-                        {search ? "Nenhum resultado encontrado." : "Nenhuma conta registrada."}
+                        {search ? "Nenhum resultado encontrado." : "Nenhuma conta registrada. Clique em 'Nova conta' para criar."}
                       </TableCell>
                     </TableRow>
                   ) : (
                     filteredAccounts.map((account) => {
-                      const roleMeta = account.role
-                        ? ROLE_META[account.role]
-                        : ROLE_META.viewer;
+                      const roleMeta = account.role ? ROLE_META[account.role] : ROLE_META.viewer;
                       const RoleIcon = roleMeta.icon;
                       const isCurrentUser = account.id === profile?.user_id;
 
@@ -421,9 +505,7 @@ export default function ContasAcesso() {
                               <span>
                                 {account.full_name || "—"}
                                 {isCurrentUser && (
-                                  <span className="ml-1.5 text-[10px] text-muted-foreground">
-                                    (você)
-                                  </span>
+                                  <span className="ml-1.5 text-[10px] text-muted-foreground">(você)</span>
                                 )}
                               </span>
                             </div>
@@ -440,10 +522,7 @@ export default function ContasAcesso() {
                           )}
                           <TableCell>
                             {account.role ? (
-                              <Badge
-                                variant="outline"
-                                className={`text-[10px] border ${roleMeta.color}`}
-                              >
+                              <Badge variant="outline" className={`text-[10px] border ${roleMeta.color}`}>
                                 {roleMeta.label}
                               </Badge>
                             ) : (
@@ -458,12 +537,7 @@ export default function ContasAcesso() {
                           <TableCell>
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-8 w-8 p-0"
-                                  disabled={isCurrentUser}
-                                >
+                                <Button variant="ghost" size="sm" className="h-8 w-8 p-0" disabled={isCurrentUser}>
                                   <MoreHorizontal className="h-4 w-4" />
                                 </Button>
                               </DropdownMenuTrigger>
@@ -478,7 +552,7 @@ export default function ContasAcesso() {
                                   className="text-destructive focus:text-destructive"
                                 >
                                   <Trash2 className="h-3.5 w-3.5 mr-2" />
-                                  Revogar acesso
+                                  Excluir conta
                                 </DropdownMenuItem>
                               </DropdownMenuContent>
                             </DropdownMenu>
@@ -494,7 +568,131 @@ export default function ContasAcesso() {
         </Card>
       </main>
 
-      {/* Edit Role Dialog */}
+      {/* ── Create User Dialog ────────────────────────────── */}
+      <Dialog open={createDialogOpen} onOpenChange={(open) => { if (!open) resetCreateForm(); setCreateDialogOpen(open); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <UserPlus className="h-5 w-5 text-primary" />
+              Criar nova conta
+            </DialogTitle>
+            <DialogDescription>
+              O colaborador receberá acesso imediato ao dashboard com as credenciais definidas abaixo.
+            </DialogDescription>
+          </DialogHeader>
+
+          {createSuccess ? (
+            <div className="flex flex-col items-center gap-4 py-6">
+              <div className="h-16 w-16 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center animate-scale-in">
+                <CheckCircle className="h-8 w-8 text-green-600 dark:text-green-400" />
+              </div>
+              <div className="text-center">
+                <p className="font-semibold text-lg">Conta criada!</p>
+                <p className="text-sm text-muted-foreground mt-1">
+                  {createForm.full_name} já pode acessar o dashboard.
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-4 py-2">
+              <div className="space-y-2">
+                <Label htmlFor="create-name" className="text-xs flex items-center gap-1.5">
+                  <User className="h-3.5 w-3.5" />
+                  Nome completo
+                </Label>
+                <Input
+                  id="create-name"
+                  placeholder="Ex: João Silva"
+                  value={createForm.full_name}
+                  onChange={(e) => setCreateForm((f) => ({ ...f, full_name: e.target.value }))}
+                  className="h-9"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="create-email" className="text-xs flex items-center gap-1.5">
+                  <Mail className="h-3.5 w-3.5" />
+                  E-mail
+                </Label>
+                <Input
+                  id="create-email"
+                  type="email"
+                  placeholder="colaborador@provedor.com.br"
+                  value={createForm.email}
+                  onChange={(e) => setCreateForm((f) => ({ ...f, email: e.target.value }))}
+                  className="h-9"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="create-password" className="text-xs flex items-center gap-1.5">
+                  <KeyRound className="h-3.5 w-3.5" />
+                  Senha inicial
+                </Label>
+                <div className="relative">
+                  <Input
+                    id="create-password"
+                    type={showPassword ? "text" : "password"}
+                    placeholder="Mínimo 6 caracteres"
+                    value={createForm.password}
+                    onChange={(e) => setCreateForm((f) => ({ ...f, password: e.target.value }))}
+                    className="h-9 pr-10"
+                    minLength={6}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+                <p className="text-[11px] text-muted-foreground">O colaborador poderá alterar a senha após o primeiro login.</p>
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-xs flex items-center gap-1.5">
+                  <ShieldCheck className="h-3.5 w-3.5" />
+                  Perfil de acesso
+                </Label>
+                <Select
+                  value={createForm.role}
+                  onValueChange={(v) => setCreateForm((f) => ({ ...f, role: v as AppRole }))}
+                >
+                  <SelectTrigger className="h-9">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {assignableRoles.map((role) => (
+                      <SelectItem key={role} value={role}>
+                        <div className="flex flex-col">
+                          <span>{ROLE_META[role]?.label}</span>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-[11px] text-muted-foreground">
+                  {ROLE_META[createForm.role]?.description}
+                </p>
+              </div>
+            </div>
+          )}
+
+          {!createSuccess && (
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setCreateDialogOpen(false)} disabled={isCreating}>
+                Cancelar
+              </Button>
+              <Button onClick={handleCreate} disabled={isCreating}>
+                {isCreating ? "Criando..." : "Criar conta"}
+              </Button>
+            </DialogFooter>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Edit Role Dialog ────────────────────────────────── */}
       <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
@@ -509,10 +707,7 @@ export default function ContasAcesso() {
               <KeyRound className="h-3.5 w-3.5" />
               Perfil de acesso
             </Label>
-            <Select
-              value={formRole}
-              onValueChange={(v) => setFormRole(v as AppRole)}
-            >
+            <Select value={formRole} onValueChange={(v) => setFormRole(v as AppRole)}>
               <SelectTrigger className="h-9">
                 <SelectValue />
               </SelectTrigger>
@@ -525,18 +720,11 @@ export default function ContasAcesso() {
               </SelectContent>
             </Select>
             <p className="mt-2 text-xs text-muted-foreground">
-              {formRole === "super_admin" && "Acesso total a todos os provedores e configurações."}
-              {formRole === "admin" && "Gerencia usuários e configurações do seu provedor."}
-              {formRole === "support_staff" && "Acessa dados de clientes e suporte. Sem configurações."}
-              {formRole === "user" && "Acesso básico de leitura ao dashboard."}
+              {ROLE_META[formRole]?.description}
             </p>
           </div>
           <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setEditDialogOpen(false)}
-              disabled={isSaving}
-            >
+            <Button variant="outline" onClick={() => setEditDialogOpen(false)} disabled={isSaving}>
               Cancelar
             </Button>
             <Button onClick={handleSaveRole} disabled={isSaving}>
@@ -546,27 +734,41 @@ export default function ContasAcesso() {
         </DialogContent>
       </Dialog>
 
-      {/* Delete / Revoke Dialog */}
+      {/* ── Delete User Dialog ─────────────────────────────── */}
       <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
-            <DialogTitle>Revogar acesso</DialogTitle>
+            <DialogTitle className="text-destructive flex items-center gap-2">
+              <Trash2 className="h-5 w-5" />
+              Excluir conta permanentemente
+            </DialogTitle>
             <DialogDescription>
-              O acesso de <strong>{accountToDelete?.full_name || accountToDelete?.email}</strong> ao
-              dashboard será removido. O usuário permanece no sistema de autenticação mas perde
-              todos os privilégios.
+              Esta ação é <strong>irreversível</strong>. A conta de{" "}
+              <strong>{accountToDelete?.full_name || accountToDelete?.email}</strong>{" "}
+              será completamente removida do sistema, incluindo autenticação, perfil e permissões.
             </DialogDescription>
           </DialogHeader>
+          <div className="py-2 space-y-3">
+            <p className="text-sm text-muted-foreground">
+              Para confirmar, digite o e-mail da conta abaixo:
+            </p>
+            <Input
+              placeholder={accountToDelete?.email || ""}
+              value={deleteConfirmEmail}
+              onChange={(e) => setDeleteConfirmEmail(e.target.value)}
+              className="h-9"
+            />
+          </div>
           <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setDeleteDialogOpen(false)}
-              disabled={isDeleting}
-            >
+            <Button variant="outline" onClick={() => setDeleteDialogOpen(false)} disabled={isDeleting}>
               Cancelar
             </Button>
-            <Button variant="destructive" onClick={handleDelete} disabled={isDeleting}>
-              {isDeleting ? "Removendo..." : "Revogar acesso"}
+            <Button
+              variant="destructive"
+              onClick={handleDelete}
+              disabled={isDeleting || deleteConfirmEmail !== accountToDelete?.email}
+            >
+              {isDeleting ? "Excluindo..." : "Excluir permanentemente"}
             </Button>
           </DialogFooter>
         </DialogContent>
