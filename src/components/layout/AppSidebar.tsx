@@ -57,8 +57,8 @@ export function AppSidebar() {
             </button>
           ) : (
             <div className="flex items-center justify-between w-full">
-              <button onClick={() => navigate("/")} className="cursor-pointer">
-                <img src={uniforceLogo} alt="Uniforce" className="h-9 mx-auto" />
+              <button onClick={() => navigate("/")} className="cursor-pointer mx-auto">
+                <img src={uniforceLogo} alt="Uniforce" className="h-9" />
               </button>
               <Button
                 variant="ghost"
