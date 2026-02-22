@@ -18,7 +18,7 @@ import { RiskKPICard } from "@/components/shared/RiskKPICard";
 import { ActionMenu, QuickActions } from "@/components/shared/ActionMenu";
 import { EmptyState, NAValue } from "@/components/shared/EmptyState";
 import { IspActions } from "@/components/shared/IspActions";
-import { InitialLoadingScreen } from "@/components/shared/InitialLoadingScreen";
+import { LoadingScreen } from "@/components/shared/LoadingScreen";
 import { 
   Users, 
   UserPlus,
@@ -1498,7 +1498,7 @@ const VisaoGeral = () => {
       <main className="p-3 space-y-3">
 
         {isLoading ? (
-          <InitialLoadingScreen />
+          <LoadingScreen />
         ) : error ? (
           <div className="flex items-center justify-center py-12">
             <AlertCircle className="h-12 w-12 text-destructive" />
