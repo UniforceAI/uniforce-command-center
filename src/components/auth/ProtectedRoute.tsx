@@ -1,4 +1,4 @@
-import { ReactNode } from "react";
+import { ReactNode, useState, useEffect } from "react";
 import { Navigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -9,6 +9,23 @@ interface ProtectedRouteProps {
 
 export function ProtectedRoute({ children, requireSelectedIsp = true }: ProtectedRouteProps) {
   const { user, profile, isLoading, error, isSuperAdmin, selectedIsp, signOut } = useAuth();
+  const [showEscape, setShowEscape] = useState(false);
+
+  useEffect(() => {
+    if (isLoading) {
+      const timer = setTimeout(() => setShowEscape(true), 5000);
+      return () => clearTimeout(timer);
+    }
+    setShowEscape(false);
+  }, [isLoading]);
+
+  const handleForceLogout = async () => {
+    // Clear all auth-related storage
+    localStorage.removeItem("uniforce-auth");
+    sessionStorage.removeItem("uniforce_selected_isp");
+    try { await signOut(); } catch {}
+    window.location.href = "/auth";
+  };
 
   if (isLoading) {
     return (
@@ -16,6 +33,17 @@ export function ProtectedRoute({ children, requireSelectedIsp = true }: Protecte
         <div className="text-center space-y-4">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto" />
           <p className="text-muted-foreground">Verificando autenticação...</p>
+          {showEscape && (
+            <div className="space-y-2 mt-6">
+              <p className="text-sm text-muted-foreground">Demorando mais que o esperado?</p>
+              <button
+                onClick={handleForceLogout}
+                className="px-4 py-2 bg-destructive text-destructive-foreground rounded-md hover:bg-destructive/90 transition-colors text-sm"
+              >
+                Limpar sessão e voltar ao login
+              </button>
+            </div>
+          )}
         </div>
       </div>
     );
@@ -35,10 +63,7 @@ export function ProtectedRoute({ children, requireSelectedIsp = true }: Protecte
             {error || "Usuário não vinculado a um ISP. Entre em contato com o administrador."}
           </p>
           <button
-            onClick={async () => {
-              await signOut();
-              window.location.href = "/auth";
-            }}
+            onClick={handleForceLogout}
             className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors"
           >
             Voltar ao login
