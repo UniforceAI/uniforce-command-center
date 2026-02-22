@@ -11,14 +11,22 @@ const corsHeaders = {
 const EXT_URL = "https://yqdqmudsnjhixtxldqwi.supabase.co";
 const EXT_SERVICE_KEY = Deno.env.get("EXTERNAL_SUPABASE_SERVICE_ROLE_KEY")!;
 
+// Role hierarchy: higher number = more privilege
+const ROLE_LEVEL: Record<string, number> = {
+  user: 1,
+  support_staff: 2,
+  admin: 3,
+  super_admin: 4,
+};
+
 function adminClient() {
   return createClient(EXT_URL, EXT_SERVICE_KEY, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
 }
 
-/** Verify the caller's JWT against the external Supabase */
-async function verifyCallerIsAdmin(authHeader: string | null): Promise<{ userId: string; email: string }> {
+/** Verify caller's JWT and return their highest role */
+async function verifyCaller(authHeader: string | null): Promise<{ userId: string; email: string; role: string; roleLevel: number }> {
   if (!authHeader) throw new Error("Token de autenticação ausente.");
 
   const token = authHeader.replace("Bearer ", "");
@@ -27,19 +35,40 @@ async function verifyCallerIsAdmin(authHeader: string | null): Promise<{ userId:
 
   if (error || !user) throw new Error("Token inválido ou expirado.");
 
-  // Check if user has admin or super_admin role
+  // Get caller's roles
   const { data: roles } = await supabase
     .from("user_roles")
     .select("role")
     .eq("user_id", user.id);
 
-  const isAdmin = roles?.some(
-    (r: any) => r.role === "admin" || r.role === "super_admin"
-  );
+  // Find highest role
+  let highestRole = "user";
+  let highestLevel = 0;
+  for (const r of roles || []) {
+    const level = ROLE_LEVEL[r.role] ?? 0;
+    if (level > highestLevel) {
+      highestLevel = level;
+      highestRole = r.role;
+    }
+  }
 
-  if (!isAdmin) throw new Error("Permissão negada. Somente administradores podem gerenciar contas.");
+  // Must be at least admin to manage accounts
+  if (highestLevel < ROLE_LEVEL.admin) {
+    throw new Error("Permissão negada. Somente administradores podem gerenciar contas.");
+  }
 
-  return { userId: user.id, email: user.email || "" };
+  return { userId: user.id, email: user.email || "", role: highestRole, roleLevel: highestLevel };
+}
+
+/** Validate that the caller can assign the target role */
+function validateRoleHierarchy(callerLevel: number, targetRole: string) {
+  const targetLevel = ROLE_LEVEL[targetRole];
+  if (targetLevel === undefined) {
+    throw new Error(`Role inválida: ${targetRole}`);
+  }
+  if (targetLevel > callerLevel) {
+    throw new Error(`Você não pode atribuir o perfil "${targetRole}" pois é superior ao seu.`);
+  }
 }
 
 serve(async (req: Request) => {
@@ -50,7 +79,7 @@ serve(async (req: Request) => {
   try {
     const { action, ...payload } = await req.json();
     const authHeader = req.headers.get("authorization");
-    await verifyCallerIsAdmin(authHeader);
+    const caller = await verifyCaller(authHeader);
     const admin = adminClient();
 
     // ── CREATE USER ─────────────────────────────────────────
@@ -61,11 +90,14 @@ serve(async (req: Request) => {
         throw new Error("Campos obrigatórios: email, password, full_name, isp_id");
       }
 
+      const userRole = role || "user";
+      validateRoleHierarchy(caller.roleLevel, userRole);
+
       // 1. Create auth user
       const { data: authData, error: authError } = await admin.auth.admin.createUser({
         email,
         password,
-        email_confirm: true, // Auto-confirm so user can login immediately
+        email_confirm: true,
         user_metadata: { full_name },
       });
 
@@ -86,11 +118,9 @@ serve(async (req: Request) => {
 
       if (profileError) {
         console.error("Profile creation error:", profileError);
-        // Don't fail — user exists in auth, profile can be retried
       }
 
       // 3. Insert role
-      const userRole = role || "user";
       const { error: roleError } = await admin
         .from("user_roles")
         .upsert({
@@ -117,6 +147,24 @@ serve(async (req: Request) => {
     if (action === "delete") {
       const { user_id } = payload;
       if (!user_id) throw new Error("user_id é obrigatório.");
+
+      // Prevent self-deletion
+      if (user_id === caller.userId) {
+        throw new Error("Você não pode excluir sua própria conta.");
+      }
+
+      // Check target user's role — can't delete someone above you
+      const { data: targetRoles } = await admin
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", user_id);
+
+      for (const r of targetRoles || []) {
+        const level = ROLE_LEVEL[r.role] ?? 0;
+        if (level > caller.roleLevel) {
+          throw new Error("Você não pode excluir um usuário com perfil superior ao seu.");
+        }
+      }
 
       // 1. Remove roles
       await admin.from("user_roles").delete().eq("user_id", user_id);

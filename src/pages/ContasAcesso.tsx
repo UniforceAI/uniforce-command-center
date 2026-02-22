@@ -123,6 +123,10 @@ export default function ContasAcesso() {
   const { profile, isSuperAdmin } = useAuth();
   const { toast } = useToast();
 
+  // Role-based access: only admin+ can manage accounts
+  const callerRole = profile?.role as AppRole | undefined;
+  const isAdmin = callerRole === "admin" || callerRole === "super_admin" || isSuperAdmin;
+
   const [accounts, setAccounts] = useState<UserAccount[]>([]);
   const [isLoadingData, setIsLoadingData] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -349,6 +353,26 @@ export default function ContasAcesso() {
   });
 
   const assignableRoles = isSuperAdmin ? ASSIGNABLE_ROLES_SUPER : ASSIGNABLE_ROLES_ADMIN;
+
+  // ─────────────────────────────────────────────────────────
+  // Access guard (after all hooks)
+  // ─────────────────────────────────────────────────────────
+
+  if (!isAdmin) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Card className="max-w-md">
+          <CardContent className="p-8 text-center space-y-3">
+            <Shield className="h-12 w-12 text-muted-foreground mx-auto" />
+            <h2 className="text-lg font-semibold">Acesso restrito</h2>
+            <p className="text-sm text-muted-foreground">
+              Somente administradores podem gerenciar contas de acesso.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   // ─────────────────────────────────────────────────────────
   // Render
