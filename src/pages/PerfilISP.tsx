@@ -1,73 +1,108 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
-import { Building2, Save, Mail, Phone, MapPin, FileText, User, Globe } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Building2, Save, Mail, Phone, FileText, User, Globe, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useActiveIsp } from "@/hooks/useActiveIsp";
+import { supabase } from "@/integrations/supabase/client";
 
 interface IspProfileData {
-  razao_social: string;
   nome_fantasia: string;
   cnpj: string;
-  endereco: string;
-  cidade: string;
-  estado: string;
-  cep: string;
   email_oficial: string;
   email_financeiro: string;
   contato_oficial_nome: string;
   contato_oficial_telefone: string;
-  contato_financeiro_nome: string;
-  contato_financeiro_telefone: string;
-  website: string;
+  area: string;
+  atendentes: string;
 }
 
-const INITIAL_DATA: IspProfileData = {
-  razao_social: "",
+const EMPTY_FORM: IspProfileData = {
   nome_fantasia: "",
   cnpj: "",
-  endereco: "",
-  cidade: "",
-  estado: "",
-  cep: "",
   email_oficial: "",
   email_financeiro: "",
   contato_oficial_nome: "",
   contato_oficial_telefone: "",
-  contato_financeiro_nome: "",
-  contato_financeiro_telefone: "",
-  website: "",
+  area: "",
+  atendentes: "",
 };
 
 export default function PerfilISP() {
   const { ispNome } = useActiveIsp();
   const { toast } = useToast();
-  const [form, setForm] = useState<IspProfileData>({
-    ...INITIAL_DATA,
-    nome_fantasia: ispNome,
-  });
-  const [hasChanges, setHasChanges] = useState(false);
+  const [form, setForm] = useState<IspProfileData>(EMPTY_FORM);
+  const [originalForm, setOriginalForm] = useState<IspProfileData>(EMPTY_FORM);
+  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [notFound, setNotFound] = useState(false);
+
+  const hasChanges = JSON.stringify(form) !== JSON.stringify(originalForm);
+
+  // Load profile from Notion on mount
+  useEffect(() => {
+    async function loadProfile() {
+      setLoading(true);
+      setNotFound(false);
+      try {
+        const { data, error } = await supabase.functions.invoke("notion-isp-profile", {
+          body: { action: "read", isp_nome: ispNome },
+        });
+        if (error) throw error;
+        if (data?.data) {
+          const loaded = { ...EMPTY_FORM, ...data.data };
+          setForm(loaded);
+          setOriginalForm(loaded);
+        } else {
+          setNotFound(true);
+          setForm({ ...EMPTY_FORM, nome_fantasia: ispNome });
+          setOriginalForm({ ...EMPTY_FORM, nome_fantasia: ispNome });
+        }
+      } catch (err) {
+        console.error("Failed to load profile from Notion:", err);
+        toast({
+          title: "Erro ao carregar perfil",
+          description: "Não foi possível buscar os dados do Notion.",
+          variant: "destructive",
+        });
+      } finally {
+        setLoading(false);
+      }
+    }
+    if (ispNome) loadProfile();
+  }, [ispNome]);
 
   const handleChange = (key: keyof IspProfileData, value: string) => {
     setForm((prev) => ({ ...prev, [key]: value }));
-    setHasChanges(true);
   };
 
   const handleSave = async () => {
     setSaving(true);
-    // TODO: Conectar ao backend externo para persistir dados
-    await new Promise((r) => setTimeout(r, 800));
-    setSaving(false);
-    setHasChanges(false);
-    toast({
-      title: "Perfil salvo",
-      description: "Os dados do ISP foram atualizados com sucesso.",
-    });
+    try {
+      const { data, error } = await supabase.functions.invoke("notion-isp-profile", {
+        body: { action: "write", isp_nome: ispNome, data: form },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      setOriginalForm({ ...form });
+      toast({
+        title: "Perfil salvo",
+        description: "Os dados foram atualizados no Notion com sucesso.",
+      });
+    } catch (err) {
+      console.error("Failed to save profile:", err);
+      toast({
+        title: "Erro ao salvar",
+        description: "Não foi possível atualizar os dados no Notion.",
+        variant: "destructive",
+      });
+    } finally {
+      setSaving(false);
+    }
   };
 
   const Field = ({
@@ -90,13 +125,17 @@ export default function PerfilISP() {
         <Icon className="h-3.5 w-3.5" />
         {label}
       </Label>
-      <Input
-        type={type}
-        value={form[fieldKey]}
-        onChange={(e) => handleChange(fieldKey, e.target.value)}
-        placeholder={placeholder}
-        className="h-9"
-      />
+      {loading ? (
+        <Skeleton className="h-9 w-full" />
+      ) : (
+        <Input
+          type={type}
+          value={form[fieldKey]}
+          onChange={(e) => handleChange(fieldKey, e.target.value)}
+          placeholder={placeholder}
+          className="h-9"
+        />
+      )}
     </div>
   );
 
@@ -114,7 +153,7 @@ export default function PerfilISP() {
                   Perfil do ISP
                 </h1>
                 <p className="text-muted-foreground text-sm mt-0.5">
-                  Gerencie os dados cadastrais do seu provedor
+                  Dados sincronizados com o Notion
                 </p>
               </div>
             </div>
@@ -126,6 +165,12 @@ export default function PerfilISP() {
       </header>
 
       <main className="container mx-auto px-6 py-6 max-w-3xl space-y-6">
+        {notFound && !loading && (
+          <div className="rounded-lg border border-destructive/50 bg-destructive/5 p-4 text-sm text-destructive">
+            ISP "{ispNome}" não encontrado na tabela do Notion. Os dados não serão salvos até que o registro seja criado.
+          </div>
+        )}
+
         {/* Dados da empresa */}
         <Card>
           <CardHeader>
@@ -133,32 +178,14 @@ export default function PerfilISP() {
               <FileText className="h-4 w-4 text-primary" />
               Dados da Empresa
             </CardTitle>
-            <CardDescription>Informações jurídicas e comerciais do provedor.</CardDescription>
+            <CardDescription>Informações comerciais do provedor.</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <Field label="Razão Social" icon={FileText} fieldKey="razao_social" placeholder="Razão Social Ltda" colSpan />
-              <Field label="Nome Fantasia" icon={Building2} fieldKey="nome_fantasia" placeholder="Meu Provedor" />
+              <Field label="Nome Fantasia (Cliente)" icon={Building2} fieldKey="nome_fantasia" placeholder="Meu Provedor" colSpan />
               <Field label="CNPJ" icon={FileText} fieldKey="cnpj" placeholder="00.000.000/0001-00" />
-              <Field label="Website" icon={Globe} fieldKey="website" placeholder="https://meuprovedor.com.br" colSpan />
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Endereço */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base flex items-center gap-2">
-              <MapPin className="h-4 w-4 text-primary" />
-              Endereço
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <Field label="Endereço" icon={MapPin} fieldKey="endereco" placeholder="Rua, número, complemento" colSpan />
-              <Field label="Cidade" icon={MapPin} fieldKey="cidade" placeholder="Cidade" />
-              <Field label="Estado" icon={MapPin} fieldKey="estado" placeholder="UF" />
-              <Field label="CEP" icon={MapPin} fieldKey="cep" placeholder="00000-000" />
+              <Field label="Área de Atuação" icon={Globe} fieldKey="area" placeholder="Região / Estado" />
+              <Field label="Atendentes" icon={User} fieldKey="atendentes" placeholder="Nº de atendentes" />
             </div>
           </CardContent>
         </Card>
@@ -172,31 +199,20 @@ export default function PerfilISP() {
             </CardTitle>
             <CardDescription>Contatos oficiais e financeiros do provedor.</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-6">
-            <div>
-              <p className="text-xs font-semibold text-foreground/70 uppercase tracking-wider mb-3">Contato Oficial</p>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <Field label="Nome" icon={User} fieldKey="contato_oficial_nome" placeholder="Nome do responsável" />
-                <Field label="Telefone" icon={Phone} fieldKey="contato_oficial_telefone" placeholder="(00) 00000-0000" />
-                <Field label="E-mail Oficial" icon={Mail} fieldKey="email_oficial" placeholder="contato@provedor.com.br" colSpan />
-              </div>
-            </div>
-            <Separator />
-            <div>
-              <p className="text-xs font-semibold text-foreground/70 uppercase tracking-wider mb-3">Contato Financeiro</p>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <Field label="Nome" icon={User} fieldKey="contato_financeiro_nome" placeholder="Nome do responsável" />
-                <Field label="Telefone" icon={Phone} fieldKey="contato_financeiro_telefone" placeholder="(00) 00000-0000" />
-                <Field label="E-mail Financeiro" icon={Mail} fieldKey="email_financeiro" placeholder="financeiro@provedor.com.br" colSpan />
-              </div>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Field label="Representante Legal" icon={User} fieldKey="contato_oficial_nome" placeholder="Nome do responsável" />
+              <Field label="Telefone" icon={Phone} fieldKey="contato_oficial_telefone" placeholder="(00) 00000-0000" />
+              <Field label="E-mail Oficial" icon={Mail} fieldKey="email_oficial" placeholder="contato@provedor.com.br" colSpan />
+              <Field label="E-mail Financeiro / Cobrança" icon={Mail} fieldKey="email_financeiro" placeholder="financeiro@provedor.com.br" colSpan />
             </div>
           </CardContent>
         </Card>
 
         {/* Ações */}
         <div className="flex justify-end pb-6">
-          <Button onClick={handleSave} disabled={!hasChanges || saving} className="gap-2">
-            <Save className="h-4 w-4" />
+          <Button onClick={handleSave} disabled={!hasChanges || saving || notFound} className="gap-2">
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
             {saving ? "Salvando..." : "Salvar perfil"}
           </Button>
         </div>
