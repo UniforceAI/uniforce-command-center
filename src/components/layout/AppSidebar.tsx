@@ -1,5 +1,5 @@
 import { AlertTriangle, ThumbsUp, LayoutDashboard, DollarSign, BarChart2, UserX, XCircle, PanelLeftClose, PanelLeft, Settings, SlidersHorizontal, Building2, Users } from "lucide-react";
-import { NavLink, useLocation } from "react-router-dom";
+import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import {
   Sidebar,
   SidebarContent,
@@ -40,6 +40,7 @@ const configSubItems = [
 export function AppSidebar() {
   const { state, toggleSidebar } = useSidebar();
   const location = useLocation();
+  const navigate = useNavigate();
   const collapsed = state === "collapsed";
 
   const isConfigActive = configSubItems.some((i) => location.pathname === i.url);
@@ -51,12 +52,14 @@ export function AppSidebar() {
         {/* Logo + Toggle */}
         <div className="px-3 py-5 flex items-center justify-center gap-2">
           {collapsed ? (
-            <button onClick={toggleSidebar} className="mx-auto">
+            <button onClick={() => { toggleSidebar(); navigate("/"); }} className="mx-auto cursor-pointer">
               <img src={unforceIcon} alt="Uniforce" className="h-8 w-auto object-contain" />
             </button>
           ) : (
             <div className="flex items-center justify-between w-full">
-              <img src={uniforceLogo} alt="Uniforce" className="h-9 mx-auto" />
+              <button onClick={() => navigate("/")} className="cursor-pointer">
+                <img src={uniforceLogo} alt="Uniforce" className="h-9 mx-auto" />
+              </button>
               <Button
                 variant="ghost"
                 size="sm"
