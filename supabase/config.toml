@@ -5,3 +5,9 @@ verify_jwt = false
 
 [functions.notion-isp-profile]
 verify_jwt = false
+
+[functions.crm-api]
+verify_jwt = false
+
+[functions.webhook-chamados]
+verify_jwt = false

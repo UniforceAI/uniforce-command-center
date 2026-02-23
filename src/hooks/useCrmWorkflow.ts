@@ -46,12 +46,10 @@ export function useCrmWorkflow() {
     fetchRecords();
   }, [fetchRecords]);
 
-  /** Adiciona cliente ao workflow (idempotent upsert) */
+  /** Adiciona cliente ao workflow (idempotent — INSERT se novo, UPDATE se existente) */
   const addToWorkflow = useCallback(
     async (clienteId: number, tags?: string[]) => {
       if (!ispId) throw new Error("No ISP");
-
-      const existing = records.find((r) => r.cliente_id === clienteId);
 
       const payload: Record<string, any> = {
         action: "upsert_workflow",
@@ -60,38 +58,6 @@ export function useCrmWorkflow() {
         status_workflow: "em_tratamento" as WorkflowStatus,
         tags: tags || [],
       };
-
-      if (!existing) {
-        payload.entered_workflow_at = new Date().toISOString();
-      }
-
-      const data = await callCrmApi(payload);
-      setRecords((prev) => {
-        const filtered = prev.filter((r) => r.cliente_id !== clienteId);
-        return [data as CrmWorkflowRecord, ...filtered];
-      });
-      return data;
-    },
-    [ispId, records]
-  );
-
-  /** Atualiza status com upsert idempotente */
-  const updateStatus = useCallback(
-    async (clienteId: number, status: WorkflowStatus) => {
-      if (!ispId) throw new Error("No ISP");
-
-      const existing = records.find((r) => r.cliente_id === clienteId);
-
-      const payload: Record<string, any> = {
-        action: "upsert_workflow",
-        isp_id: ispId,
-        cliente_id: clienteId,
-        status_workflow: status,
-      };
-
-      if (!existing) {
-        payload.entered_workflow_at = new Date().toISOString();
-      }
 
       const data = await callCrmApi(payload);
       setRecords((prev) => {
@@ -105,7 +71,32 @@ export function useCrmWorkflow() {
       });
       return data;
     },
-    [ispId, records]
+    [ispId]
+  );
+
+  /** Atualiza status — apenas UPDATE, nunca delete */
+  const updateStatus = useCallback(
+    async (clienteId: number, status: WorkflowStatus) => {
+      if (!ispId) throw new Error("No ISP");
+
+      const data = await callCrmApi({
+        action: "upsert_workflow",
+        isp_id: ispId,
+        cliente_id: clienteId,
+        status_workflow: status,
+      });
+      setRecords((prev) => {
+        const idx = prev.findIndex((r) => r.cliente_id === clienteId);
+        if (idx >= 0) {
+          const copy = [...prev];
+          copy[idx] = data as CrmWorkflowRecord;
+          return copy;
+        }
+        return [data as CrmWorkflowRecord, ...prev];
+      });
+      return data;
+    },
+    [ispId]
   );
 
   /** Atualiza tags */
