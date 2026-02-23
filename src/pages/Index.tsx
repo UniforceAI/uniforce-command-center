@@ -5,6 +5,8 @@ import { useAuth } from "@/contexts/AuthContext";
 import { externalSupabase } from "@/integrations/supabase/external-client";
 import { getCategoriaName } from "@/lib/categoriasMap";
 import { useActiveIsp } from "@/hooks/useActiveIsp";
+import { useChurnData } from "@/hooks/useChurnData";
+import { useRiskBucketConfig } from "@/hooks/useRiskBucketConfig";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { KPICard } from "@/components/dashboard/KPICard";
@@ -22,6 +24,8 @@ const Index = () => {
   const { toast } = useToast();
   const { signOut, isSuperAdmin, clearSelectedIsp } = useAuth();
   const { ispId, ispNome } = useActiveIsp();
+  const { churnStatus } = useChurnData();
+  const { getBucket } = useRiskBucketConfig();
   const [chamados, setChamados] = useState<Chamado[]>([]);
   const [selectedCliente, setSelectedCliente] = useState<Chamado | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -494,6 +498,15 @@ const Index = () => {
       .sort((a, b) => b["Qtd. Chamados"] - a["Qtd. Chamados"]);
   }, [chamados, periodo, status, urgencia, setor, dataMaisRecente]);
 
+  // Churn score map for enriching chamados table
+  const churnMap = useMemo(() => {
+    const m = new Map<number, { score: number; bucket: string }>();
+    churnStatus.forEach(c => {
+      m.set(c.cliente_id, { score: c.churn_risk_score, bucket: getBucket(c.churn_risk_score) });
+    });
+    return m;
+  }, [churnStatus, getBucket]);
+
   const handleLogout = async () => {
     await signOut();
     navigate("/auth");
@@ -608,7 +621,7 @@ const Index = () => {
             {/* Clientes Críticos */}
             <div>
               <h2 className="text-2xl font-bold mb-4">🔴 Clientes Críticos</h2>
-              <ClientesTable chamados={clientesCriticos} onClienteClick={handleClienteClick} />
+              <ClientesTable chamados={clientesCriticos} onClienteClick={handleClienteClick} churnMap={churnMap} />
             </div>
 
             {/* Insights */}

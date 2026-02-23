@@ -32,6 +32,7 @@ import {
 interface ClientesTableProps {
   chamados: Chamado[];
   onClienteClick: (chamado: Chamado) => void;
+  churnMap?: Map<number, { score: number; bucket: string }>;
 }
 
 // Funções utilitárias fora do componente
@@ -139,7 +140,7 @@ const getRowColor = (classificacao: string) => {
   }
 };
 
-export const ClientesTable = memo(({ chamados, onClienteClick }: ClientesTableProps) => {
+export const ClientesTable = memo(({ chamados, onClienteClick, churnMap }: ClientesTableProps) => {
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const [columnResizeMode] = useState<ColumnResizeMode>('onChange');
   const [sorting, setSorting] = useState<SortingState>([{ id: 'Data de Abertura', desc: true }]);
@@ -474,6 +475,28 @@ export const ClientesTable = memo(({ chamados, onClienteClick }: ClientesTablePr
         );
       },
       size: 300,
+    },
+    {
+      id: 'score-risco',
+      header: 'Score/Risco',
+      cell: ({ row }) => {
+        if (!churnMap) return <span className="text-xs text-muted-foreground">—</span>;
+        const clienteId = typeof row.original["ID Cliente"] === 'string' 
+          ? parseInt(row.original["ID Cliente"], 10) 
+          : row.original["ID Cliente"];
+        const info = churnMap.get(clienteId);
+        if (!info) return <span className="text-xs text-muted-foreground">—</span>;
+        const cls = info.bucket === "CRÍTICO" ? "bg-red-100 text-red-800 border-red-200"
+          : info.bucket === "ALERTA" ? "bg-yellow-100 text-yellow-800 border-yellow-200"
+          : "bg-green-100 text-green-800 border-green-200";
+        return (
+          <Badge className={`${cls} border font-mono text-[10px]`}>
+            {info.score} · {info.bucket}
+          </Badge>
+        );
+      },
+      size: 120,
+      enableSorting: false,
     },
     {
       id: 'actions',

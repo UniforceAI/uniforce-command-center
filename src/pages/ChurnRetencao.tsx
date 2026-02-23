@@ -7,6 +7,8 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { useEventos } from "@/hooks/useEventos";
+import { useChurnData } from "@/hooks/useChurnData";
+import { useRiskBucketConfig, RiskBucket } from "@/hooks/useRiskBucketConfig";
 import { GlobalFilters } from "@/components/shared/GlobalFilters";
 import { IspActions } from "@/components/shared/IspActions";
 import { LoadingScreen } from "@/components/shared/LoadingScreen";
@@ -54,7 +56,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 
-const COLORS = ["#22c55e", "#eab308", "#f97316", "#ef4444"];
+const COLORS_3BUCKET = ["#22c55e", "#eab308", "#ef4444"];
 
 const ChurnRetencao = () => {
   const navigate = useNavigate();
@@ -62,7 +64,8 @@ const ChurnRetencao = () => {
   const { signOut } = useAuth();
   const { ispNome } = useActiveIsp();
   const { eventos, isLoading, error } = useEventos();
-
+  const { churnStatus } = useChurnData();
+  const { getBucket } = useRiskBucketConfig();
   // Filtros
   const [periodo, setPeriodo] = useState("7");
   const [uf, setUf] = useState("todos");
@@ -145,30 +148,38 @@ const ChurnRetencao = () => {
   // Clientes filtrados por bucket de risco
   const clientesFiltrados = useMemo(() => {
     if (riscoBucket === "todos") return clientesUnicos;
-    return clientesUnicos.filter(c => c.churn_risk_bucket === riscoBucket);
-  }, [clientesUnicos, riscoBucket]);
+    return clientesUnicos.filter(c => {
+      const score = c.churn_risk_score || 0;
+      return getBucket(score) === riscoBucket;
+    });
+  }, [clientesUnicos, riscoBucket, getBucket]);
 
   // KPIs
   const kpis = useMemo(() => {
     const totalClientes = clientesUnicos.length;
     
-    // Clientes por bucket de risco
-    const clientesBaixo = clientesUnicos.filter(c => c.churn_risk_bucket === "Baixo").length;
-    const clientesMedio = clientesUnicos.filter(c => c.churn_risk_bucket === "Médio").length;
-    const clientesAlto = clientesUnicos.filter(c => c.churn_risk_bucket === "Alto").length;
-    const clientesCritico = clientesUnicos.filter(c => c.churn_risk_bucket === "Crítico").length;
+    // Clientes por bucket de risco (3-bucket system)
+    const clientesOK = clientesUnicos.filter(c => getBucket(c.churn_risk_score || 0) === "OK").length;
+    const clientesAlerta = clientesUnicos.filter(c => getBucket(c.churn_risk_score || 0) === "ALERTA").length;
+    const clientesCritico = clientesUnicos.filter(c => getBucket(c.churn_risk_score || 0) === "CRÍTICO").length;
     
-    const clientesEmRisco = clientesAlto + clientesCritico;
+    const clientesEmRisco = clientesAlerta + clientesCritico;
     const percentualRisco = totalClientes > 0 ? ((clientesEmRisco / totalClientes) * 100).toFixed(1) : "0";
 
-    // MRR em risco (clientes alto + crítico)
+    // MRR em risco (clientes ALERTA + CRÍTICO)
     const mrrEmRisco = clientesUnicos
-      .filter(c => c.churn_risk_bucket === "Alto" || c.churn_risk_bucket === "Crítico")
+      .filter(c => {
+        const b = getBucket(c.churn_risk_score || 0);
+        return b === "ALERTA" || b === "CRÍTICO";
+      })
       .reduce((acc, c) => acc + (c.valor_mensalidade || 0), 0);
 
     // LTV em risco
     const ltvEmRisco = clientesUnicos
-      .filter(c => c.churn_risk_bucket === "Alto" || c.churn_risk_bucket === "Crítico")
+      .filter(c => {
+        const b = getBucket(c.churn_risk_score || 0);
+        return b === "ALERTA" || b === "CRÍTICO";
+      })
       .reduce((acc, c) => acc + (c.ltv_reais_estimado || 0), 0);
 
     // Score médio de churn
@@ -192,9 +203,8 @@ const ChurnRetencao = () => {
       totalClientes,
       clientesEmRisco,
       percentualRisco,
-      clientesBaixo,
-      clientesMedio,
-      clientesAlto,
+      clientesOK,
+      clientesAlerta,
       clientesCritico,
       mrrEmRisco,
       ltvEmRisco,
@@ -203,15 +213,14 @@ const ChurnRetencao = () => {
       valorInadimplente,
       clientesDetratores,
     };
-  }, [clientesUnicos]);
+  }, [clientesUnicos, getBucket]);
 
-  // Distribuição de Risco
+  // Distribuição de Risco (3 buckets)
   const distribuicaoRisco = useMemo(() => {
     return [
-      { name: "Baixo", value: kpis.clientesBaixo, color: "#22c55e" },
-      { name: "Médio", value: kpis.clientesMedio, color: "#eab308" },
-      { name: "Alto", value: kpis.clientesAlto, color: "#f97316" },
-      { name: "Crítico", value: kpis.clientesCritico, color: "#ef4444" },
+      { name: "OK", value: kpis.clientesOK, color: "#22c55e" },
+      { name: "ALERTA", value: kpis.clientesAlerta, color: "#eab308" },
+      { name: "CRÍTICO", value: kpis.clientesCritico, color: "#ef4444" },
     ].filter(d => d.value > 0);
   }, [kpis]);
 
@@ -302,26 +311,26 @@ const ChurnRetencao = () => {
     { key: "acao", label: "Ação Recomendada" },
   ];
 
-  // Playbooks baseados nos dados
+  // Playbooks baseados nos dados (3-bucket)
   const playbooks = [
     {
       id: "critico",
       title: "🔴 Risco Crítico",
       color: "text-red-500 bg-red-100",
-      descricao: "Clientes com score ≥ 75% - Ação imediata necessária",
+      descricao: "Score ≥ 70 - Ação imediata necessária",
       clientes: kpis.clientesCritico,
       mrrEmRisco: clientesUnicos
-        .filter(c => c.churn_risk_bucket === "Crítico")
+        .filter(c => getBucket(c.churn_risk_score || 0) === "CRÍTICO")
         .reduce((acc, c) => acc + (c.valor_mensalidade || 0), 0),
     },
     {
-      id: "alto",
-      title: "🟠 Risco Alto",
-      color: "text-orange-500 bg-orange-100",
-      descricao: "Clientes com score 50-74% - Monitorar de perto",
-      clientes: kpis.clientesAlto,
+      id: "alerta",
+      title: "🟡 Risco Alerta",
+      color: "text-yellow-500 bg-yellow-100",
+      descricao: "Score 40-69 - Monitorar de perto",
+      clientes: kpis.clientesAlerta,
       mrrEmRisco: clientesUnicos
-        .filter(c => c.churn_risk_bucket === "Alto")
+        .filter(c => getBucket(c.churn_risk_score || 0) === "ALERTA")
         .reduce((acc, c) => acc + (c.valor_mensalidade || 0), 0),
     },
     {
@@ -392,10 +401,9 @@ const ChurnRetencao = () => {
       onChange: setRiscoBucket,
       options: [
         { value: "todos", label: "Todos" },
-        { value: "Crítico", label: "Crítico" },
-        { value: "Alto", label: "Alto" },
-        { value: "Médio", label: "Médio" },
-        { value: "Baixo", label: "Baixo" },
+        { value: "CRÍTICO", label: "🔴 Crítico" },
+        { value: "ALERTA", label: "🟡 Alerta" },
+        { value: "OK", label: "🟢 OK" },
       ],
     },
     {
@@ -498,28 +506,22 @@ const ChurnRetencao = () => {
               />
             </div>
 
-            {/* KPIs de Buckets */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {/* KPIs de Buckets (3-bucket) */}
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
               <KPICardNew
-                title="🟢 Risco Baixo"
-                value={kpis.clientesBaixo.toLocaleString()}
+                title="🟢 OK"
+                value={kpis.clientesOK.toLocaleString()}
                 icon={Shield}
                 variant="success"
               />
               <KPICardNew
-                title="🟡 Risco Médio"
-                value={kpis.clientesMedio.toLocaleString()}
+                title="🟡 Alerta"
+                value={kpis.clientesAlerta.toLocaleString()}
                 icon={AlertCircle}
                 variant="warning"
               />
               <KPICardNew
-                title="🟠 Risco Alto"
-                value={kpis.clientesAlto.toLocaleString()}
-                icon={AlertTriangle}
-                variant="warning"
-              />
-              <KPICardNew
-                title="🔴 Risco Crítico"
+                title="🔴 Crítico"
                 value={kpis.clientesCritico.toLocaleString()}
                 icon={Zap}
                 variant="danger"

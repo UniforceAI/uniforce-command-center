@@ -4,6 +4,7 @@ import { useChamados } from "@/hooks/useChamados";
 import { useRiskBucketConfig } from "@/hooks/useRiskBucketConfig";
 import { IspActions } from "@/components/shared/IspActions";
 import { LoadingScreen } from "@/components/shared/LoadingScreen";
+import { GlobalFilters } from "@/components/shared/GlobalFilters";
 import {
   AlertTriangle, Users, Percent, Target, DollarSign, TrendingDown,
   AlertCircle, Info,
@@ -11,9 +12,6 @@ import {
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
 } from "recharts";
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select";
 
 function normalizarCidade(raw: string | null): string {
   if (!raw) return "Desconhecida";
@@ -126,7 +124,35 @@ const ChurnAnalytics = () => {
       .slice(0, 10);
   }, [ativos]);
 
-  const activeFiltersCount = [plano, cidade, bairro, bucket].filter((v) => v !== "todos").length;
+  const filters = [
+    {
+      id: "plano", label: "Plano", value: plano, onChange: setPlano,
+      disabled: filterOptions.planos.length === 0,
+      tooltip: "Sem dados de plano para esse ISP",
+      options: [{ value: "todos", label: "Todos" }, ...filterOptions.planos.map((p) => ({ value: p, label: p }))],
+    },
+    {
+      id: "cidade", label: "Cidade", value: cidade, onChange: setCidade,
+      disabled: filterOptions.cidades.length === 0,
+      tooltip: "Sem dados de cidade para esse ISP",
+      options: [{ value: "todos", label: "Todas" }, ...filterOptions.cidades.map((c) => ({ value: c, label: c }))],
+    },
+    {
+      id: "bairro", label: "Bairro", value: bairro, onChange: setBairro,
+      disabled: filterOptions.bairros.length === 0,
+      tooltip: "Sem dados de bairro para esse ISP",
+      options: [{ value: "todos", label: "Todos" }, ...filterOptions.bairros.map((b) => ({ value: b, label: b }))],
+    },
+    {
+      id: "bucket", label: "Nível Risco", value: bucket, onChange: setBucket,
+      options: [
+        { value: "todos", label: "Todos" },
+        { value: "CRÍTICO", label: "🔴 Crítico" },
+        { value: "ALERTA", label: "🟡 Alerta" },
+        { value: "OK", label: "🟢 OK" },
+      ],
+    },
+  ];
 
   if (isLoading) return (
     <div className="min-h-screen bg-background">
@@ -147,55 +173,9 @@ const ChurnAnalytics = () => {
         <IspActions />
       </header>
 
-      {/* Filtros */}
-      <div className="border-b bg-muted/20 px-6 py-2.5 flex flex-wrap items-center gap-x-4 gap-y-2">
-        <span className="text-xs font-medium text-muted-foreground">Filtrar por:</span>
-
-        {[
-          { label: "Plano", value: plano, set: setPlano, options: filterOptions.planos, placeholder: "Todos" },
-          { label: "Cidade", value: cidade, set: setCidade, options: filterOptions.cidades, placeholder: "Todas" },
-          { label: "Bairro", value: bairro, set: setBairro, options: filterOptions.bairros, placeholder: "Todos" },
-        ].map(({ label, value, set, options, placeholder }) => (
-          <div key={label} className="flex items-center gap-1.5">
-            <span className="text-xs text-muted-foreground">{label}</span>
-            <Select value={value} onValueChange={set}>
-              <SelectTrigger className="h-7 text-xs w-[130px] bg-background">
-                <SelectValue placeholder={placeholder} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="todos" className="text-xs">{placeholder}</SelectItem>
-                {options.map((o) => <SelectItem key={o} value={o} className="text-xs">{o}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-        ))}
-
-        <div className="flex items-center gap-1.5">
-          <span className="text-xs text-muted-foreground">Risco</span>
-          <Select value={bucket} onValueChange={setBucket}>
-            <SelectTrigger className="h-7 text-xs w-[110px] bg-background">
-              <SelectValue placeholder="Todos" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="todos" className="text-xs">Todos</SelectItem>
-              <SelectItem value="CRÍTICO" className="text-xs">🔴 Crítico</SelectItem>
-              <SelectItem value="ALERTA" className="text-xs">🟡 Alerta</SelectItem>
-              <SelectItem value="OK" className="text-xs">🟢 OK</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
-        {activeFiltersCount > 0 && (
-          <button
-            onClick={() => { setPlano("todos"); setCidade("todos"); setBairro("todos"); setBucket("todos"); }}
-            className="text-xs text-destructive hover:underline"
-          >
-            Limpar ({activeFiltersCount})
-          </button>
-        )}
-      </div>
-
       <main className="px-6 py-6 space-y-6 max-w-[1400px] mx-auto">
+        {/* Filtros — usando GlobalFilters padronizado */}
+        <GlobalFilters filters={filters} />
         {error && (
           <div className="flex items-center gap-2 text-destructive bg-destructive/10 rounded-lg p-3 text-sm">
             <AlertCircle className="h-4 w-4 shrink-0" />
