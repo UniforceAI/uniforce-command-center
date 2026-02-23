@@ -44,68 +44,144 @@ export function useCrmWorkflow() {
     fetchRecords();
   }, [fetchRecords]);
 
-  /** Adiciona cliente ao workflow de retenção */
-  const addToWorkflow = useCallback(async (clienteId: number, tags?: string[]) => {
-    const { data, error } = await supabase
-      .from("crm_workflow")
-      .upsert(
-        {
-          isp_id: ispId,
-          cliente_id: clienteId,
-          status_workflow: "em_tratamento" as WorkflowStatus,
-          tags: tags || [],
-        },
-        { onConflict: "isp_id,cliente_id" }
-      )
-      .select()
-      .single();
+  /** Adiciona cliente ao workflow (idempotent upsert) */
+  const addToWorkflow = useCallback(
+    async (clienteId: number, tags?: string[]) => {
+      if (!ispId) throw new Error("No ISP");
 
-    if (error) throw error;
-    setRecords((prev) => {
-      const filtered = prev.filter((r) => r.cliente_id !== clienteId);
-      return [data as CrmWorkflowRecord, ...filtered];
-    });
-    return data;
-  }, [ispId]);
+      // Check if record already exists to preserve entered_workflow_at
+      const existing = records.find(
+        (r) => r.cliente_id === clienteId
+      );
 
-  /** Atualiza status do workflow */
-  const updateStatus = useCallback(async (clienteId: number, status: WorkflowStatus) => {
-    const { data, error } = await supabase
-      .from("crm_workflow")
-      .update({
+      const payload: any = {
+        isp_id: ispId,
+        cliente_id: clienteId,
+        status_workflow: "em_tratamento" as WorkflowStatus,
+        tags: tags || [],
+        last_action_at: new Date().toISOString(),
+      };
+
+      // Only set entered_workflow_at on new records
+      if (!existing) {
+        payload.entered_workflow_at = new Date().toISOString();
+      }
+
+      const { data, error } = await supabase
+        .from("crm_workflow")
+        .upsert(payload, { onConflict: "isp_id,cliente_id" })
+        .select()
+        .single();
+
+      if (error) throw error;
+      setRecords((prev) => {
+        const filtered = prev.filter((r) => r.cliente_id !== clienteId);
+        return [data as CrmWorkflowRecord, ...filtered];
+      });
+      return data;
+    },
+    [ispId, records]
+  );
+
+  /** Atualiza status com upsert idempotente */
+  const updateStatus = useCallback(
+    async (clienteId: number, status: WorkflowStatus) => {
+      if (!ispId) throw new Error("No ISP");
+
+      const existing = records.find((r) => r.cliente_id === clienteId);
+
+      const payload: any = {
+        isp_id: ispId,
+        cliente_id: clienteId,
         status_workflow: status,
         last_action_at: new Date().toISOString(),
-      })
-      .eq("isp_id", ispId)
-      .eq("cliente_id", clienteId)
-      .select()
-      .single();
+      };
 
-    if (error) throw error;
-    setRecords((prev) =>
-      prev.map((r) => (r.cliente_id === clienteId ? (data as CrmWorkflowRecord) : r))
-    );
-    return data;
-  }, [ispId]);
+      if (!existing) {
+        payload.entered_workflow_at = new Date().toISOString();
+      }
 
-  /** Atualiza tags do cliente no workflow */
-  const updateTags = useCallback(async (clienteId: number, tags: string[]) => {
-    const { data, error } = await supabase
-      .from("crm_workflow")
-      .update({ tags })
-      .eq("isp_id", ispId)
-      .eq("cliente_id", clienteId)
-      .select()
-      .single();
+      const { data, error } = await supabase
+        .from("crm_workflow")
+        .upsert(payload, { onConflict: "isp_id,cliente_id" })
+        .select()
+        .single();
 
-    if (error) throw error;
-    setRecords((prev) =>
-      prev.map((r) => (r.cliente_id === clienteId ? (data as CrmWorkflowRecord) : r))
-    );
-    return data;
-  }, [ispId]);
+      if (error) throw error;
+      setRecords((prev) => {
+        const idx = prev.findIndex((r) => r.cliente_id === clienteId);
+        if (idx >= 0) {
+          const copy = [...prev];
+          copy[idx] = data as CrmWorkflowRecord;
+          return copy;
+        }
+        return [data as CrmWorkflowRecord, ...prev];
+      });
+      return data;
+    },
+    [ispId, records]
+  );
 
-  /** Mapa rápido clienteId → record */
+  /** Atualiza tags */
+  const updateTags = useCallback(
+    async (clienteId: number, tags: string[]) => {
+      if (!ispId) throw new Error("No ISP");
+
+      const { data, error } = await supabase
+        .from("crm_workflow")
+        .upsert(
+          {
+            isp_id: ispId,
+            cliente_id: clienteId,
+            tags,
+            last_action_at: new Date().toISOString(),
+          },
+          { onConflict: "isp_id,cliente_id" }
+        )
+        .select()
+        .single();
+
+      if (error) throw error;
+      setRecords((prev) =>
+        prev.map((r) =>
+          r.cliente_id === clienteId ? (data as CrmWorkflowRecord) : r
+        )
+      );
+      return data;
+    },
+    [ispId]
+  );
+
+  /** Atualiza owner */
+  const updateOwner = useCallback(
+    async (clienteId: number, ownerUserId: string | null) => {
+      if (!ispId) throw new Error("No ISP");
+
+      const { data, error } = await supabase
+        .from("crm_workflow")
+        .upsert(
+          {
+            isp_id: ispId,
+            cliente_id: clienteId,
+            owner_user_id: ownerUserId,
+            last_action_at: new Date().toISOString(),
+          },
+          { onConflict: "isp_id,cliente_id" }
+        )
+        .select()
+        .single();
+
+      if (error) throw error;
+      setRecords((prev) =>
+        prev.map((r) =>
+          r.cliente_id === clienteId ? (data as CrmWorkflowRecord) : r
+        )
+      );
+      return data;
+    },
+    [ispId]
+  );
+
   const workflowMap = new Map(records.map((r) => [r.cliente_id, r]));
 
   return {
@@ -114,6 +190,7 @@ export function useCrmWorkflow() {
     addToWorkflow,
     updateStatus,
     updateTags,
+    updateOwner,
     workflowMap,
     refetch: fetchRecords,
   };
