@@ -410,7 +410,7 @@ const Financeiro = () => {
     },
     {
       id: "metodo",
-      label: "Método Pagamento",
+      label: "Método",
       value: metodo,
       onChange: setMetodo,
       disabled: filterOptions.metodos.length === 0,

@@ -414,8 +414,24 @@ export default function ContasAcesso() {
       </header>
 
       <main className="container mx-auto px-6 py-6 max-w-5xl space-y-6">
+        {isLoadingData ? (
+          <div className="flex flex-col items-center justify-center min-h-[40vh]">
+            <div className="w-48">
+              <div className="h-[2px] bg-muted rounded-full overflow-hidden">
+                <div
+                  className="h-full rounded-full animate-pulse"
+                  style={{
+                    width: "60%",
+                    background: "linear-gradient(90deg, hsl(213 81% 54%), hsl(126 91% 65%))",
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+        ) : (
+        <>
         {/* Stats */}
-        {!isLoadingData && (
+        {(
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             {[
               { label: "Total",           value: accounts.length,                                                             icon: Users       },
@@ -593,6 +609,8 @@ export default function ContasAcesso() {
             )}
           </CardContent>
         </Card>
+        </>
+        )}
       </main>
 
       {/* ── Create User Dialog ────────────────────────────── */}

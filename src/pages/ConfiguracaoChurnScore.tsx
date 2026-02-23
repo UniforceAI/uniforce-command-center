@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useChurnScoreConfig, CHURN_SCORE_DEFAULTS, ChurnScoreConfig } from "@/contexts/ChurnScoreConfigContext";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -88,6 +88,12 @@ export default function ConfiguracaoChurnScore() {
   const { toast } = useToast();
   const [form, setForm] = useState<ChurnScoreConfig>({ ...config });
   const [hasChanges, setHasChanges] = useState(false);
+  const [pageLoading, setPageLoading] = useState(true);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setPageLoading(false), 600);
+    return () => clearTimeout(timer);
+  }, []);
 
   const handleChange = (key: keyof ChurnScoreConfig, raw: string) => {
     const val = parseInt(raw, 10);
@@ -140,6 +146,23 @@ export default function ConfiguracaoChurnScore() {
         </div>
       </header>
 
+      {pageLoading ? (
+        <main className="container mx-auto px-6 py-6 max-w-3xl">
+          <div className="flex flex-col items-center justify-center min-h-[40vh]">
+            <div className="w-48">
+              <div className="h-[2px] bg-muted rounded-full overflow-hidden">
+                <div
+                  className="h-full rounded-full animate-pulse"
+                  style={{
+                    width: "60%",
+                    background: "linear-gradient(90deg, hsl(213 81% 54%), hsl(126 91% 65%))",
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+        </main>
+      ) : (
       <main className="container mx-auto px-6 py-6 max-w-3xl space-y-6">
 
         {/* Aviso */}
@@ -246,6 +269,7 @@ export default function ConfiguracaoChurnScore() {
           </Button>
         </div>
       </main>
+      )}
     </div>
   );
 }
