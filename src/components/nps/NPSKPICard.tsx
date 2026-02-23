@@ -7,6 +7,7 @@ interface NPSKPICardProps {
   value: number;
   trend?: number;
   icon: LucideIcon;
+  count?: number; // N de respostas
 }
 
 function getNPSStatus(value: number): { label: string; variant: string; FaceIcon: LucideIcon } {
@@ -17,9 +18,9 @@ function getNPSStatus(value: number): { label: string; variant: string; FaceIcon
   return { label: "Crítico", variant: "destructive", FaceIcon: Frown };
 }
 
-export function NPSKPICard({ title, value, trend, icon: Icon }: NPSKPICardProps) {
-  const status = getNPSStatus(value);
-  const { FaceIcon } = status;
+export function NPSKPICard({ title, value, trend, icon: Icon, count }: NPSKPICardProps) {
+  const hasData = count === undefined || count > 0;
+  const status = hasData ? getNPSStatus(value) : { label: "Sem dados", variant: "default" as const, FaceIcon: Meh };
   
   const variantClasses = {
     success: "border-l-4 border-l-success bg-success/5",
@@ -47,28 +48,44 @@ export function NPSKPICard({ title, value, trend, icon: Icon }: NPSKPICardProps)
       <div className="flex items-start justify-between">
         <div className="space-y-2">
           <p className="text-sm font-medium text-muted-foreground">{title}</p>
-          <div className="flex items-baseline gap-2">
-            <span className="text-3xl font-bold">{value}</span>
-            <FaceIcon className={cn("h-7 w-7", faceClasses[status.variant as keyof typeof faceClasses])} />
-            {trend !== undefined && (
-              <span className={cn(
-                "flex items-center text-sm font-medium",
-                trend >= 0 ? "text-success" : "text-destructive"
-              )}>
-                {trend >= 0 ? <TrendingUp className="h-4 w-4 mr-1" /> : <TrendingDown className="h-4 w-4 mr-1" />}
-                {Math.abs(trend)}%
-              </span>
-            )}
-          </div>
-          <span className={cn(
-            "text-xs font-semibold px-2 py-1 rounded-full",
-            status.variant === "success" && "bg-success/20 text-success",
-            status.variant === "default" && "bg-primary/20 text-primary",
-            status.variant === "warning" && "bg-warning/20 text-warning",
-            status.variant === "destructive" && "bg-destructive/20 text-destructive"
-          )}>
-            {status.label}
-          </span>
+          {hasData ? (
+            <>
+              <div className="flex items-baseline gap-2">
+                <span className="text-3xl font-bold">{value}</span>
+                <status.FaceIcon className={cn("h-7 w-7", faceClasses[status.variant as keyof typeof faceClasses])} />
+                {trend !== undefined && (
+                  <span className={cn(
+                    "flex items-center text-sm font-medium",
+                    trend >= 0 ? "text-success" : "text-destructive"
+                  )}>
+                    {trend >= 0 ? <TrendingUp className="h-4 w-4 mr-1" /> : <TrendingDown className="h-4 w-4 mr-1" />}
+                    {Math.abs(trend)}%
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                <span className={cn(
+                  "text-xs font-semibold px-2 py-1 rounded-full",
+                  status.variant === "success" && "bg-success/20 text-success",
+                  status.variant === "default" && "bg-primary/20 text-primary",
+                  status.variant === "warning" && "bg-warning/20 text-warning",
+                  status.variant === "destructive" && "bg-destructive/20 text-destructive"
+                )}>
+                  {status.label}
+                </span>
+                {count !== undefined && (
+                  <span className="text-[10px] text-muted-foreground">N={count}</span>
+                )}
+              </div>
+            </>
+          ) : (
+            <div className="space-y-1">
+              <span className="text-lg text-muted-foreground">Sem dados</span>
+              {count !== undefined && (
+                <p className="text-[10px] text-muted-foreground">0 respostas</p>
+              )}
+            </div>
+          )}
         </div>
         <div className={cn("p-3 rounded-lg", iconBgClasses[status.variant as keyof typeof iconBgClasses])}>
           <Icon className="h-6 w-6" />

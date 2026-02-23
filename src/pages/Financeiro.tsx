@@ -7,6 +7,8 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { useEventos } from "@/hooks/useEventos";
+import { useChurnData } from "@/hooks/useChurnData";
+import { useRiskBucketConfig } from "@/hooks/useRiskBucketConfig";
 import { GlobalFilters } from "@/components/shared/GlobalFilters";
 import { IspActions } from "@/components/shared/IspActions";
 import { LoadingScreen } from "@/components/shared/LoadingScreen";
@@ -47,6 +49,17 @@ const Financeiro = () => {
   const { signOut } = useAuth();
   const { ispNome } = useActiveIsp();
   const { eventos, isLoading, error, columns } = useEventos();
+  const { churnStatus } = useChurnData();
+  const { getBucket } = useRiskBucketConfig();
+
+  // Mapa de churn por cliente_id para lookup rápido
+  const churnMap = useMemo(() => {
+    const m = new Map<number, { score: number; bucket: string }>();
+    churnStatus.forEach(c => {
+      m.set(c.cliente_id, { score: c.churn_risk_score, bucket: getBucket(c.churn_risk_score) });
+    });
+    return m;
+  }, [churnStatus, getBucket]);
 
   // Filtros
   const [periodo, setPeriodo] = useState("7");
@@ -724,13 +737,14 @@ const Financeiro = () => {
                             )}
                           </div>
                         </TableHead>
+                        <TableHead className="text-xs text-center">Score/Risco</TableHead>
                         <TableHead className="text-xs">Status</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {clientesVencidosList.length === 0 ? (
                         <TableRow>
-                          <TableCell colSpan={6} className="text-center text-muted-foreground py-8 text-sm">
+                          <TableCell colSpan={7} className="text-center text-muted-foreground py-8 text-sm">
                             Nenhum cliente inadimplente encontrado nos dados carregados.
                           </TableCell>
                         </TableRow>
@@ -744,6 +758,7 @@ const Financeiro = () => {
                             ? new Date(e.data_vencimento).toLocaleDateString("pt-BR")
                             : "—";
                           const valor = e.valor_cobranca || e.valor_mensalidade || 0;
+                          const churnInfo = churnMap.get(e.cliente_id);
                           return (
                             <TableRow key={`${e.cliente_id}-${idx}`} className="hover:bg-muted/50">
                               <TableCell className="text-xs font-medium max-w-[180px] truncate">
@@ -760,6 +775,19 @@ const Financeiro = () => {
                               </TableCell>
                               <TableCell className="text-xs text-right font-medium">
                                 {valor > 0 ? `R$ ${valor.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}` : "—"}
+                              </TableCell>
+                              <TableCell className="text-center">
+                                {churnInfo ? (
+                                  <Badge className={`text-[10px] font-mono border ${
+                                    churnInfo.bucket === "CRÍTICO" ? "bg-red-100 text-red-800 border-red-200" :
+                                    churnInfo.bucket === "ALERTA" ? "bg-yellow-100 text-yellow-800 border-yellow-200" :
+                                    "bg-green-100 text-green-800 border-green-200"
+                                  }`}>
+                                    {churnInfo.score} · {churnInfo.bucket}
+                                  </Badge>
+                                ) : (
+                                  <span className="text-[10px] text-muted-foreground">—</span>
+                                )}
                               </TableCell>
                               <TableCell className="text-xs">
                                 <Badge

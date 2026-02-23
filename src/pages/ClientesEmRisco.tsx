@@ -8,13 +8,14 @@ import { useCrmWorkflow, WorkflowStatus } from "@/hooks/useCrmWorkflow";
 import { IspActions } from "@/components/shared/IspActions";
 import { LoadingScreen } from "@/components/shared/LoadingScreen";
 import { KPICardNew } from "@/components/shared/KPICardNew";
+import { KanbanBoard } from "@/components/crm/KanbanBoard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { AlertTriangle, Users, DollarSign, Target, Clock, AlertCircle, TrendingDown, ShieldAlert, ThumbsDown, ThumbsUp, Minus, PlayCircle, CheckCircle2, XCircle, Tag } from "lucide-react";
+import { AlertTriangle, Users, DollarSign, Target, Clock, AlertCircle, TrendingDown, ShieldAlert, ThumbsDown, ThumbsUp, Minus, PlayCircle, CheckCircle2, XCircle, Tag, LayoutList, Columns } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from "recharts";
 import { useToast } from "@/hooks/use-toast";
@@ -143,6 +144,7 @@ const ClientesEmRisco = () => {
   const [scoreMin, setScoreMin] = useState(0);
   const [bucket, setBucket] = useState("todos");
   const [selectedCliente, setSelectedCliente] = useState<ChurnStatus | null>(null);
+  const [viewMode, setViewMode] = useState<"lista" | "kanban">("lista");
 
   // Clientes em risco: usa status_churn direto
   const clientesRisco = useMemo(() =>
@@ -347,8 +349,27 @@ const ClientesEmRisco = () => {
                 </Select>
               </div>
 
+              <div className="flex items-center gap-2">
+                <Button
+                  variant={viewMode === "lista" ? "default" : "outline"}
+                  size="sm"
+                  className="h-8 text-xs gap-1.5"
+                  onClick={() => setViewMode("lista")}
+                >
+                  <LayoutList className="h-3.5 w-3.5" />Lista
+                </Button>
+                <Button
+                  variant={viewMode === "kanban" ? "default" : "outline"}
+                  size="sm"
+                  className="h-8 text-xs gap-1.5"
+                  onClick={() => setViewMode("kanban")}
+                >
+                  <Columns className="h-3.5 w-3.5" />Kanban
+                </Button>
+              </div>
+
               <div className="ml-auto text-xs text-muted-foreground">
-                {filtered.length.toLocaleString()} clientes filtrados · clique numa linha para ver detalhes
+                {filtered.length.toLocaleString()} clientes filtrados
               </div>
             </div>
           </CardContent>
@@ -364,7 +385,35 @@ const ClientesEmRisco = () => {
           <KPICardNew title="Bloqueados p/ Cob." value={kpis.bloqueadosCobranca.toLocaleString()} icon={ShieldAlert} variant="warning" />
         </div>
 
-        {/* Tabela */}
+        {/* View Toggle: Lista or Kanban */}
+        {viewMode === "kanban" ? (
+          <KanbanBoard
+            clientes={filtered}
+            getScore={getScoreTotalReal}
+            getBucket={getBucket}
+            workflowMap={workflowMap}
+            onSelectCliente={setSelectedCliente}
+            onStartTreatment={async (c) => {
+              try {
+                const autoTags: string[] = [];
+                const b = getBucket(getScoreTotalReal(c));
+                if (b === "CRÍTICO") autoTags.push("Crítico");
+                if ((c.ltv_estimado ?? 0) >= 3000) autoTags.push("Alto Ticket");
+                const nps = npsMap.get(c.cliente_id);
+                if (nps?.classificacao === "DETRATOR") autoTags.push("NPS Detrator");
+                if ((c.score_financeiro ?? 0) >= 20) autoTags.push("Financeiro");
+                await addToWorkflow(c.cliente_id, autoTags);
+                toast({ title: "Cliente adicionado ao workflow" });
+              } catch { toast({ title: "Erro", variant: "destructive" }); }
+            }}
+            onUpdateStatus={async (clienteId, status) => {
+              try {
+                await updateStatus(clienteId, status);
+                toast({ title: `Marcado como ${status}` });
+              } catch { toast({ title: "Erro", variant: "destructive" }); }
+            }}
+          />
+        ) : (
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
@@ -386,12 +435,13 @@ const ClientesEmRisco = () => {
                     <TableHead className="text-xs whitespace-nowrap text-right">Mensalidade</TableHead>
                     <TableHead className="text-xs whitespace-nowrap text-right">LTV</TableHead>
                     <TableHead className="text-xs whitespace-nowrap">Motivo</TableHead>
+                    <TableHead className="text-xs whitespace-nowrap">CRM</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {filtered.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={10} className="text-center text-muted-foreground py-10 text-sm">
+                      <TableCell colSpan={11} className="text-center text-muted-foreground py-10 text-sm">
                         {churnStatus.length === 0
                           ? "Nenhum dado carregado. Verifique a conexão com o banco de dados."
                           : "Nenhum cliente em risco com os filtros aplicados."}
@@ -402,6 +452,7 @@ const ClientesEmRisco = () => {
                       const derivedBucket = getBucket(getScoreTotalReal(c));
                       const prioridade = getPrioridade(c, derivedBucket);
                       const npsCliente = npsMap.get(c.cliente_id);
+                      const wf = workflowMap.get(c.cliente_id);
                       return (
                         <TableRow
                           key={c.id || c.cliente_id}
@@ -436,6 +487,20 @@ const ClientesEmRisco = () => {
                           <TableCell className="text-xs max-w-[150px] truncate text-muted-foreground">
                             {c.motivo_risco_principal || "—"}
                           </TableCell>
+                          <TableCell>
+                            {wf ? (
+                              <Badge variant="outline" className={`text-[10px] ${
+                                wf.status_workflow === "em_tratamento" ? "text-yellow-600" :
+                                wf.status_workflow === "resolvido" ? "text-green-600" :
+                                "text-destructive"
+                              }`}>
+                                {wf.status_workflow === "em_tratamento" ? "Tratando" :
+                                 wf.status_workflow === "resolvido" ? "Resolvido" : "Perdido"}
+                              </Badge>
+                            ) : (
+                              <span className="text-[10px] text-muted-foreground">—</span>
+                            )}
+                          </TableCell>
                         </TableRow>
                       );
                     })
@@ -445,6 +510,7 @@ const ClientesEmRisco = () => {
             </div>
           </CardContent>
         </Card>
+        )}
       </main>
 
       {/* Drawer de detalhes */}
