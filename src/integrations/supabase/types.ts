@@ -22,6 +22,7 @@ export type Database = {
           created_at: string
           created_by: string | null
           id: string
+          isp_id: string | null
           metadata: Json | null
           notes: string | null
           status: string | null
@@ -33,6 +34,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           id?: string
+          isp_id?: string | null
           metadata?: Json | null
           notes?: string | null
           status?: string | null
@@ -44,6 +46,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           id?: string
+          isp_id?: string | null
           metadata?: Json | null
           notes?: string | null
           status?: string | null
