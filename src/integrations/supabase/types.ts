@@ -122,6 +122,45 @@ export type Database = {
         }
         Relationships: []
       }
+      crm_workflow: {
+        Row: {
+          cliente_id: number
+          created_at: string
+          entered_workflow_at: string
+          id: string
+          isp_id: string
+          last_action_at: string | null
+          owner_user_id: string | null
+          status_workflow: Database["public"]["Enums"]["workflow_status"]
+          tags: string[] | null
+          updated_at: string
+        }
+        Insert: {
+          cliente_id: number
+          created_at?: string
+          entered_workflow_at?: string
+          id?: string
+          isp_id: string
+          last_action_at?: string | null
+          owner_user_id?: string | null
+          status_workflow?: Database["public"]["Enums"]["workflow_status"]
+          tags?: string[] | null
+          updated_at?: string
+        }
+        Update: {
+          cliente_id?: number
+          created_at?: string
+          entered_workflow_at?: string
+          id?: string
+          isp_id?: string
+          last_action_at?: string | null
+          owner_user_id?: string | null
+          status_workflow?: Database["public"]["Enums"]["workflow_status"]
+          tags?: string[] | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           avatar_url: string | null
@@ -146,6 +185,39 @@ export type Database = {
           full_name?: string | null
           id?: string
           updated_at?: string | null
+        }
+        Relationships: []
+      }
+      risk_bucket_config: {
+        Row: {
+          alert_max: number
+          alert_min: number
+          created_at: string
+          critical_min: number
+          id: string
+          isp_id: string
+          ok_max: number
+          updated_at: string
+        }
+        Insert: {
+          alert_max?: number
+          alert_min?: number
+          created_at?: string
+          critical_min?: number
+          id?: string
+          isp_id: string
+          ok_max?: number
+          updated_at?: string
+        }
+        Update: {
+          alert_max?: number
+          alert_min?: number
+          created_at?: string
+          critical_min?: number
+          id?: string
+          isp_id?: string
+          ok_max?: number
+          updated_at?: string
         }
         Relationships: []
       }
@@ -185,6 +257,7 @@ export type Database = {
     }
     Enums: {
       app_role: "admin" | "support_staff" | "user"
+      workflow_status: "em_tratamento" | "resolvido" | "perdido"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -313,6 +386,7 @@ export const Constants = {
   public: {
     Enums: {
       app_role: ["admin", "support_staff", "user"],
+      workflow_status: ["em_tratamento", "resolvido", "perdido"],
     },
   },
 } as const
