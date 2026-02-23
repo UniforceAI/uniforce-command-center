@@ -234,21 +234,25 @@ const NPS = () => {
             title="NPS Geral"
             value={kpis.geral}
             icon={Gauge}
+            count={filteredRespostas.length}
           />
           <NPSKPICard
             title="NPS Contrato"
             value={kpis.contrato}
             icon={ThumbsUp}
+            count={filteredRespostas.filter(r => r.tipo_nps === "contrato").length}
           />
           <NPSKPICard
             title="NPS Pós-O.S"
             value={kpis.os}
             icon={Wrench}
+            count={filteredRespostas.filter(r => r.tipo_nps === "os").length}
           />
           <NPSKPICard
             title="NPS Atendimento"
             value={kpis.atendimento}
             icon={Headphones}
+            count={filteredRespostas.filter(r => r.tipo_nps === "atendimento").length}
           />
         </div>
 
