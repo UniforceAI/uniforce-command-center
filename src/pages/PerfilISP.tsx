@@ -250,7 +250,23 @@ export default function PerfilISP() {
       </header>
 
       <main className="container mx-auto px-6 py-6 max-w-4xl space-y-6">
-        {notFound && !loading && (
+        {loading ? (
+          <div className="flex flex-col items-center justify-center min-h-[40vh]">
+            <div className="w-48">
+              <div className="h-[2px] bg-muted rounded-full overflow-hidden">
+                <div
+                  className="h-full rounded-full animate-pulse"
+                  style={{
+                    width: "60%",
+                    background: "linear-gradient(90deg, hsl(213 81% 54%), hsl(126 91% 65%))",
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+        ) : (
+        <>
+        {notFound && (
           <div className="rounded-lg border border-destructive/50 bg-destructive/5 p-4 text-sm text-destructive">
             ISP "{ispNome}" não encontrado na tabela do Notion. Os dados não serão salvos até que o registro seja criado.
           </div>
@@ -495,6 +511,8 @@ export default function PerfilISP() {
             {saving ? "Salvando..." : "Salvar alterações"}
           </Button>
         </div>
+        </>
+        )}
       </main>
     </div>
   );

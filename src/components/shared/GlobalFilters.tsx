@@ -80,7 +80,7 @@ export function GlobalFilters({ filters }: GlobalFiltersProps) {
               >
                 <SelectTrigger
                   className={cn(
-                    "h-8 text-xs min-w-[100px] max-w-[140px] rounded-lg border-border/80 bg-background transition-all",
+                    "h-8 text-xs min-w-[100px] max-w-[160px] rounded-lg border-border/80 bg-background transition-all",
                     filter.value !== "todos" && filter.value !== "todas"
                       ? "border-primary/40 bg-primary/5 text-primary font-medium"
                       : ""
