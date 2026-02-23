@@ -122,6 +122,39 @@ export type Database = {
         }
         Relationships: []
       }
+      crm_comments: {
+        Row: {
+          body: string
+          cliente_id: number
+          created_at: string
+          created_by: string | null
+          id: string
+          isp_id: string
+          meta: Json | null
+          type: string
+        }
+        Insert: {
+          body: string
+          cliente_id: number
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          isp_id: string
+          meta?: Json | null
+          type?: string
+        }
+        Update: {
+          body?: string
+          cliente_id?: number
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          isp_id?: string
+          meta?: Json | null
+          type?: string
+        }
+        Relationships: []
+      }
       crm_workflow: {
         Row: {
           cliente_id: number
