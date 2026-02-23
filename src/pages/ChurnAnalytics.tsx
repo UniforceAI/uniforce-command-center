@@ -247,7 +247,7 @@ const ChurnAnalytics = () => {
           <div className="rounded-xl border border-border bg-card p-4 flex flex-col gap-1 min-h-[90px]">
             <div className="flex items-center gap-1.5">
               <Target className="h-3.5 w-3.5 text-warning" />
-              <span className="text-xs text-muted-foreground font-medium">Churn Rate</span>
+              <span className="text-xs text-muted-foreground font-medium">% em Risco</span>
             </div>
             <p className="text-3xl font-bold tracking-tight text-foreground">{kpis.pctRisco}%</p>
             <p className="text-xs text-muted-foreground">score médio: {kpis.scoreMedio}</p>
