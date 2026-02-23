@@ -91,8 +91,19 @@ const ClientesEmRisco = () => {
   const [plano, setPlano] = useState("todos");
   const [cidade, setCidade] = useState("todos");
   const [bairro, setBairro] = useState("todos");
+  const [periodo, setPeriodo] = useState("todos");
   const [selectedCliente, setSelectedCliente] = useState<ChurnStatus | null>(null);
   const [viewMode, setViewMode] = useState<"lista" | "kanban">("kanban");
+
+  // Data max do dataset para filtro de período
+  const dataMaxDataset = useMemo(() => {
+    let max = 0;
+    churnStatus.forEach((c) => {
+      const ts = new Date(c.created_at || "").getTime();
+      if (ts > max) max = ts;
+    });
+    return max > 0 ? new Date(max) : new Date();
+  }, [churnStatus]);
 
   const clientesRisco = useMemo(() => churnStatus.filter((c) => c.status_churn === "risco"), [churnStatus]);
 
@@ -136,13 +147,25 @@ const ClientesEmRisco = () => {
 
   const filtered = useMemo(() => {
     let f = [...clientesRisco];
+
+    // Filtro de período baseado na data máxima do dataset
+    if (periodo !== "todos") {
+      const dias = parseInt(periodo, 10);
+      const cutoff = new Date(dataMaxDataset);
+      cutoff.setDate(cutoff.getDate() - dias);
+      f = f.filter((c) => {
+        const d = new Date(c.created_at || "");
+        return !isNaN(d.getTime()) && d >= cutoff;
+      });
+    }
+
     if (scoreMin > 0) f = f.filter((c) => getScoreTotalReal(c) >= scoreMin);
     if (bucket !== "todos") f = f.filter((c) => getBucket(getScoreTotalReal(c)) === bucket);
     if (plano !== "todos") f = f.filter((c) => c.plano_nome === plano);
     if (cidade !== "todos") f = f.filter((c) => c.cliente_cidade === cidade);
     if (bairro !== "todos") f = f.filter((c) => c.cliente_bairro === bairro);
     return f.sort((a, b) => getScoreTotalReal(b) - getScoreTotalReal(a) || (b.dias_atraso || 0) - (a.dias_atraso || 0));
-  }, [clientesRisco, scoreMin, bucket, plano, cidade, bairro, getScoreTotalReal, getBucket]);
+  }, [clientesRisco, scoreMin, bucket, plano, cidade, bairro, periodo, dataMaxDataset, getScoreTotalReal, getBucket]);
 
   const kpis = useMemo(() => {
     const totalRisco = filtered.length;
@@ -154,7 +177,7 @@ const ClientesEmRisco = () => {
     return { totalRisco, mrrRisco, ltvRisco, scoreMedio, bloqueadosCobranca };
   }, [filtered, getScoreTotalReal]);
 
-  const hasActiveFilters = scoreMin > 0 || bucket !== "todos" || plano !== "todos" || cidade !== "todos" || bairro !== "todos";
+  const hasActiveFilters = scoreMin > 0 || bucket !== "todos" || plano !== "todos" || cidade !== "todos" || bairro !== "todos" || periodo !== "todos";
 
   const clearFilters = () => {
     setScoreMin(0);
@@ -162,6 +185,7 @@ const ClientesEmRisco = () => {
     setPlano("todos");
     setCidade("todos");
     setBairro("todos");
+    setPeriodo("todos");
   };
 
   // Events for selected client
@@ -293,6 +317,21 @@ const ClientesEmRisco = () => {
 
             {/* Filters row */}
             <div className="flex flex-wrap items-center gap-3">
+              <div className="flex flex-col gap-0.5">
+                <span className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">Período</span>
+                <Select value={periodo} onValueChange={setPeriodo}>
+                  <SelectTrigger className="h-7 text-xs w-[110px]"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="todos">Tudo</SelectItem>
+                    <SelectItem value="7">7 dias</SelectItem>
+                    <SelectItem value="30">30 dias</SelectItem>
+                    <SelectItem value="90">90 dias</SelectItem>
+                    <SelectItem value="180">180 dias</SelectItem>
+                    <SelectItem value="365">365 dias</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
               <div className="flex items-center gap-2 min-w-[160px]">
                 <div className="flex flex-col gap-0.5">
                   <span className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">Score Mín.</span>
