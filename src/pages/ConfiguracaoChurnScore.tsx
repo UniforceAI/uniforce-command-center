@@ -1,6 +1,5 @@
 import { useState, useEffect } from "react";
 import { useChurnScoreConfig, CHURN_SCORE_DEFAULTS, ChurnScoreConfig } from "@/contexts/ChurnScoreConfigContext";
-import { useRiskBucketConfig } from "@/hooks/useRiskBucketConfig";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -86,26 +85,10 @@ const GATILHOS: GatilhoField[] = [
 
 export default function ConfiguracaoChurnScore() {
   const { config, setConfig, resetToDefaults } = useChurnScoreConfig();
-  const { config: bucketConfig, saveConfig: saveBucketConfig, isLoading: bucketLoading } = useRiskBucketConfig();
   const { toast } = useToast();
   const [form, setForm] = useState<ChurnScoreConfig>({ ...config });
-  const [bucketForm, setBucketForm] = useState({
-    ok_max: bucketConfig.ok_max,
-    alert_min: bucketConfig.alert_min,
-    alert_max: bucketConfig.alert_max,
-    critical_min: bucketConfig.critical_min,
-  });
   const [hasChanges, setHasChanges] = useState(false);
   const [pageLoading, setPageLoading] = useState(true);
-
-  useEffect(() => {
-    setBucketForm({
-      ok_max: bucketConfig.ok_max,
-      alert_min: bucketConfig.alert_min,
-      alert_max: bucketConfig.alert_max,
-      critical_min: bucketConfig.critical_min,
-    });
-  }, [bucketConfig]);
 
   useEffect(() => {
     const timer = setTimeout(() => setPageLoading(false), 600);
@@ -120,18 +103,13 @@ export default function ConfiguracaoChurnScore() {
     setHasChanges(true);
   };
 
-  const handleSave = async () => {
+  const handleSave = () => {
     setConfig(form);
-    try {
-      await saveBucketConfig(bucketForm);
-      setHasChanges(false);
-      toast({
-        title: "Configurações salvas",
-        description: "Os pesos e faixas de risco foram atualizados e persistidos no banco.",
-      });
-    } catch (err: any) {
-      toast({ title: "Erro ao salvar faixas", description: err.message, variant: "destructive" });
-    }
+    setHasChanges(false);
+    toast({
+      title: "Configurações salvas",
+      description: "Os pesos do Churn Risk Score foram atualizados com sucesso.",
+    });
   };
 
   const handleReset = () => {
@@ -144,7 +122,6 @@ export default function ConfiguracaoChurnScore() {
     });
   };
 
-  // Preview: calcula score de exemplo com 3 chamados + NPS detrator
   const exampleScore30d2 = form.chamados30dBase;
   const exampleScore30d3 = form.chamados30dBase + form.chamadoAdicional;
   const exampleScore30d4 = form.chamados30dBase + form.chamadoAdicional * 2;
@@ -187,7 +164,6 @@ export default function ConfiguracaoChurnScore() {
       ) : (
       <main className="container mx-auto px-6 py-6 max-w-3xl space-y-6">
 
-        {/* Aviso */}
         <div className="flex items-start gap-3 rounded-lg border border-primary/20 bg-primary/5 p-4">
           <Info className="h-4 w-4 text-primary mt-0.5 shrink-0" />
           <p className="text-sm text-foreground/80">
@@ -195,7 +171,6 @@ export default function ConfiguracaoChurnScore() {
           </p>
         </div>
 
-        {/* Gatilhos editáveis */}
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Gatilhos e Pesos</CardTitle>
@@ -235,77 +210,6 @@ export default function ConfiguracaoChurnScore() {
           </CardContent>
         </Card>
 
-        {/* Faixas de Risco (persistidas no banco) */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Faixas de Risco (Buckets)</CardTitle>
-            <CardDescription>
-              Define os limites de score para classificação OK / Alerta / Crítico.
-              {bucketLoading && " Carregando do banco..."}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-3 gap-4">
-              <div className="space-y-1.5">
-                <Label className="text-xs font-semibold flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 rounded-full bg-green-500" /> OK (até)
-                </Label>
-                <Input
-                  type="number"
-                  min={0}
-                  max={499}
-                  value={bucketForm.ok_max}
-                  onChange={(e) => {
-                    const v = parseInt(e.target.value, 10);
-                    if (!isNaN(v)) {
-                      setBucketForm(prev => ({ ...prev, ok_max: v, alert_min: v + 1 }));
-                      setHasChanges(true);
-                    }
-                  }}
-                  className="h-9 text-center font-mono font-bold"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs font-semibold flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 rounded-full bg-yellow-500" /> Alerta ({bucketForm.alert_min}–)
-                </Label>
-                <Input
-                  type="number"
-                  min={1}
-                  max={499}
-                  value={bucketForm.alert_max}
-                  onChange={(e) => {
-                    const v = parseInt(e.target.value, 10);
-                    if (!isNaN(v)) {
-                      setBucketForm(prev => ({ ...prev, alert_max: v, critical_min: v + 1 }));
-                      setHasChanges(true);
-                    }
-                  }}
-                  className="h-9 text-center font-mono font-bold"
-                />
-                <p className="text-[10px] text-muted-foreground">Limite superior do Alerta</p>
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs font-semibold flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 rounded-full bg-red-500" /> Crítico (a partir de)
-                </Label>
-                <Input
-                  type="number"
-                  value={bucketForm.critical_min}
-                  disabled
-                  className="h-9 text-center font-mono font-bold bg-muted"
-                />
-                <p className="text-[10px] text-muted-foreground">Calculado automaticamente</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <Info className="h-3.5 w-3.5" />
-              <span>Estas faixas são persistidas no banco e compartilhadas entre todos os usuários do provedor.</span>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Preview de cálculo */}
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Preview — Exemplo de Cálculo</CardTitle>
@@ -349,7 +253,6 @@ export default function ConfiguracaoChurnScore() {
           </CardContent>
         </Card>
 
-        {/* Ações */}
         <div className="flex items-center justify-between pb-6">
           <Button variant="outline" onClick={handleReset} className="gap-2">
             <RotateCcw className="h-4 w-4" />
