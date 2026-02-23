@@ -42,6 +42,7 @@ import {
   RefreshCcw,
   Wifi,
   ShieldAlert,
+  ArrowRight,
 } from "lucide-react";
 import {
   Select,
@@ -1512,46 +1513,83 @@ const VisaoGeral = () => {
               },
             ]} />
 
-            {/* Resumo Executivo */}
-            <ExecutiveSummary
-              clientesEmAlerta={vencidosStats.totalVencidos + filaRisco.filter(r => r.driver.includes("técnico")).length}
-              mrrSobRisco={kpis.mrrEmRisco}
-              perdaEstimada30d={kpis.mrrEmRisco * 0.3}
-              alertLevel={vencidosStats.totalVencidos > 50 ? "critical" : vencidosStats.totalVencidos > 20 ? "warning" : "normal"}
-              drivers={[
-                {
-                  id: "inadimplencia",
-                  label: "Inadimplência",
-                  count: vencidosStats.totalVencidos,
-                  unit: "clientes",
-                  severity: vencidosStats.totalVencidos > 50 ? "critical" : vencidosStats.totalVencidos > 20 ? "high" : "medium",
-                  icon: <DollarSign className="h-3 w-3 mr-1" />,
-                  onClick: () => navigate("/financeiro"),
-                },
-                {
-                  id: "suporte",
-                  label: "Chamados",
-                  count: chamadosStats.totalChamados,
-                  unit: "chamados",
-                  severity: chamadosStats.totalReincidentes > 20 ? "high" : chamadosStats.totalChamados > 100 ? "medium" : "low",
-                  icon: <RefreshCcw className="h-3 w-3 mr-1" />,
-                  onClick: () => navigate("/chamados"),
-                },
-                {
-                  id: "alerta_tecnico",
-                  label: "Alertas Técnicos",
-                  count: filaRisco.filter(r => r.driver.includes("técnico")).length,
-                  unit: "clientes",
-                  severity: "high",
-                  icon: <Wifi className="h-3 w-3 mr-1" />,
-                },
-              ]}
-              onVerFilaRisco={() => {
-                const filaSection = document.getElementById("fila-risco");
-                filaSection?.scrollIntoView({ behavior: "smooth" });
-              }}
-              onVerCobranca={() => navigate("/financeiro")}
-            />
+            {/* Resumo Executivo do Dia */}
+            {(() => {
+              const clientesAlertaChurn = churnStatus.filter(c => c.status_churn === "risco" && getBucketVisao(c.churn_risk_score) === "ALERTA").length;
+              const clientesCriticoChurn = churnStatus.filter(c => c.status_churn === "risco" && getBucketVisao(c.churn_risk_score) === "CRÍTICO").length;
+              const totalEmRisco = clientesAlertaChurn + clientesCriticoChurn;
+              const mrrRisco = churnStatus.filter(c => c.status_churn === "risco" && (getBucketVisao(c.churn_risk_score) === "ALERTA" || getBucketVisao(c.churn_risk_score) === "CRÍTICO"))
+                .reduce((acc, c) => acc + (c.valor_mensalidade || 0), 0);
+              const hasRiskData = totalEmRisco > 0;
+              const hasFinData = vencidosStats.totalVencidos > 0;
+              
+              // Drivers with data
+              const activeDrivers = [
+                hasFinData && { label: "Inadimplência", count: vencidosStats.totalVencidos, icon: <DollarSign className="h-3 w-3" /> },
+                chamadosStats.totalReincidentes > 0 && { label: "Chamados Reincidentes", count: chamadosStats.totalReincidentes, icon: <RefreshCcw className="h-3 w-3" /> },
+                chamadosStats.totalChamados > 0 && { label: "Chamados", count: chamadosStats.totalChamados, icon: <Phone className="h-3 w-3" /> },
+              ].filter(Boolean) as Array<{ label: string; count: number; icon: React.ReactNode }>;
+
+              return (
+                <Card className="border bg-card">
+                  <CardContent className="p-4">
+                    <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+                      <div className="space-y-1.5">
+                        <h2 className="text-sm font-semibold text-foreground">
+                          Resumo Executivo do Dia
+                        </h2>
+                        <p className="text-xs text-muted-foreground">
+                          {periodoLabel} · {kpis.clientesAtivos.toLocaleString()} clientes ativos
+                        </p>
+                      </div>
+
+                      {/* KPIs inline */}
+                      <div className="flex items-center gap-6 flex-wrap">
+                        {hasRiskData && (
+                          <div className="text-center">
+                            <div className="text-lg font-bold text-foreground">{totalEmRisco}</div>
+                            <div className="text-[10px] text-muted-foreground">Em risco</div>
+                          </div>
+                        )}
+                        {hasRiskData && mrrRisco > 0 && (
+                          <div className="text-center">
+                            <div className="text-lg font-bold text-foreground">{formatCurrency(mrrRisco)}</div>
+                            <div className="text-[10px] text-muted-foreground">MRR em risco</div>
+                          </div>
+                        )}
+                        {!hasRiskData && (
+                          <div className="text-center">
+                            <div className="text-sm text-muted-foreground">Sem dados de risco suficientes</div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Drivers */}
+                    {activeDrivers.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 mt-3 pt-2 border-t border-border/50">
+                        {activeDrivers.map((d, i) => (
+                          <Badge key={i} variant="outline" className="text-xs py-0.5 px-2 gap-1">
+                            {d.icon} {d.label}: {d.count}
+                          </Badge>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Actions */}
+                    <div className="flex gap-2 mt-3 pt-2 border-t border-border/50">
+                      <Button onClick={() => navigate("/clientes-em-risco")} size="sm" variant="default" className="h-7 text-xs">
+                        Ver Clientes em Risco
+                        <ArrowRight className="h-3 w-3 ml-1" />
+                      </Button>
+                      <Button onClick={() => navigate("/financeiro")} variant="outline" size="sm" className="h-7 text-xs">
+                        Ver Financeiro
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })()}
 
             {/* KPIs Principais */}
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2">
@@ -1589,12 +1627,15 @@ const VisaoGeral = () => {
                 variant={chamadosStats.totalChamados > 100 ? "warning" : "default"}
                 subtitle={`${periodoLabel} · ${chamadosStats.clientesComChamados} clientes`}
               />
-              <RiskKPICard
-                title="Alertas Técnicos"
-                value={filaRisco.filter(r => r.driver.includes("técnico")).length}
-                icon={Wifi}
-                variant="warning"
-              />
+              {filaRisco.filter(r => r.driver.includes("técnico")).length > 0 && (
+                <RiskKPICard
+                  title="Alertas Técnicos"
+                  value={filaRisco.filter(r => r.driver.includes("técnico")).length}
+                  icon={Wifi}
+                  variant="warning"
+                  subtitle="Desativado no MVP se sem dados"
+                />
+              )}
             </div>
 
             {/* Main Content Grid */}
@@ -2037,178 +2078,89 @@ const VisaoGeral = () => {
               </CardContent>
             </Card>
 
-            {/* Bottom Tables */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Fila de Risco */}
-              <Card id="fila-risco">
-                <CardHeader className="pb-2">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <AlertTriangle className="h-4 w-4 text-destructive" />
-                      <CardTitle className="text-base">Fila de Risco (Hoje)</CardTitle>
-                      <Badge variant="destructive" className="text-xs">{filaRisco.length}</Badge>
-                    </div>
-                    <span className="text-xs text-muted-foreground">
-                      {filaRisco.length} resultados • Score em construção
-                    </span>
+            {/* Clientes em Risco */}
+            <Card id="fila-risco">
+              <CardHeader className="pb-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <AlertTriangle className="h-4 w-4 text-destructive" />
+                    <CardTitle className="text-base">Clientes em Risco</CardTitle>
+                    <Badge variant="destructive" className="text-xs">{filaRisco.length}</Badge>
                   </div>
-                </CardHeader>
-                <CardContent>
-                  {filaRisco.length > 0 ? (
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-sm">
-                        <thead>
-                          <tr className="border-b text-muted-foreground">
-                            <th className="text-left py-2 font-medium">Cliente</th>
-                            <th className="text-left py-2 font-medium">Plano</th>
-                            <th className="text-left py-2 font-medium">Sinais</th>
-                            <th className="text-right py-2 font-medium">Ações</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {filaRisco.map((item) => (
-                            <tr key={item.id} className="border-b last:border-0 hover:bg-muted/50">
-                              <td className="py-2">
-                                <div className="max-w-[140px]">
-                                  <p className="font-medium truncate">{item.nome}</p>
-                                  <p className="text-xs text-muted-foreground truncate">{item.local}</p>
-                                </div>
-                              </td>
-                              <td className="py-2 max-w-[100px] truncate text-muted-foreground text-xs">
-                                {item.plano.length > 25 ? item.plano.substring(0, 25) + "..." : item.plano}
-                              </td>
-                              <td className="py-2">
-                                <div className="flex flex-wrap gap-1">
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <Badge 
-                                        variant={item.driver.includes("financeiro") ? "destructive" : "secondary"} 
-                                        className="text-xs cursor-help"
-                                      >
-                                        {item.driver.length > 15 ? item.driver.substring(0, 15) + "..." : item.driver}
-                                      </Badge>
-                                    </TooltipTrigger>
-                                    <TooltipContent>{item.driver}</TooltipContent>
-                                  </Tooltip>
-                                </div>
-                              </td>
-                              <td className="py-2 text-right">
-                                <div className="flex justify-end items-center gap-1">
-                                  <QuickActions
-                                    clientId={item.id}
-                                    clientName={item.nome}
-                                    clientPhone={item.celular}
-                                  />
-                                  <ActionMenu
-                                    clientId={item.id}
-                                    clientName={item.nome}
-                                    clientPhone={item.celular}
-                                    variant="risco"
-                                  />
-                                </div>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  ) : (
-                    <EmptyState
-                      title="Nenhum cliente em risco alto"
-                      description="Não há clientes com sinais de alerta no momento."
-                      variant="card"
-                    />
-                  )}
-                </CardContent>
-              </Card>
-
-              {/* Cobrança Inteligente */}
-              <Card>
-                <CardHeader className="pb-2">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <DollarSign className="h-4 w-4 text-warning" />
-                      <CardTitle className="text-base">Cobrança Inteligente</CardTitle>
-                      <Badge className="text-xs bg-muted text-muted-foreground">{cobrancaInteligente.length}</Badge>
-                    </div>
-                    <span className="text-xs text-muted-foreground">{cobrancaInteligente.length} resultados</span>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  {cobrancaInteligente.length > 0 ? (
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-sm">
-                        <thead>
-                          <tr className="border-b text-muted-foreground">
-                            <th className="text-left py-2 font-medium">Cliente</th>
-                            <th className="text-left py-2 font-medium">Status</th>
-                            <th className="text-right py-2 font-medium">Valor</th>
-                            <th className="text-right py-2 font-medium">Atraso</th>
-                            <th className="text-right py-2 font-medium">Ações</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {cobrancaInteligente.map((item, i) => (
-                            <tr key={`${item.id}-${i}`} className="border-b last:border-0 hover:bg-muted/50">
-                              <td className="py-2">
-                                <div className="max-w-[150px]">
-                                  <p className="font-medium truncate">{item.nome}</p>
-                                  <p className="text-xs text-muted-foreground">{item.vencimento}</p>
-                                </div>
-                              </td>
-                              <td className="py-2">
-                                <Badge variant="destructive" className="text-xs">
-                                  {item.status}
-                                </Badge>
-                              </td>
-                              <td className="py-2 text-right font-medium">
-                                R$ {item.valor.toFixed(2)}
-                              </td>
-                              <td className="py-2 text-right">
+                  <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => navigate("/clientes-em-risco")}>
+                    Ver todos
+                    <ArrowRight className="h-3 w-3 ml-1" />
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent>
+                {filaRisco.length > 0 ? (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b text-muted-foreground">
+                          <th className="text-left py-2 font-medium">Cliente</th>
+                          <th className="text-left py-2 font-medium">Plano</th>
+                          <th className="text-left py-2 font-medium">Sinais</th>
+                          <th className="text-right py-2 font-medium">Ações</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filaRisco.map((item) => (
+                          <tr key={item.id} className="border-b last:border-0 hover:bg-muted/50">
+                            <td className="py-2">
+                              <div className="max-w-[140px]">
+                                <p className="font-medium truncate">{item.nome}</p>
+                                <p className="text-xs text-muted-foreground truncate">{item.local}</p>
+                              </div>
+                            </td>
+                            <td className="py-2 max-w-[100px] truncate text-muted-foreground text-xs">
+                              {item.plano.length > 25 ? item.plano.substring(0, 25) + "..." : item.plano}
+                            </td>
+                            <td className="py-2">
+                              <div className="flex flex-wrap gap-1">
                                 <Tooltip>
                                   <TooltipTrigger asChild>
                                     <Badge 
-                                      variant={item.atraso > 30 ? "destructive" : "secondary"} 
+                                      variant={item.driver.includes("financeiro") ? "destructive" : "secondary"} 
                                       className="text-xs cursor-help"
                                     >
-                                      {item.atraso}d
+                                      {item.driver.length > 15 ? item.driver.substring(0, 15) + "..." : item.driver}
                                     </Badge>
                                   </TooltipTrigger>
-                                  <TooltipContent>
-                                    {item.atraso > 60 ? "Crítico: +60 dias" : 
-                                     item.atraso > 30 ? "Alto: 31-60 dias" : 
-                                     item.atraso > 15 ? "Médio: 16-30 dias" : "Baixo: 1-15 dias"}
-                                  </TooltipContent>
+                                  <TooltipContent>{item.driver}</TooltipContent>
                                 </Tooltip>
-                              </td>
-                              <td className="py-2 text-right">
-                                <div className="flex justify-end items-center gap-1">
-                                  <QuickActions
-                                    clientId={item.id}
-                                    clientName={item.nome}
-                                  />
-                                  <ActionMenu
-                                    clientId={item.id}
-                                    clientName={item.nome}
-                                    variant="cobranca"
-                                  />
-                                </div>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  ) : (
-                    <EmptyState
-                      title="Nenhuma cobrança vencida"
-                      description="Todos os clientes estão em dia."
-                      variant="card"
-                    />
-                  )}
-                </CardContent>
-              </Card>
-            </div>
+                              </div>
+                            </td>
+                            <td className="py-2 text-right">
+                              <div className="flex justify-end items-center gap-1">
+                                <QuickActions
+                                  clientId={item.id}
+                                  clientName={item.nome}
+                                  clientPhone={item.celular}
+                                />
+                                <ActionMenu
+                                  clientId={item.id}
+                                  clientName={item.nome}
+                                  clientPhone={item.celular}
+                                  variant="risco"
+                                />
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <EmptyState
+                    title="Nenhum cliente em risco alto"
+                    description="Não há clientes com sinais de alerta no momento."
+                    variant="card"
+                  />
+                )}
+              </CardContent>
+            </Card>
           </>
         )}
       </main>

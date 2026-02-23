@@ -1,4 +1,5 @@
 import { useState, useMemo, useCallback } from "react";
+import { safeFormatDate } from "@/lib/safeDate";
 import { useChurnData, ChurnStatus } from "@/hooks/useChurnData";
 import { useChamados } from "@/hooks/useChamados";
 import { useActiveIsp } from "@/hooks/useActiveIsp";
@@ -573,7 +574,7 @@ const ClientesEmRisco = () => {
                               return <Badge variant="outline" className={`${s.cls} text-xs gap-1`}><Icon className="h-3 w-3" />{s.label}</Badge>;
                             })()}
                             <span className="text-[10px] text-muted-foreground">
-                              desde {new Date(wf.entered_workflow_at).toLocaleDateString("pt-BR")}
+                              desde {safeFormatDate(wf.entered_workflow_at)}
                             </span>
                           </div>
                           {wf.tags && wf.tags.length > 0 && (
@@ -683,7 +684,7 @@ const ClientesEmRisco = () => {
                     {selectedCliente.ultimo_atendimento_data && (
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">Último Atendimento</span>
-                        <span>{new Date(selectedCliente.ultimo_atendimento_data).toLocaleDateString("pt-BR")}</span>
+                        <span>{safeFormatDate(selectedCliente.ultimo_atendimento_data)}</span>
                       </div>
                     )}
                     {selectedCliente.tempo_cliente_meses != null && (
@@ -704,7 +705,7 @@ const ClientesEmRisco = () => {
                           <div className="flex justify-between items-center">
                             <span className="font-medium">{EVENTO_LABELS[e.tipo_evento] || e.tipo_evento}</span>
                             <span className="text-muted-foreground">
-                              {e.data_evento ? new Date(e.data_evento.replace(" ", "T")).toLocaleDateString("pt-BR") : "—"}
+                              {safeFormatDate(e.data_evento)}
                             </span>
                           </div>
                           {e.descricao && (
