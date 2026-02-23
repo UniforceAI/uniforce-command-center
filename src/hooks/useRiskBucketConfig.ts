@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { getScopedClient } from "@/integrations/supabase/scoped-client";
 import { useActiveIsp } from "@/hooks/useActiveIsp";
 
 export interface RiskBucketConfig {
@@ -30,7 +30,8 @@ export function useRiskBucketConfig() {
 
     const fetch = async () => {
       setIsLoading(true);
-      const { data, error } = await supabase
+      const client = getScopedClient(ispId);
+      const { data, error } = await client
         .from("risk_bucket_config")
         .select("*")
         .eq("isp_id", ispId)
@@ -49,8 +50,9 @@ export function useRiskBucketConfig() {
 
   const saveConfig = useCallback(async (updates: Partial<Omit<RiskBucketConfig, "isp_id" | "id">>) => {
     const merged = { ...config, ...updates };
+    const client = getScopedClient(ispId);
 
-    const { data, error } = await supabase
+    const { data, error } = await client
       .from("risk_bucket_config")
       .upsert(
         {

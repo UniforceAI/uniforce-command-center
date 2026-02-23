@@ -22,7 +22,8 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { supabase } from "@/integrations/supabase/client";
+import { getScopedClient } from "@/integrations/supabase/scoped-client";
+import { useActiveIsp } from "@/hooks/useActiveIsp";
 import { useToast } from "@/hooks/use-toast";
 import {
   MoreHorizontal,
@@ -77,6 +78,7 @@ export function ActionMenu({
   onActionLogged,
 }: ActionMenuProps) {
   const { toast } = useToast();
+  const { ispId } = useActiveIsp();
   const [isOpen, setIsOpen] = useState(false);
   const [noteDialogOpen, setNoteDialogOpen] = useState(false);
   const [promiseDialogOpen, setPromiseDialogOpen] = useState(false);
@@ -91,21 +93,22 @@ export function ActionMenu({
   ) => {
     setIsLoading(true);
     try {
-      const { data: session } = await supabase.auth.getSession();
+      const client = getScopedClient(ispId);
       
-      const { error } = await supabase.from("actions_log").insert({
+      const { error } = await client.from("actions_log").insert({
         client_id: clientId,
         action_type: actionType,
         channel: actionConfig[actionType].channel,
         status: "completed",
         notes: extraNotes || null,
+        isp_id: ispId,
         metadata: {
           client_name: clientName,
           client_phone: clientPhone,
           client_email: clientEmail,
           ...metadata,
         },
-        created_by: session?.session?.user?.id,
+        created_by: null,
       });
 
       if (error) throw error;
@@ -297,6 +300,7 @@ export function QuickActions({
   onActionLogged,
 }: Omit<ActionMenuProps, "variant">) {
   const { toast } = useToast();
+  const { ispId } = useActiveIsp();
 
   const handleWhatsApp = async () => {
     if (clientPhone) {
@@ -305,14 +309,15 @@ export function QuickActions({
     }
 
     try {
-      const { data: session } = await supabase.auth.getSession();
-      await supabase.from("actions_log").insert({
+      const client = getScopedClient(ispId);
+      await client.from("actions_log").insert({
         client_id: clientId,
         action_type: "whatsapp",
         channel: "whatsapp",
         status: "completed",
+        isp_id: ispId,
         metadata: { client_name: clientName, client_phone: clientPhone },
-        created_by: session?.session?.user?.id,
+        created_by: null,
       });
       onActionLogged?.("whatsapp");
     } catch (error) {
@@ -326,14 +331,15 @@ export function QuickActions({
     }
 
     try {
-      const { data: session } = await supabase.auth.getSession();
-      await supabase.from("actions_log").insert({
+      const client = getScopedClient(ispId);
+      await client.from("actions_log").insert({
         client_id: clientId,
         action_type: "call",
         channel: "phone",
         status: "completed",
+        isp_id: ispId,
         metadata: { client_name: clientName, client_phone: clientPhone },
-        created_by: session?.session?.user?.id,
+        created_by: null,
       });
       onActionLogged?.("call");
     } catch (error) {
