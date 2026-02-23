@@ -323,24 +323,66 @@ const ClientesEmRisco = () => {
           </div>
         )}
 
-        {/* Filtros rápidos */}
+        {/* Compact bar: KPIs inline + Filters + View toggle */}
         <Card>
-          <CardContent className="pt-4 pb-3">
+          <CardContent className="py-3 px-4">
+            {/* KPIs row */}
+            <div className="flex flex-wrap items-center gap-4 mb-3 pb-3 border-b border-border/50">
+              <div className="flex items-center gap-1.5">
+                <AlertTriangle className="h-3.5 w-3.5 text-destructive" />
+                <span className="text-xs text-muted-foreground">Risco:</span>
+                <span className="text-sm font-bold">{kpis.totalRisco}</span>
+              </div>
+              {kpis.mrrRisco > 0 && (
+                <div className="flex items-center gap-1.5">
+                  <DollarSign className="h-3.5 w-3.5 text-yellow-600" />
+                  <span className="text-xs text-muted-foreground">MRR:</span>
+                  <span className="text-sm font-bold">R$ {kpis.mrrRisco.toLocaleString("pt-BR", { minimumFractionDigits: 0 })}</span>
+                </div>
+              )}
+              {kpis.ltvRisco > 0 && (
+                <div className="flex items-center gap-1.5">
+                  <TrendingDown className="h-3.5 w-3.5 text-destructive" />
+                  <span className="text-xs text-muted-foreground">LTV:</span>
+                  <span className="text-sm font-bold">R$ {kpis.ltvRisco.toLocaleString("pt-BR", { minimumFractionDigits: 0 })}</span>
+                </div>
+              )}
+              <div className="flex items-center gap-1.5">
+                <Target className="h-3.5 w-3.5 text-primary" />
+                <span className="text-xs text-muted-foreground">Score:</span>
+                <span className="text-sm font-bold">{kpis.scoreMedio}</span>
+              </div>
+              {kpis.diasMedio > 0 && (
+                <div className="flex items-center gap-1.5">
+                  <Clock className="h-3.5 w-3.5 text-muted-foreground" />
+                  <span className="text-xs text-muted-foreground">Atraso:</span>
+                  <span className="text-sm font-bold">{kpis.diasMedio}d</span>
+                </div>
+              )}
+              {kpis.bloqueadosCobranca > 0 && (
+                <div className="flex items-center gap-1.5">
+                  <ShieldAlert className="h-3.5 w-3.5 text-yellow-600" />
+                  <span className="text-xs text-muted-foreground">Bloq:</span>
+                  <span className="text-sm font-bold">{kpis.bloqueadosCobranca}</span>
+                </div>
+              )}
+            </div>
+            {/* Filters row */}
             <div className="flex flex-wrap items-center gap-4">
-              <div className="flex items-center gap-3 min-w-[200px]">
-                <div className="flex flex-col gap-1">
+              <div className="flex items-center gap-3 min-w-[180px]">
+                <div className="flex flex-col gap-0.5">
                   <span className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">Score Mín.</span>
                   <span className="text-xs font-mono font-bold">{scoreMin}</span>
                 </div>
-                <div className="w-32">
+                <div className="w-28">
                   <Slider min={0} max={100} step={5} value={[scoreMin]} onValueChange={(v) => setScoreMin(v[0])} />
                 </div>
               </div>
 
-              <div className="flex flex-col gap-1">
-                <span className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">Bucket Risco</span>
+              <div className="flex flex-col gap-0.5">
+                <span className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">Bucket</span>
                 <Select value={bucket} onValueChange={setBucket}>
-                  <SelectTrigger className="h-8 text-xs w-[120px]"><SelectValue /></SelectTrigger>
+                  <SelectTrigger className="h-7 text-xs w-[110px]"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="todos">Todos</SelectItem>
                     <SelectItem value="CRÍTICO">🔴 Crítico</SelectItem>
@@ -350,41 +392,21 @@ const ClientesEmRisco = () => {
                 </Select>
               </div>
 
-              <div className="flex items-center gap-2">
-                <Button
-                  variant={viewMode === "lista" ? "default" : "outline"}
-                  size="sm"
-                  className="h-8 text-xs gap-1.5"
-                  onClick={() => setViewMode("lista")}
-                >
+              <div className="flex items-center gap-1.5">
+                <Button variant={viewMode === "lista" ? "default" : "outline"} size="sm" className="h-7 text-xs gap-1" onClick={() => setViewMode("lista")}>
                   <LayoutList className="h-3.5 w-3.5" />Lista
                 </Button>
-                <Button
-                  variant={viewMode === "kanban" ? "default" : "outline"}
-                  size="sm"
-                  className="h-8 text-xs gap-1.5"
-                  onClick={() => setViewMode("kanban")}
-                >
+                <Button variant={viewMode === "kanban" ? "default" : "outline"} size="sm" className="h-7 text-xs gap-1" onClick={() => setViewMode("kanban")}>
                   <Columns className="h-3.5 w-3.5" />Kanban
                 </Button>
               </div>
 
-              <div className="ml-auto text-xs text-muted-foreground">
+              <span className="ml-auto text-xs text-muted-foreground">
                 {filtered.length.toLocaleString()} clientes filtrados
-              </div>
+              </span>
             </div>
           </CardContent>
         </Card>
-
-        {/* KPIs */}
-        <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
-          <KPICardNew title="Total em Risco" value={kpis.totalRisco.toLocaleString()} icon={AlertTriangle} variant="danger" />
-          <KPICardNew title="MRR em Risco" value={`R$ ${kpis.mrrRisco.toLocaleString("pt-BR", { minimumFractionDigits: 0 })}`} icon={DollarSign} variant="warning" />
-          <KPICardNew title="LTV em Risco" value={`R$ ${kpis.ltvRisco.toLocaleString("pt-BR", { minimumFractionDigits: 0 })}`} icon={TrendingDown} variant="danger" />
-          <KPICardNew title="Score Médio" value={kpis.scoreMedio} icon={Target} variant="info" />
-          <KPICardNew title="Dias Médios Atraso" value={kpis.diasMedio > 0 ? `${kpis.diasMedio}d` : "—"} icon={Clock} variant="default" />
-          <KPICardNew title="Bloqueados p/ Cob." value={kpis.bloqueadosCobranca.toLocaleString()} icon={ShieldAlert} variant="warning" />
-        </div>
 
         {/* View Toggle: Lista or Kanban */}
         {viewMode === "kanban" ? (
