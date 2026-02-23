@@ -17,6 +17,14 @@ export interface CrmWorkflowRecord {
   updated_at: string;
 }
 
+async function callCrmApi(payload: Record<string, any>) {
+  const { data, error } = await supabase.functions.invoke("crm-api", {
+    body: payload,
+  });
+  if (error) throw error;
+  return data;
+}
+
 export function useCrmWorkflow() {
   const { ispId } = useActiveIsp();
   const [records, setRecords] = useState<CrmWorkflowRecord[]>([]);
@@ -25,17 +33,11 @@ export function useCrmWorkflow() {
   const fetchRecords = useCallback(async () => {
     if (!ispId) return;
     setIsLoading(true);
-
-    const { data, error } = await supabase
-      .from("crm_workflow")
-      .select("*")
-      .eq("isp_id", ispId)
-      .order("created_at", { ascending: false });
-
-    if (error) {
-      console.error("❌ useCrmWorkflow fetch error:", error.message);
-    } else {
+    try {
+      const data = await callCrmApi({ action: "fetch_workflow", isp_id: ispId });
       setRecords((data as CrmWorkflowRecord[]) || []);
+    } catch (err: any) {
+      console.error("❌ useCrmWorkflow fetch error:", err.message);
     }
     setIsLoading(false);
   }, [ispId]);
@@ -49,31 +51,21 @@ export function useCrmWorkflow() {
     async (clienteId: number, tags?: string[]) => {
       if (!ispId) throw new Error("No ISP");
 
-      // Check if record already exists to preserve entered_workflow_at
-      const existing = records.find(
-        (r) => r.cliente_id === clienteId
-      );
+      const existing = records.find((r) => r.cliente_id === clienteId);
 
-      const payload: any = {
+      const payload: Record<string, any> = {
+        action: "upsert_workflow",
         isp_id: ispId,
         cliente_id: clienteId,
         status_workflow: "em_tratamento" as WorkflowStatus,
         tags: tags || [],
-        last_action_at: new Date().toISOString(),
       };
 
-      // Only set entered_workflow_at on new records
       if (!existing) {
         payload.entered_workflow_at = new Date().toISOString();
       }
 
-      const { data, error } = await supabase
-        .from("crm_workflow")
-        .upsert(payload, { onConflict: "isp_id,cliente_id" })
-        .select()
-        .single();
-
-      if (error) throw error;
+      const data = await callCrmApi(payload);
       setRecords((prev) => {
         const filtered = prev.filter((r) => r.cliente_id !== clienteId);
         return [data as CrmWorkflowRecord, ...filtered];
@@ -90,24 +82,18 @@ export function useCrmWorkflow() {
 
       const existing = records.find((r) => r.cliente_id === clienteId);
 
-      const payload: any = {
+      const payload: Record<string, any> = {
+        action: "upsert_workflow",
         isp_id: ispId,
         cliente_id: clienteId,
         status_workflow: status,
-        last_action_at: new Date().toISOString(),
       };
 
       if (!existing) {
         payload.entered_workflow_at = new Date().toISOString();
       }
 
-      const { data, error } = await supabase
-        .from("crm_workflow")
-        .upsert(payload, { onConflict: "isp_id,cliente_id" })
-        .select()
-        .single();
-
-      if (error) throw error;
+      const data = await callCrmApi(payload);
       setRecords((prev) => {
         const idx = prev.findIndex((r) => r.cliente_id === clienteId);
         if (idx >= 0) {
@@ -127,21 +113,12 @@ export function useCrmWorkflow() {
     async (clienteId: number, tags: string[]) => {
       if (!ispId) throw new Error("No ISP");
 
-      const { data, error } = await supabase
-        .from("crm_workflow")
-        .upsert(
-          {
-            isp_id: ispId,
-            cliente_id: clienteId,
-            tags,
-            last_action_at: new Date().toISOString(),
-          },
-          { onConflict: "isp_id,cliente_id" }
-        )
-        .select()
-        .single();
-
-      if (error) throw error;
+      const data = await callCrmApi({
+        action: "upsert_workflow",
+        isp_id: ispId,
+        cliente_id: clienteId,
+        tags,
+      });
       setRecords((prev) =>
         prev.map((r) =>
           r.cliente_id === clienteId ? (data as CrmWorkflowRecord) : r
@@ -157,21 +134,12 @@ export function useCrmWorkflow() {
     async (clienteId: number, ownerUserId: string | null) => {
       if (!ispId) throw new Error("No ISP");
 
-      const { data, error } = await supabase
-        .from("crm_workflow")
-        .upsert(
-          {
-            isp_id: ispId,
-            cliente_id: clienteId,
-            owner_user_id: ownerUserId,
-            last_action_at: new Date().toISOString(),
-          },
-          { onConflict: "isp_id,cliente_id" }
-        )
-        .select()
-        .single();
-
-      if (error) throw error;
+      const data = await callCrmApi({
+        action: "upsert_workflow",
+        isp_id: ispId,
+        cliente_id: clienteId,
+        owner_user_id: ownerUserId,
+      });
       setRecords((prev) =>
         prev.map((r) =>
           r.cliente_id === clienteId ? (data as CrmWorkflowRecord) : r
