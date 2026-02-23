@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import { useChurnData } from "@/hooks/useChurnData";
 import { useChamados } from "@/hooks/useChamados";
+import { useRiskBucketConfig } from "@/hooks/useRiskBucketConfig";
 import { IspActions } from "@/components/shared/IspActions";
 import { LoadingScreen } from "@/components/shared/LoadingScreen";
 import {
@@ -42,6 +43,7 @@ const cidadeColor = (idx: number) => {
 const ChurnAnalytics = () => {
   const { churnStatus, isLoading, error } = useChurnData();
   const { getChamadosPorCliente } = useChamados();
+  const { getBucket } = useRiskBucketConfig();
   const chamadosMap90d = useMemo(() => getChamadosPorCliente(90), [getChamadosPorCliente]);
 
   const [plano, setPlano] = useState("todos");
@@ -70,7 +72,7 @@ const ChurnAnalytics = () => {
     if (plano !== "todos") f = f.filter((c) => c.plano_nome === plano);
     if (cidade !== "todos") f = f.filter((c) => normalizarCidade(c.cliente_cidade) === cidade);
     if (bairro !== "todos") f = f.filter((c) => c.cliente_bairro === bairro);
-    if (bucket !== "todos") f = f.filter((c) => c.churn_risk_bucket === bucket);
+    if (bucket !== "todos") f = f.filter((c) => getBucket(c.churn_risk_score) === bucket);
     return f;
   }, [churnStatus, plano, cidade, bairro, bucket]);
 
@@ -176,10 +178,9 @@ const ChurnAnalytics = () => {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="todos" className="text-xs">Todos</SelectItem>
-              <SelectItem value="Crítico" className="text-xs">🔴 Crítico</SelectItem>
-              <SelectItem value="Alto" className="text-xs">🟠 Alto</SelectItem>
-              <SelectItem value="Médio" className="text-xs">🟡 Médio</SelectItem>
-              <SelectItem value="Baixo" className="text-xs">🟢 Baixo</SelectItem>
+              <SelectItem value="CRÍTICO" className="text-xs">🔴 Crítico</SelectItem>
+              <SelectItem value="ALERTA" className="text-xs">🟡 Alerta</SelectItem>
+              <SelectItem value="OK" className="text-xs">🟢 OK</SelectItem>
             </SelectContent>
           </Select>
         </div>

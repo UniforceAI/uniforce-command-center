@@ -3,23 +3,26 @@ import { useChurnData, ChurnStatus } from "@/hooks/useChurnData";
 import { useChamados } from "@/hooks/useChamados";
 import { useActiveIsp } from "@/hooks/useActiveIsp";
 import { useChurnScoreConfig, calcScoreSuporteConfiguravel } from "@/contexts/ChurnScoreConfigContext";
+import { useRiskBucketConfig, RiskBucket } from "@/hooks/useRiskBucketConfig";
+import { useCrmWorkflow, WorkflowStatus } from "@/hooks/useCrmWorkflow";
 import { IspActions } from "@/components/shared/IspActions";
 import { LoadingScreen } from "@/components/shared/LoadingScreen";
 import { KPICardNew } from "@/components/shared/KPICardNew";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { AlertTriangle, Users, DollarSign, Target, Clock, AlertCircle, TrendingDown, ShieldAlert, ThumbsDown, ThumbsUp, Minus } from "lucide-react";
+import { AlertTriangle, Users, DollarSign, Target, Clock, AlertCircle, TrendingDown, ShieldAlert, ThumbsDown, ThumbsUp, Minus, PlayCircle, CheckCircle2, XCircle, Tag } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from "recharts";
+import { useToast } from "@/hooks/use-toast";
 
-const BUCKET_COLORS: Record<string, string> = {
-  Baixo: "bg-green-100 text-green-800 border-green-200",
-  Médio: "bg-yellow-100 text-yellow-800 border-yellow-200",
-  Alto: "bg-orange-100 text-orange-800 border-orange-200",
-  Crítico: "bg-red-100 text-red-800 border-red-200",
+const BUCKET_COLORS: Record<RiskBucket, string> = {
+  OK: "bg-green-100 text-green-800 border-green-200",
+  ALERTA: "bg-yellow-100 text-yellow-800 border-yellow-200",
+  "CRÍTICO": "bg-red-100 text-red-800 border-red-200",
 };
 
 const STATUS_INTERNET: Record<string, string> = {
@@ -54,23 +57,18 @@ const PRIORIDADE_COLORS: Record<string, string> = {
   P3: "bg-gray-100 text-gray-700 border-gray-200",
 };
 
-function getBucketLabel(c: ChurnStatus): string {
-  return c.churn_risk_bucket || "Baixo";
-}
-
-function getPrioridade(c: ChurnStatus): string {
+function getPrioridade(c: ChurnStatus, bucket: RiskBucket): string {
   const ltv = c.ltv_estimado ?? 0;
-  const bucket = c.churn_risk_bucket;
-  if (ltv >= 3000 && bucket === "Crítico") return "P0";
-  if (ltv >= 3000 && bucket === "Alto") return "P1";
-  if (bucket === "Crítico") return "P1";
-  if (ltv >= 1500 && bucket === "Alto") return "P2";
-  if (bucket === "Alto") return "P2";
+  if (ltv >= 3000 && bucket === "CRÍTICO") return "P0";
+  if (ltv >= 3000 && bucket === "ALERTA") return "P1";
+  if (bucket === "CRÍTICO") return "P1";
+  if (ltv >= 1500 && bucket === "ALERTA") return "P2";
+  if (bucket === "ALERTA") return "P2";
   return "P3";
 }
 
-function ScoreBadge({ score, bucket }: { score?: number; bucket?: string }) {
-  const cls = BUCKET_COLORS[bucket || ""] || "bg-gray-100 text-gray-700";
+function ScoreBadge({ score, bucket }: { score?: number; bucket?: RiskBucket }) {
+  const cls = BUCKET_COLORS[bucket || "OK"] || "bg-muted text-muted-foreground";
   return (
     <Badge className={`${cls} font-mono text-xs border`}>
       {score != null ? score : bucket || "—"}
@@ -115,6 +113,9 @@ const ClientesEmRisco = () => {
   const { getChamadosPorCliente } = useChamados();
   const { ispId } = useActiveIsp();
   const { config } = useChurnScoreConfig();
+  const { getBucket } = useRiskBucketConfig();
+  const { workflowMap, addToWorkflow, updateStatus } = useCrmWorkflow();
+  const { toast } = useToast();
 
   // Mapa de chamados reais por cliente_id (30d e 90d)
   const chamadosPorClienteMap = useMemo(() => ({
@@ -188,7 +189,7 @@ const ClientesEmRisco = () => {
   const filtered = useMemo(() => {
     let f = [...clientesRisco];
     if (scoreMin > 0) f = f.filter((c) => getScoreTotalReal(c) >= scoreMin);
-    if (bucket !== "todos") f = f.filter((c) => getBucketLabel(c) === bucket);
+    if (bucket !== "todos") f = f.filter((c) => getBucket(getScoreTotalReal(c)) === bucket);
     return f.sort((a, b) => {
       const scoreA = getScoreTotalReal(a);
       const scoreB = getScoreTotalReal(b);
@@ -339,10 +340,9 @@ const ClientesEmRisco = () => {
                   <SelectTrigger className="h-8 text-xs w-[120px]"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="todos">Todos</SelectItem>
-                    <SelectItem value="Crítico">🔴 Crítico</SelectItem>
-                    <SelectItem value="Alto">🟠 Alto</SelectItem>
-                    <SelectItem value="Médio">🟡 Médio</SelectItem>
-                    <SelectItem value="Baixo">🟢 Baixo</SelectItem>
+                    <SelectItem value="CRÍTICO">🔴 Crítico</SelectItem>
+                    <SelectItem value="ALERTA">🟡 Alerta</SelectItem>
+                    <SelectItem value="OK">🟢 OK</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -399,8 +399,8 @@ const ClientesEmRisco = () => {
                     </TableRow>
                   ) : (
                     filtered.map((c) => {
-                      const derivedBucket = getBucketLabel(c);
-                      const prioridade = getPrioridade(c);
+                      const derivedBucket = getBucket(getScoreTotalReal(c));
+                      const prioridade = getPrioridade(c, derivedBucket);
                       const npsCliente = npsMap.get(c.cliente_id);
                       return (
                         <TableRow
@@ -458,11 +458,11 @@ const ClientesEmRisco = () => {
             const npsCliente = npsMap.get(selectedCliente.cliente_id);
             return (
               <div className="mt-4 space-y-5">
-                {/* Score/bucket + prioridade + NPS */}
+                {/* Score/bucket + prioridade + NPS + CRM */}
                 <div className="flex items-center gap-3 flex-wrap">
-                  <ScoreBadge score={getScoreTotalReal(selectedCliente)} bucket={getBucketLabel(selectedCliente)} />
-                  <Badge className={`${PRIORIDADE_COLORS[getPrioridade(selectedCliente)]} border text-xs font-mono`}>
-                    {getPrioridade(selectedCliente)}
+                  <ScoreBadge score={getScoreTotalReal(selectedCliente)} bucket={getBucket(getScoreTotalReal(selectedCliente))} />
+                  <Badge className={`${PRIORIDADE_COLORS[getPrioridade(selectedCliente, getBucket(getScoreTotalReal(selectedCliente)))]} border text-xs font-mono`}>
+                    {getPrioridade(selectedCliente, getBucket(getScoreTotalReal(selectedCliente)))}
                   </Badge>
                   {npsCliente && (
                     <NPSBadge classificacao={npsCliente.classificacao} nota={npsCliente.nota} />
@@ -484,6 +484,76 @@ const ClientesEmRisco = () => {
                     </div>
                   </div>
                 )}
+
+                {/* CRM Workflow Actions */}
+                {(() => {
+                  const wf = workflowMap.get(selectedCliente.cliente_id);
+                  const STATUS_LABELS: Record<WorkflowStatus, { label: string; icon: typeof PlayCircle; cls: string }> = {
+                    em_tratamento: { label: "Em Tratamento", icon: PlayCircle, cls: "text-yellow-600" },
+                    resolvido: { label: "Resolvido", icon: CheckCircle2, cls: "text-green-600" },
+                    perdido: { label: "Perdido", icon: XCircle, cls: "text-destructive" },
+                  };
+                  return (
+                    <div className="rounded-lg border border-border bg-muted/30 p-3 space-y-2">
+                      <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1.5">
+                        <Tag className="h-3 w-3" /> CRM Retenção
+                      </h4>
+                      {wf ? (
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-2">
+                            {(() => {
+                              const s = STATUS_LABELS[wf.status_workflow];
+                              const Icon = s.icon;
+                              return <Badge variant="outline" className={`${s.cls} text-xs gap-1`}><Icon className="h-3 w-3" />{s.label}</Badge>;
+                            })()}
+                            <span className="text-[10px] text-muted-foreground">
+                              desde {new Date(wf.entered_workflow_at).toLocaleDateString("pt-BR")}
+                            </span>
+                          </div>
+                          {wf.tags && wf.tags.length > 0 && (
+                            <div className="flex flex-wrap gap-1">
+                              {wf.tags.map((t) => (
+                                <Badge key={t} variant="secondary" className="text-[10px]">{t}</Badge>
+                              ))}
+                            </div>
+                          )}
+                          <div className="flex gap-2">
+                            {wf.status_workflow === "em_tratamento" && (
+                              <>
+                                <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={async (e) => {
+                                  e.stopPropagation();
+                                  try { await updateStatus(selectedCliente.cliente_id, "resolvido"); toast({ title: "Marcado como resolvido" }); } catch { toast({ title: "Erro", variant: "destructive" }); }
+                                }}><CheckCircle2 className="h-3 w-3" />Resolvido</Button>
+                                <Button size="sm" variant="outline" className="h-7 text-xs gap-1 text-destructive" onClick={async (e) => {
+                                  e.stopPropagation();
+                                  try { await updateStatus(selectedCliente.cliente_id, "perdido"); toast({ title: "Marcado como perdido" }); } catch { toast({ title: "Erro", variant: "destructive" }); }
+                                }}><XCircle className="h-3 w-3" />Perdido</Button>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      ) : (
+                        <Button size="sm" variant="default" className="h-7 text-xs gap-1.5" onClick={async (e) => {
+                          e.stopPropagation();
+                          try {
+                            const autoTags: string[] = [];
+                            const bucket = getBucket(getScoreTotalReal(selectedCliente));
+                            if (bucket === "CRÍTICO") autoTags.push("Crítico");
+                            if ((selectedCliente.ltv_estimado ?? 0) >= 3000) autoTags.push("Alto Ticket");
+                            const nps = npsMap.get(selectedCliente.cliente_id);
+                            if (nps?.classificacao === "DETRATOR") autoTags.push("NPS Detrator");
+                            if ((selectedCliente.score_financeiro ?? 0) >= 20) autoTags.push("Financeiro");
+                            await addToWorkflow(selectedCliente.cliente_id, autoTags);
+                            toast({ title: "Cliente adicionado ao workflow de retenção" });
+                          } catch { toast({ title: "Erro ao adicionar", variant: "destructive" }); }
+                        }}>
+                          <PlayCircle className="h-3.5 w-3.5" />
+                          Iniciar Tratamento
+                        </Button>
+                      )}
+                    </div>
+                  );
+                })()}
 
                 {/* Score por componente normalizado */}
                 {scoreComponentes.length > 0 && (
