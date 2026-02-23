@@ -10,6 +10,7 @@ import { useEventos } from "@/hooks/useEventos";
 import { useChamados } from "@/hooks/useChamados";
 import { useNPSData } from "@/hooks/useNPSData";
 import { useChurnData } from "@/hooks/useChurnData";
+import { useRiskBucketConfig } from "@/hooks/useRiskBucketConfig";
 
 import { Evento } from "@/types/evento";
 import { AlertasMapa } from "@/components/map/AlertasMapa";
@@ -39,7 +40,8 @@ import {
   MapPin,
   Zap,
   RefreshCcw,
-  Wifi
+  Wifi,
+  ShieldAlert,
 } from "lucide-react";
 import {
   Select,
@@ -190,6 +192,7 @@ const VisaoGeral = () => {
   const { chamados, getChamadosPorCliente, isLoading: isLoadingChamados } = useChamados();
   const { npsData } = useNPSData(ispId);
   const { churnStatus } = useChurnData();
+  const { getBucket: getBucketVisao } = useRiskBucketConfig();
 
   // Detect first load (after login) vs sub-page navigation — module-level flag survives remounts
   const [showInitialScreen, setShowInitialScreen] = useState(() => !getHasShownInitial());
@@ -1560,17 +1563,17 @@ const VisaoGeral = () => {
               />
               <RiskKPICard
                 title="Clientes em Alerta"
-                value={vencidosStats.totalVencidos + filaRisco.filter(r => r.driver.includes("técnico")).length}
+                value={churnStatus.filter(c => c.status_churn === "risco" && getBucketVisao(c.churn_risk_score) === "ALERTA").length}
                 icon={AlertTriangle}
                 variant="warning"
-                subtitle="inadimplência + técnico"
+                subtitle="bucket ALERTA (churn_status)"
               />
               <RiskKPICard
-                title="MRR sob Risco"
-                value={formatCurrency(kpis.mrrEmRisco)}
-                icon={DollarSign}
+                title="Clientes Críticos"
+                value={churnStatus.filter(c => c.status_churn === "risco" && getBucketVisao(c.churn_risk_score) === "CRÍTICO").length}
+                icon={ShieldAlert}
                 variant="danger"
-                subtitle="baseado em alertas"
+                subtitle="bucket CRÍTICO (churn_status)"
               />
               <RiskKPICard
                 title="RR Vencido"
