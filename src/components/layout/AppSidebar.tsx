@@ -1,4 +1,4 @@
-import { AlertTriangle, ThumbsUp, LayoutDashboard, DollarSign, BarChart2, UserX, XCircle, PanelLeftClose, PanelLeft, Settings, SlidersHorizontal, Building2, Users } from "lucide-react";
+import { AlertTriangle, ThumbsUp, LayoutDashboard, DollarSign, UserX, XCircle, PanelLeftClose, PanelLeft, Settings, SlidersHorizontal, Building2, Users } from "lucide-react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import {
   Sidebar,
@@ -25,7 +25,6 @@ const menuItems = [
   { title: "Visão Geral", url: "/", icon: LayoutDashboard },
   { title: "Financeiro", url: "/financeiro", icon: DollarSign },
   { title: "Chamados Frequentes", url: "/chamados", icon: AlertTriangle },
-  { title: "Churn Analytics", url: "/churn-analytics", icon: BarChart2 },
   { title: "Clientes em Risco", url: "/clientes-em-risco", icon: UserX },
   { title: "Cancelamentos", url: "/cancelamentos", icon: XCircle },
   { title: "NPS", url: "/nps", icon: ThumbsUp },

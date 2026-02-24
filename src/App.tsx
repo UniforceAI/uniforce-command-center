@@ -15,7 +15,7 @@ import ResetSenha from "./pages/ResetSenha";
 import NotFound from "./pages/NotFound";
 import VisaoGeral from "./pages/VisaoGeral";
 import Financeiro from "./pages/Financeiro";
-import ChurnAnalytics from "./pages/ChurnAnalytics";
+
 import ClientesEmRisco from "./pages/ClientesEmRisco";
 import Cancelamentos from "./pages/Cancelamentos";
 import SelecionarCliente from "./pages/SelecionarCliente";
@@ -85,16 +85,7 @@ const App = () => (
                 </ProtectedRoute>
               }
             />
-            <Route
-              path="/churn-analytics"
-              element={
-                <ProtectedRoute>
-                  <MainLayout>
-                    <ChurnAnalytics />
-                  </MainLayout>
-                </ProtectedRoute>
-              }
-            />
+            {/* churn-analytics removed — metrics moved to Cancelamentos */}
             <Route
               path="/clientes-em-risco"
               element={

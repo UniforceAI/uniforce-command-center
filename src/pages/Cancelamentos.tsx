@@ -22,6 +22,12 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from "recharts";
 
+const barColor = (pct: number) => {
+  if (pct >= 20) return "hsl(var(--destructive))";
+  if (pct >= 10) return "hsl(38 92% 50%)";
+  return "hsl(var(--primary))";
+};
+
 const BUCKET_COLORS: Record<RiskBucket, string> = {
   OK: "bg-green-100 text-green-800 border-green-200",
   ALERTA: "bg-yellow-100 text-yellow-800 border-yellow-200",
@@ -239,6 +245,40 @@ const Cancelamentos = () => {
       };
     }).filter((f) => f.qtd > 0);
   }, [filtered]);
+
+  // ─── Cohort Churn por Plano (ativos em risco por plano) ───
+  const ativos = useMemo(() => churnStatus.filter((c) => c.status_churn !== "cancelado"), [churnStatus]);
+
+  const riscoPorPlano = useMemo(() => {
+    // Apply same filters (except periodo which is cancel-specific)
+    let f = [...ativos];
+    if (plano !== "todos") f = f.filter((c) => c.plano_nome === plano);
+    if (cidade !== "todos") f = f.filter((c) => c.cliente_cidade === cidade);
+    if (bairro !== "todos") f = f.filter((c) => c.cliente_bairro === bairro);
+    if (bucket !== "todos") f = f.filter((c) => getBucket(c.churn_risk_score) === bucket);
+
+    const map: Record<string, { risco: number; total: number; mrr: number }> = {};
+    f.forEach((c) => {
+      if (!c.plano_nome) return;
+      if (!map[c.plano_nome]) map[c.plano_nome] = { risco: 0, total: 0, mrr: 0 };
+      map[c.plano_nome].total++;
+      if (c.status_churn === "risco") {
+        map[c.plano_nome].risco++;
+        map[c.plano_nome].mrr += c.valor_mensalidade || 0;
+      }
+    });
+    return Object.entries(map)
+      .map(([plano, d]) => ({
+        plano,
+        risco: d.risco,
+        total: d.total,
+        pct: d.total > 0 ? Math.round((d.risco / d.total) * 100) : 0,
+        mrr: Math.round(d.mrr),
+      }))
+      .filter((d) => d.total >= 3)
+      .sort((a, b) => b.pct - a.pct)
+      .slice(0, 10);
+  }, [ativos, plano, cidade, bairro, bucket, getBucket]);
 
   // ─── Top Motivos (enriched: events + status + score pillars) ───
   const topMotivos = useMemo(() => {
@@ -648,6 +688,70 @@ const Cancelamentos = () => {
                 </CardContent>
               </Card>
             </div>
+
+            {/* ── Cohort Churn por Plano (full width) ── */}
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                  <BarChart3 className="h-4 w-4" />
+                  Cohort Churn por Plano
+                </CardTitle>
+                <p className="text-[10px] text-muted-foreground">% de clientes ativos em risco por plano (filtros aplicados)</p>
+              </CardHeader>
+              <CardContent>
+                {riscoPorPlano.length > 0 ? (
+                  <div className="space-y-4">
+                    <ResponsiveContainer width="100%" height={230}>
+                      <BarChart data={riscoPorPlano} margin={{ top: 8, right: 8, bottom: 80, left: -10 }}>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
+                        <XAxis
+                          dataKey="plano"
+                          tick={{ fontSize: 9, fill: "hsl(var(--muted-foreground))" }}
+                          angle={-40}
+                          textAnchor="end"
+                          interval={0}
+                          tickLine={false}
+                          axisLine={false}
+                        />
+                        <YAxis
+                          tickFormatter={(v) => `${v}%`}
+                          tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
+                          tickLine={false}
+                          axisLine={false}
+                        />
+                        <Tooltip
+                          contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 12 }}
+                          formatter={(_v: any, _n: any, props: any) => {
+                            const d = props.payload;
+                            return [`${d.risco} de ${d.total} (${d.pct}%)`, "Em risco"];
+                          }}
+                        />
+                        <Bar dataKey="pct" radius={[4, 4, 0, 0]} maxBarSize={44}>
+                          {riscoPorPlano.map((e, i) => <Cell key={i} fill={barColor(e.pct)} />)}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+
+                    <div className="space-y-1.5 max-h-[200px] overflow-y-auto">
+                      {riscoPorPlano.map((d) => (
+                        <div key={d.plano} className="flex items-center justify-between py-1 border-b border-border/30 last:border-0 gap-2">
+                          <div className="flex items-center gap-2 min-w-0 flex-1">
+                            <span className="w-2 h-2 rounded-full shrink-0" style={{ background: barColor(d.pct) }} />
+                            <span className="text-xs text-foreground truncate">{d.plano}</span>
+                          </div>
+                          <div className="flex items-center gap-3 shrink-0 text-xs">
+                            <span className="font-semibold text-foreground">{d.risco} clientes</span>
+                            <span className="text-muted-foreground">MRR: {fmtBRL(d.mrr)}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="h-48 flex items-center justify-center text-muted-foreground text-sm">Sem dados de plano</div>
+                )}
+              </CardContent>
+            </Card>
 
             {/* ── Top Motivos + Cohort ── */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
