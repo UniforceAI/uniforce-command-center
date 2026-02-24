@@ -244,7 +244,7 @@ const Cancelamentos = () => {
           return acc;
         }, 0),
       };
-    }).filter((f) => f.qtd > 0);
+    });
   }, [filtered]);
 
   // ─── Cohort Churn por Dimensão (cancelados vs total por plano/cidade/bairro) ───
