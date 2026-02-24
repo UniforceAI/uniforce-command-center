@@ -24,7 +24,8 @@ import {
   AlertTriangle, TrendingDown, Activity, FileText, Calendar,
   Trash2, Pencil, Save, Palette,
 } from "lucide-react";
-import { categoriasMap } from "@/lib/categoriasMap";
+import { getCategoriaDisplay } from "@/lib/categoriasMap";
+import { useActiveIsp } from "@/hooks/useActiveIsp";
 
 const BUCKET_COLORS: Record<RiskBucket, string> = {
   OK: "bg-green-100 text-green-800 border-green-200",
@@ -87,6 +88,7 @@ export function CrmDrawer({
   onStartTreatment, onUpdateStatus, onUpdateTags, onUpdateOwner,
 }: CrmDrawerProps) {
   const { user } = useAuth();
+  const { ispId } = useActiveIsp();
   const { toast } = useToast();
   const { comments, addComment, updateComment, deleteComment } = useCrmComments(cliente?.cliente_id ?? null);
   const { tags: globalTags, createTag } = useCrmTags();
@@ -539,7 +541,7 @@ export function CrmDrawer({
                               <div key={ch.id || i} className="flex items-start gap-2 text-[11px] py-1 border-b border-border/30 last:border-0">
                                 <Phone className="h-3 w-3 text-muted-foreground shrink-0 mt-0.5" />
                                 <div className="flex-1 min-w-0">
-                                  <div className="font-medium truncate">{(ch.motivo_contato && ch.motivo_contato !== "Não informado" && ch.motivo_contato !== "não informado" ? ch.motivo_contato : null) || categoriasMap[ch.categoria] || ch.categoria || "Sem assunto"}</div>
+                                  <div className="font-medium truncate">{(ch.motivo_contato && ch.motivo_contato !== "Não informado" && ch.motivo_contato !== "não informado" ? ch.motivo_contato : null) || getCategoriaDisplay(ch.categoria, ispId) || "Sem assunto"}</div>
                                   <div className="text-muted-foreground flex items-center gap-2 flex-wrap">
                                     <span>{formatChamadoDate(ch.data_abertura)}</span>
                                     {ch.setor && <span>· {ch.setor}</span>}

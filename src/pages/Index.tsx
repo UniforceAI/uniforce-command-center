@@ -106,7 +106,7 @@ const Index = () => {
         // Transformar dados do banco para o formato esperado
         const chamadosTransformados: Chamado[] = uniqueData.map((item: any) => {
           const categoria = item.categoria || "";
-          const motivoFinal = getCategoriaName(categoria);
+          const motivoFinal = getCategoriaName(categoria, ispId);
           
           return {
             "ID Cliente": item.id_cliente || "",
