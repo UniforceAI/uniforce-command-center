@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo, useCallback } from "react";
 import {
   Table,
   TableBody,
@@ -9,7 +9,7 @@ import {
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { ChevronRight, ChevronDown, MoreHorizontal } from "lucide-react";
+import { ChevronRight, ChevronDown, MoreHorizontal, ArrowUpDown, ChevronUp } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -67,12 +67,17 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
+type SortField = "cliente_nome" | "valor" | "atraso";
+type SortDir = "asc" | "desc";
+
 export function ExpandableCobrancaTable({
   data,
   actions,
   emptyMessage = "Nenhum dado encontrado",
 }: ExpandableCobrancaTableProps) {
   const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
+  const [sortField, setSortField] = useState<SortField>("atraso");
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
 
   const toggleRow = (clienteId: number) => {
     setExpandedRows(prev => {
@@ -85,6 +90,32 @@ export function ExpandableCobrancaTable({
       return next;
     });
   };
+
+  const toggleSort = useCallback((field: SortField) => {
+    if (sortField === field) {
+      setSortDir((d) => (d === "desc" ? "asc" : "desc"));
+    } else {
+      setSortField(field);
+      setSortDir("desc");
+    }
+  }, [sortField]);
+
+  const SortIcon = ({ field }: { field: SortField }) => {
+    if (sortField !== field) return <ArrowUpDown className="h-3 w-3 ml-1 text-muted-foreground/50" />;
+    return sortDir === "desc" ? <ChevronDown className="h-3 w-3 ml-1 text-primary" /> : <ChevronUp className="h-3 w-3 ml-1 text-primary" />;
+  };
+
+  const sortedData = useMemo(() => {
+    const dir = sortDir === "desc" ? -1 : 1;
+    return [...data].sort((a, b) => {
+      switch (sortField) {
+        case "cliente_nome": return dir * (a.cliente_nome || "").localeCompare(b.cliente_nome || "");
+        case "valor": return dir * (a.totalValor - b.totalValor);
+        case "atraso": return dir * (a.maiorAtraso - b.maiorAtraso);
+        default: return 0;
+      }
+    });
+  }, [data, sortField, sortDir]);
 
   if (data.length === 0) {
     return (
@@ -100,22 +131,27 @@ export function ExpandableCobrancaTable({
         <TableHeader>
           <TableRow>
             <TableHead className="w-[40px]"></TableHead>
-            <TableHead>Cliente</TableHead>
+            <TableHead className="cursor-pointer select-none hover:bg-muted/50" onClick={() => toggleSort("cliente_nome")}>
+              <span className="flex items-center">Cliente<SortIcon field="cliente_nome" /></span>
+            </TableHead>
             <TableHead>Plano</TableHead>
             <TableHead>Status</TableHead>
             <TableHead>Vencimento</TableHead>
-            <TableHead>Valor</TableHead>
+            <TableHead className="cursor-pointer select-none hover:bg-muted/50" onClick={() => toggleSort("valor")}>
+              <span className="flex items-center">Valor<SortIcon field="valor" /></span>
+            </TableHead>
             <TableHead>Método</TableHead>
-            <TableHead>Atraso</TableHead>
+            <TableHead className="cursor-pointer select-none hover:bg-muted/50" onClick={() => toggleSort("atraso")}>
+              <span className="flex items-center">Atraso<SortIcon field="atraso" /></span>
+            </TableHead>
             <TableHead>Celular</TableHead>
             {actions && <TableHead className="w-[80px]">Ações</TableHead>}
           </TableRow>
         </TableHeader>
         <TableBody>
-          {data.map((cliente, clienteIdx) => {
+          {sortedData.map((cliente, clienteIdx) => {
             const isExpanded = expandedRows.has(cliente.cliente_id);
             const hasMultiple = cliente.cobrancas.length > 1;
-            // Ordenar cobranças por data (mais antiga primeiro = mais atrasada)
             const sortedCobrancas = [...cliente.cobrancas].sort((a, b) => {
               if (!a.vencimentoDate && !b.vencimentoDate) return 0;
               if (!a.vencimentoDate) return 1;
@@ -127,7 +163,6 @@ export function ExpandableCobrancaTable({
 
             return (
               <>
-                {/* Linha principal do cliente */}
                 <TableRow
                   key={cliente.cliente_id}
                   className={cn(
@@ -202,7 +237,6 @@ export function ExpandableCobrancaTable({
                   )}
                 </TableRow>
 
-                {/* Painel expandido com cobranças detalhadas */}
                 {isExpanded && hasMultiple && (
                   <TableRow className="hover:bg-transparent">
                     <TableCell colSpan={actions ? 10 : 9} className="p-0 border-0">

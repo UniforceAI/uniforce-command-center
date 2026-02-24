@@ -15,7 +15,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { AlertTriangle, Users, DollarSign, Target, Clock, AlertCircle, TrendingDown, ShieldAlert, ThumbsDown, ThumbsUp, Minus, PlayCircle, CheckCircle2, XCircle, Tag, LayoutList, Columns, X } from "lucide-react";
+import { AlertTriangle, Users, DollarSign, Target, Clock, AlertCircle, TrendingDown, ShieldAlert, ThumbsDown, ThumbsUp, Minus, PlayCircle, CheckCircle2, XCircle, Tag, LayoutList, Columns, X, ArrowUpDown, ChevronUp, ChevronDown } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
 
@@ -95,6 +95,26 @@ const ClientesEmRisco = () => {
   const [selectedCliente, setSelectedCliente] = useState<ChurnStatus | null>(null);
   const [viewMode, setViewMode] = useState<"lista" | "kanban">("kanban");
 
+  // Sort state for lista view
+  type SortField = "score" | "cliente_nome" | "dias_atraso" | "chamados_90d" | "valor_mensalidade" | "dias_em_risco";
+  type SortDir = "asc" | "desc";
+  const [sortField, setSortField] = useState<SortField>("score");
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
+
+  const toggleSort = useCallback((field: SortField) => {
+    if (sortField === field) {
+      setSortDir((d) => (d === "desc" ? "asc" : "desc"));
+    } else {
+      setSortField(field);
+      setSortDir("desc");
+    }
+  }, [sortField]);
+
+  const SortIcon = useCallback(({ field }: { field: SortField }) => {
+    if (sortField !== field) return <ArrowUpDown className="h-3 w-3 ml-1 text-muted-foreground/50" />;
+    return sortDir === "desc" ? <ChevronDown className="h-3 w-3 ml-1 text-primary" /> : <ChevronUp className="h-3 w-3 ml-1 text-primary" />;
+  }, [sortField, sortDir]);
+
   // Data max do dataset para filtro de período
   const dataMaxDataset = useMemo(() => {
     let max = 0;
@@ -164,8 +184,27 @@ const ClientesEmRisco = () => {
     if (plano !== "todos") f = f.filter((c) => c.plano_nome === plano);
     if (cidade !== "todos") f = f.filter((c) => c.cliente_cidade === cidade);
     if (bairro !== "todos") f = f.filter((c) => c.cliente_bairro === bairro);
-    return f.sort((a, b) => getScoreTotalReal(b) - getScoreTotalReal(a) || (b.dias_atraso || 0) - (a.dias_atraso || 0));
-  }, [clientesRisco, scoreMin, bucket, plano, cidade, bairro, periodo, dataMaxDataset, getScoreTotalReal, getBucket]);
+
+    // Apply sort
+    const dir = sortDir === "desc" ? -1 : 1;
+    f.sort((a, b) => {
+      let va: number, vb: number;
+      switch (sortField) {
+        case "score": va = getScoreTotalReal(a); vb = getScoreTotalReal(b); break;
+        case "cliente_nome": return dir * (a.cliente_nome || "").localeCompare(b.cliente_nome || "");
+        case "dias_atraso": va = a.dias_atraso ?? 0; vb = b.dias_atraso ?? 0; break;
+        case "chamados_90d":
+          va = chamadosPorClienteMap.d90.get(a.cliente_id)?.chamados_periodo ?? a.qtd_chamados_90d ?? 0;
+          vb = chamadosPorClienteMap.d90.get(b.cliente_id)?.chamados_periodo ?? b.qtd_chamados_90d ?? 0;
+          break;
+        case "valor_mensalidade": va = a.valor_mensalidade ?? 0; vb = b.valor_mensalidade ?? 0; break;
+        default: va = getScoreTotalReal(a); vb = getScoreTotalReal(b);
+      }
+      return dir * (va - vb) || (getScoreTotalReal(b) - getScoreTotalReal(a));
+    });
+
+    return f;
+  }, [clientesRisco, scoreMin, bucket, plano, cidade, bairro, periodo, dataMaxDataset, getScoreTotalReal, getBucket, sortField, sortDir, chamadosPorClienteMap]);
 
   const kpis = useMemo(() => {
     const totalRisco = filtered.length;
@@ -483,13 +522,23 @@ const ClientesEmRisco = () => {
                 <Table>
                   <TableHeader className="sticky top-0 bg-card z-10">
                     <TableRow>
-                      <TableHead className="text-xs whitespace-nowrap">Cliente</TableHead>
-                      <TableHead className="text-xs whitespace-nowrap text-center">Score/Bucket</TableHead>
-                      <TableHead className="text-xs whitespace-nowrap text-center">Dias Atraso</TableHead>
-                      <TableHead className="text-xs whitespace-nowrap text-center">Chamados 90d</TableHead>
+                      <TableHead className="text-xs whitespace-nowrap cursor-pointer select-none" onClick={() => toggleSort("cliente_nome")}>
+                        <span className="flex items-center">Cliente<SortIcon field="cliente_nome" /></span>
+                      </TableHead>
+                      <TableHead className="text-xs whitespace-nowrap text-center cursor-pointer select-none" onClick={() => toggleSort("score")}>
+                        <span className="flex items-center justify-center">Score/Bucket<SortIcon field="score" /></span>
+                      </TableHead>
+                      <TableHead className="text-xs whitespace-nowrap text-center cursor-pointer select-none" onClick={() => toggleSort("dias_atraso")}>
+                        <span className="flex items-center justify-center">Dias Atraso<SortIcon field="dias_atraso" /></span>
+                      </TableHead>
+                      <TableHead className="text-xs whitespace-nowrap text-center cursor-pointer select-none" onClick={() => toggleSort("chamados_90d")}>
+                        <span className="flex items-center justify-center">Chamados 90d<SortIcon field="chamados_90d" /></span>
+                      </TableHead>
                       <TableHead className="text-xs whitespace-nowrap text-center">NPS</TableHead>
                       <TableHead className="text-xs whitespace-nowrap">Internet</TableHead>
-                      <TableHead className="text-xs whitespace-nowrap text-right">Mensalidade</TableHead>
+                      <TableHead className="text-xs whitespace-nowrap text-right cursor-pointer select-none" onClick={() => toggleSort("valor_mensalidade")}>
+                        <span className="flex items-center justify-end">Mensalidade<SortIcon field="valor_mensalidade" /></span>
+                      </TableHead>
                       <TableHead className="text-xs whitespace-nowrap">Motivo</TableHead>
                       <TableHead className="text-xs whitespace-nowrap">CRM</TableHead>
                     </TableRow>
