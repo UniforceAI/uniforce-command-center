@@ -1,3 +1,4 @@
+import { useState, useMemo, useCallback } from "react";
 import {
   Table,
   TableBody,
@@ -8,7 +9,7 @@ import {
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Eye, MoreHorizontal } from "lucide-react";
+import { MoreHorizontal, ArrowUpDown, ChevronUp, ChevronDown } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -22,6 +23,8 @@ export interface Column<T> {
   label: string;
   render?: (item: T) => React.ReactNode;
   className?: string;
+  sortable?: boolean;
+  sortValue?: (item: T) => string | number;
 }
 
 interface DataTableProps<T> {
@@ -44,7 +47,40 @@ export function DataTable<T extends Record<string, any>>({
   emptyMessage = "Nenhum dado encontrado",
   maxRows,
 }: DataTableProps<T>) {
-  const displayData = maxRows ? data.slice(0, maxRows) : data;
+  const [sortKey, setSortKey] = useState<string | null>(null);
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+
+  const toggleSort = useCallback((key: string) => {
+    if (sortKey === key) {
+      setSortDir((d) => (d === "desc" ? "asc" : "desc"));
+    } else {
+      setSortKey(key);
+      setSortDir("desc");
+    }
+  }, [sortKey]);
+
+  const sortedData = useMemo(() => {
+    if (!sortKey) return data;
+    const col = columns.find((c) => c.key === sortKey);
+    if (!col) return data;
+    const dir = sortDir === "desc" ? -1 : 1;
+    return [...data].sort((a, b) => {
+      const va = col.sortValue ? col.sortValue(a) : a[sortKey];
+      const vb = col.sortValue ? col.sortValue(b) : b[sortKey];
+      if (va == null && vb == null) return 0;
+      if (va == null) return 1;
+      if (vb == null) return -1;
+      if (typeof va === "string" && typeof vb === "string") return dir * va.localeCompare(vb);
+      return dir * ((va as number) - (vb as number));
+    });
+  }, [data, sortKey, sortDir, columns]);
+
+  const displayData = maxRows ? sortedData.slice(0, maxRows) : sortedData;
+
+  const SortIcon = ({ colKey }: { colKey: string }) => {
+    if (sortKey !== colKey) return <ArrowUpDown className="h-3 w-3 ml-1 text-muted-foreground/50" />;
+    return sortDir === "desc" ? <ChevronDown className="h-3 w-3 ml-1 text-primary" /> : <ChevronUp className="h-3 w-3 ml-1 text-primary" />;
+  };
 
   if (data.length === 0) {
     return (
@@ -59,11 +95,25 @@ export function DataTable<T extends Record<string, any>>({
       <Table>
         <TableHeader>
           <TableRow>
-            {columns.map((col) => (
-              <TableHead key={col.key} className={col.className}>
-                {col.label}
-              </TableHead>
-            ))}
+            {columns.map((col) => {
+              const isSortable = col.sortable !== false;
+              return (
+                <TableHead
+                  key={col.key}
+                  className={cn(col.className, isSortable && "cursor-pointer select-none hover:bg-muted/50")}
+                  onClick={isSortable ? () => toggleSort(col.key) : undefined}
+                >
+                  {isSortable ? (
+                    <span className="flex items-center">
+                      {col.label}
+                      <SortIcon colKey={col.key} />
+                    </span>
+                  ) : (
+                    col.label
+                  )}
+                </TableHead>
+              );
+            })}
             {actions && <TableHead className="w-[80px]">Ações</TableHead>}
           </TableRow>
         </TableHeader>
