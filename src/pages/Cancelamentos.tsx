@@ -38,11 +38,12 @@ const STATUS_MOTIVO: Record<string, string> = {
 };
 
 const COHORT_FAIXAS = [
-  { label: "0–3m", min: 0, max: 3 },
-  { label: "4–6m", min: 4, max: 6 },
-  { label: "7–12m", min: 7, max: 12 },
-  { label: "13–24m", min: 13, max: 24 },
-  { label: "24m+", min: 25, max: 9999 },
+  { label: "< 1 mês", min: 0, max: 0 },
+  { label: "1–3 meses", min: 1, max: 3 },
+  { label: "4–12 meses", min: 4, max: 12 },
+  { label: "13–24 meses", min: 13, max: 24 },
+  { label: "25–36 meses", min: 25, max: 36 },
+  { label: "36+ meses", min: 37, max: 9999 },
 ];
 
 type SortField = "cliente_nome" | "data_cancelamento" | "churn_risk_score" | "valor_mensalidade" | "dias_atraso" | "tempo_cliente_meses" | "ltv_estimado";
@@ -668,64 +669,46 @@ const Cancelamentos = () => {
                 </CardContent>
               </Card>
 
-              {/* Cohort Pie */}
-              {cohortTempo.length > 0 && (
-                <Card>
-                  <CardHeader className="pb-2">
-                    <div className="flex items-center justify-between">
-                      <CardTitle className="text-sm font-medium text-muted-foreground">
-                        Cohort por Tempo de Assinatura
-                      </CardTitle>
-                      <div className="flex gap-1">
-                        {(["qtd", "mrr", "ltv"] as const).map((m) => (
-                          <Button
-                            key={m}
-                            size="sm"
-                            variant={cohortMetric === m ? "default" : "ghost"}
-                            className="h-7 text-xs"
-                            onClick={() => setCohortMetric(m)}
-                          >
-                            {m === "qtd" ? "Qtd" : m === "mrr" ? "MRR" : "LTV"}
-                          </Button>
-                        ))}
-                      </div>
+              {/* Cohort List */}
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">
+                    Cohort por Tempo de Assinatura
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {cohortTempo.length > 0 ? (
+                    <div className="space-y-2.5">
+                      {cohortTempo.map((item, idx) => {
+                        const maxQtd = Math.max(...cohortTempo.map(c => c.qtd), 1);
+                        const pct = (item.qtd / maxQtd) * 100;
+                        const totalFiltered = filtered.length;
+                        const pctTotal = totalFiltered > 0 ? ((item.qtd / totalFiltered) * 100).toFixed(1) : "0";
+                        return (
+                          <div key={item.faixa}>
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="text-xs font-medium">{item.faixa}</span>
+                              <span className="text-xs font-semibold tabular-nums">
+                                {item.qtd} <span className="text-muted-foreground font-normal">({pctTotal}%)</span>
+                              </span>
+                            </div>
+                            <div className="h-2 bg-muted rounded-full overflow-hidden">
+                              <div
+                                className="h-full rounded-full transition-all duration-500"
+                                style={{ width: `${Math.max(pct, 3)}%`, backgroundColor: COLORS[idx % COLORS.length] }}
+                              />
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
-                  </CardHeader>
-                  <CardContent>
-                    <ResponsiveContainer width="100%" height={260}>
-                      <PieChart>
-                        <Pie
-                          data={cohortTempo}
-                          cx="50%"
-                          cy="50%"
-                          innerRadius={50}
-                          outerRadius={100}
-                          paddingAngle={3}
-                          dataKey={cohortMetric}
-                          nameKey="faixa"
-                          label={({ faixa, percent }) =>
-                            percent > 0.04 ? `${faixa} (${(percent * 100).toFixed(0)}%)` : ""
-                          }
-                          labelLine={{ strokeWidth: 1 }}
-                        >
-                          {cohortTempo.map((_, idx) => (
-                            <Cell key={idx} fill={PIE_COLORS[idx % PIE_COLORS.length]} />
-                          ))}
-                        </Pie>
-                        <Tooltip
-                          formatter={(v: any) => [
-                            cohortMetric === "qtd"
-                              ? `${v} clientes`
-                              : fmtBRL(Number(v)),
-                            cohortMetric === "qtd" ? "Cancelados" : cohortMetric === "mrr" ? "MRR Perdido" : "LTV Perdido",
-                          ]}
-                        />
-                        <Legend />
-                      </PieChart>
-                    </ResponsiveContainer>
-                  </CardContent>
-                </Card>
-              )}
+                  ) : (
+                    <div className="h-[120px] flex items-center justify-center text-muted-foreground text-sm">
+                      Sem dados disponíveis
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
             </div>
 
             {/* ── Tabela principal ── */}
