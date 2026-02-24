@@ -908,9 +908,28 @@ export const categoriasMap: Record<string, string> = {
 };
 
 /**
- * Retorna o nome da categoria pelo ID ou o próprio ID se não encontrado
+ * Retorna o nome da categoria pelo ID.
+ * O mapa de categorias é exclusivo da D-Kiros.
+ * Para outros ISPs, retorna o ID bruto (evita exibir nomes de outra empresa).
  */
-export function getCategoriaName(id: string | number): string {
+export function getCategoriaName(id: string | number, ispId?: string): string {
   const idStr = String(id);
-  return categoriasMap[idStr] || idStr;
+  // Só usar o mapa para D-Kiros (proprietária dos dados de categorias)
+  if (!ispId || ispId === "d-kiros") {
+    return categoriasMap[idStr] || idStr;
+  }
+  // Para outros ISPs, retornar apenas o ID numérico (sem nomes de outra empresa)
+  return idStr;
+}
+
+/**
+ * Retorna o nome amigável da categoria para exibição.
+ * Usa categoriasMap somente para D-Kiros; outros ISPs mostram "Categoria {id}".
+ */
+export function getCategoriaDisplay(id: string | number, ispId?: string): string {
+  const idStr = String(id);
+  if (!ispId || ispId === "d-kiros") {
+    return categoriasMap[idStr] || `Categoria ${idStr}`;
+  }
+  return `Categoria ${idStr}`;
 }
