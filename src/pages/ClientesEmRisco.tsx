@@ -486,6 +486,7 @@ const ClientesEmRisco = () => {
                       <TableHead className="text-xs whitespace-nowrap">Cliente</TableHead>
                       <TableHead className="text-xs whitespace-nowrap text-center">Score/Bucket</TableHead>
                       <TableHead className="text-xs whitespace-nowrap text-center">Dias Atraso</TableHead>
+                      <TableHead className="text-xs whitespace-nowrap text-center">Chamados 90d</TableHead>
                       <TableHead className="text-xs whitespace-nowrap text-center">NPS</TableHead>
                       <TableHead className="text-xs whitespace-nowrap">Internet</TableHead>
                       <TableHead className="text-xs whitespace-nowrap text-right">Mensalidade</TableHead>
@@ -496,7 +497,7 @@ const ClientesEmRisco = () => {
                   <TableBody>
                     {filtered.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={8} className="text-center text-muted-foreground py-10 text-sm">
+                        <TableCell colSpan={9} className="text-center text-muted-foreground py-10 text-sm">
                           Nenhum cliente em risco com os filtros aplicados.
                         </TableCell>
                       </TableRow>
@@ -513,6 +514,12 @@ const ClientesEmRisco = () => {
                               {c.dias_atraso != null && c.dias_atraso > 0 ? (
                                 <span className={c.dias_atraso > 30 ? "text-destructive font-medium" : "text-yellow-600"}>{Math.round(c.dias_atraso)}d</span>
                               ) : "—"}
+                            </TableCell>
+                            <TableCell className="text-center text-xs">
+                              {(() => {
+                                const ch90 = chamadosPorClienteMap.d90.get(c.cliente_id)?.chamados_periodo ?? c.qtd_chamados_90d ?? 0;
+                                return ch90 > 0 ? <span className={ch90 >= 5 ? "text-destructive font-medium" : ch90 >= 3 ? "text-yellow-600" : ""}>{ch90}</span> : "—";
+                              })()}
                             </TableCell>
                             <TableCell className="text-center"><NPSBadge classificacao={npsCliente?.classificacao} nota={npsCliente?.nota} /></TableCell>
                             <TableCell className="text-xs">{STATUS_INTERNET[c.status_internet || ""] || c.status_internet || "—"}</TableCell>
