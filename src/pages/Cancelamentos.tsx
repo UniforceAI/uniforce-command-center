@@ -280,10 +280,7 @@ const Cancelamentos = () => {
       }
     }
 
-    // If we have real events, use them
-    if (deduped.length > 0) return deduped;
-
-    // Otherwise, generate synthetic events from client scores/data
+    // Always generate synthetic events from score pillars to fill gaps
     const synthetic: ChurnEvent[] = [];
     const baseDate = c.data_cancelamento || c.updated_at || new Date().toISOString();
     const makeEvent = (tipo: string, desc: string, impacto: number, date?: string): ChurnEvent => ({
@@ -300,6 +297,7 @@ const Cancelamentos = () => {
       created_at: baseDate,
     });
 
+    // Generate synthetic for each score pillar that contributed
     if (c.score_financeiro > 0) {
       const desc = c.dias_atraso && c.dias_atraso > 0
         ? `Atraso de ${Math.round(c.dias_atraso)} dias detectado`
@@ -328,6 +326,23 @@ const Cancelamentos = () => {
       synthetic.push(makeEvent("cancelamento_real", `Cancelamento confirmado em ${new Date(c.data_cancelamento + "T00:00:00").toLocaleDateString("pt-BR")}`, 0, c.data_cancelamento));
     }
 
+    // Merge real + synthetic, deduplicating by tipo_evento+date (real events take priority)
+    const merged = [...deduped];
+    const seenTypes = new Set<string>();
+    for (const e of deduped) {
+      const dateKey = e.data_evento?.split("T")[0] || "";
+      seenTypes.add(`${e.tipo_evento}__${dateKey}`);
+    }
+    for (const s of synthetic) {
+      const dateKey = s.data_evento?.split("T")[0] || "";
+      const key = `${s.tipo_evento}__${dateKey}`;
+      if (!seenTypes.has(key)) {
+        seenTypes.add(key);
+        merged.push(s);
+      }
+    }
+
+    return merged.sort((a, b) => new Date(b.data_evento).getTime() - new Date(a.data_evento).getTime());
     return synthetic.sort((a, b) => new Date(b.data_evento).getTime() - new Date(a.data_evento).getTime());
   }, [selectedCliente, churnEvents]);
 
