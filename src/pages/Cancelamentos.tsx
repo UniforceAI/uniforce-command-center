@@ -262,9 +262,68 @@ const Cancelamentos = () => {
   };
 
   // ─── CRM Drawer helpers ───
+  // Build events: real events + synthetic fallback from client data
   const selectedEvents = useMemo(() => {
     if (!selectedCliente) return [];
-    return churnEvents.filter((e) => e.cliente_id === selectedCliente.cliente_id);
+    const c = selectedCliente;
+    const realEvents = churnEvents.filter((e) => e.cliente_id === c.cliente_id);
+    
+    // Deduplicate: remove events with same tipo_evento on the same date
+    const deduped: typeof realEvents = [];
+    const seen = new Set<string>();
+    for (const e of realEvents) {
+      const dateKey = e.data_evento?.split("T")[0] || "";
+      const key = `${e.tipo_evento}__${dateKey}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        deduped.push(e);
+      }
+    }
+
+    // If we have real events, use them
+    if (deduped.length > 0) return deduped;
+
+    // Otherwise, generate synthetic events from client scores/data
+    const synthetic: ChurnEvent[] = [];
+    const baseDate = c.data_cancelamento || c.updated_at || new Date().toISOString();
+    const makeEvent = (tipo: string, desc: string, impacto: number, date?: string): ChurnEvent => ({
+      id: `synthetic-${tipo}-${c.cliente_id}`,
+      isp_id: c.isp_id,
+      cliente_id: c.cliente_id,
+      id_contrato: c.id_contrato,
+      tipo_evento: tipo,
+      peso_evento: 1,
+      impacto_score: impacto,
+      descricao: desc,
+      dados_evento: null,
+      data_evento: date || baseDate,
+      created_at: baseDate,
+    });
+
+    if (c.score_financeiro > 0) {
+      const desc = c.dias_atraso && c.dias_atraso > 0
+        ? `Atraso de ${Math.round(c.dias_atraso)} dias detectado`
+        : `Score financeiro elevado`;
+      synthetic.push(makeEvent("inadimplencia_iniciou", desc, c.score_financeiro, c.ultimo_pagamento_data || baseDate));
+    }
+    if (c.score_suporte > 0) {
+      synthetic.push(makeEvent("chamado_reincidente", `${c.qtd_chamados_30d} chamados nos últimos 30 dias`, c.score_suporte));
+    }
+    if (c.score_nps > 0 && c.nps_ultimo_score != null) {
+      const tipo = c.nps_ultimo_score <= 6 ? "nps_detrator" : "risco_aumentou";
+      synthetic.push(makeEvent(tipo, `NPS Score: ${c.nps_ultimo_score} (${c.nps_classificacao || "—"})`, c.score_nps));
+    }
+    if (c.score_qualidade > 0) {
+      synthetic.push(makeEvent("score_qualidade", `Score de qualidade elevado`, c.score_qualidade));
+    }
+    if (c.score_comportamental > 0) {
+      synthetic.push(makeEvent("score_comportamental", `Score comportamental elevado`, c.score_comportamental));
+    }
+    if (c.status_churn === "cancelado" && c.data_cancelamento) {
+      synthetic.push(makeEvent("cancelamento_real", `Cancelamento confirmado em ${new Date(c.data_cancelamento + "T00:00:00").toLocaleDateString("pt-BR")}`, 0, c.data_cancelamento));
+    }
+
+    return synthetic.sort((a, b) => new Date(b.data_evento).getTime() - new Date(a.data_evento).getTime());
   }, [selectedCliente, churnEvents]);
 
   const selectedChamados = useMemo(() => {
