@@ -3,6 +3,7 @@ import { useChurnData, ChurnStatus, ChurnEvent } from "@/hooks/useChurnData";
 import { useChamados } from "@/hooks/useChamados";
 import { useRiskBucketConfig, RiskBucket } from "@/hooks/useRiskBucketConfig";
 import { useCrmWorkflow } from "@/hooks/useCrmWorkflow";
+import { useChurnScoreConfig, calcScoreSuporteConfiguravel } from "@/contexts/ChurnScoreConfigContext";
 import { IspActions } from "@/components/shared/IspActions";
 import { LoadingScreen } from "@/components/shared/LoadingScreen";
 import { KPICardNew } from "@/components/shared/KPICardNew";
@@ -51,8 +52,31 @@ const Cancelamentos = () => {
   const { getChamadosPorCliente, chamados: allChamados } = useChamados();
   const { getBucket } = useRiskBucketConfig();
   const { workflowMap, addToWorkflow, updateStatus, updateTags, updateOwner } = useCrmWorkflow();
+  const { config } = useChurnScoreConfig();
 
+  const chamadosMap30d = useMemo(() => getChamadosPorCliente(30), [getChamadosPorCliente]);
   const chamadosMap90d = useMemo(() => getChamadosPorCliente(90), [getChamadosPorCliente]);
+
+  // Enrich cancelados with live-recalculated support score
+  const cancelados = useMemo(() => {
+    return churnStatus
+      .filter((c) => c.status_churn === "cancelado")
+      .map((c) => {
+        const ch30 = chamadosMap30d.get(c.cliente_id)?.chamados_periodo ?? c.qtd_chamados_30d ?? 0;
+        const ch90 = chamadosMap90d.get(c.cliente_id)?.chamados_periodo ?? c.qtd_chamados_90d ?? 0;
+        const newScoreSuporte = calcScoreSuporteConfiguravel(ch30, ch90, config);
+        // Recalculate total score: replace old support score with new one
+        const scoreDiff = newScoreSuporte - (c.score_suporte || 0);
+        const newTotalScore = Math.max(0, Math.min(500, c.churn_risk_score + scoreDiff));
+        return {
+          ...c,
+          qtd_chamados_30d: ch30,
+          qtd_chamados_90d: ch90,
+          score_suporte: newScoreSuporte,
+          churn_risk_score: newTotalScore,
+        };
+      });
+  }, [churnStatus, chamadosMap30d, chamadosMap90d, config]);
 
   const [plano, setPlano] = useState("todos");
   const [cidade, setCidade] = useState("todos");
@@ -64,11 +88,6 @@ const Cancelamentos = () => {
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [selectedCliente, setSelectedCliente] = useState<ChurnStatus | null>(null);
 
-  // Cancelados
-  const cancelados = useMemo(
-    () => churnStatus.filter((c) => c.status_churn === "cancelado"),
-    [churnStatus]
-  );
 
   const totalAtivos = useMemo(
     () => churnStatus.filter((c) => c.status_churn !== "cancelado").length,
