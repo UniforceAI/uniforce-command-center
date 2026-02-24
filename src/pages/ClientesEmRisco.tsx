@@ -3,7 +3,7 @@ import { safeFormatDate } from "@/lib/safeDate";
 import { useChurnData, ChurnStatus } from "@/hooks/useChurnData";
 import { useChamados } from "@/hooks/useChamados";
 import { useActiveIsp } from "@/hooks/useActiveIsp";
-import { useChurnScoreConfig, calcScoreSuporteConfiguravel } from "@/contexts/ChurnScoreConfigContext";
+import { useChurnScoreConfig, calcScoreSuporteConfiguravel, calcScoreFinanceiroConfiguravel } from "@/contexts/ChurnScoreConfigContext";
 import { useRiskBucketConfig, RiskBucket } from "@/hooks/useRiskBucketConfig";
 import { useCrmWorkflow, WorkflowStatus } from "@/hooks/useCrmWorkflow";
 import { IspActions } from "@/components/shared/IspActions";
@@ -158,7 +158,7 @@ const ClientesEmRisco = () => {
   const getScoreTotalReal = useCallback((cliente: ChurnStatus): number => {
     const suporteReal = getScoreSuporteReal(cliente);
     const npsReal = getScoreNPSReal(cliente);
-    const financeiro = Math.round(((cliente.score_financeiro ?? 0) / 30) * config.faturaAtrasada);
+    const financeiro = calcScoreFinanceiroConfiguravel(cliente.dias_atraso, config);
     const qualidadeBase = 25;
     const qualidade = Math.round(((cliente.score_qualidade ?? 0) / qualidadeBase) * config.qualidade);
     const comportamental = Math.round(((cliente.score_comportamental ?? 0) / 20) * config.comportamental);
@@ -250,8 +250,8 @@ const ClientesEmRisco = () => {
       .slice(0, 10);
     eventos.push(...realEvents);
 
-    // Synthetic: Financeiro
-    const scoreFinanceiro = Math.round(((c.score_financeiro ?? 0) / 30) * config.faturaAtrasada);
+    // Synthetic: Financeiro (baseado em dias em atraso)
+    const scoreFinanceiro = calcScoreFinanceiroConfiguravel(c.dias_atraso, config);
     if (scoreFinanceiro > 0) {
       eventos.push({
         id: "synth-financeiro", isp_id: c.isp_id, cliente_id: c.cliente_id,

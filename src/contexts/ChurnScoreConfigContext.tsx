@@ -10,8 +10,13 @@ export interface ChurnScoreConfig {
   qualidade: number;              // padrão: 20
   // Comportamental
   comportamental: number;         // padrão: 20
-  // Fatura atrasada (pilar financeiro)
-  faturaAtrasada: number;         // padrão: 25
+  // Financeiro — faixas por dias em atraso
+  finAtraso1a5: number;           // padrão: 5
+  finAtraso6a15: number;          // padrão: 10
+  finAtraso16a30: number;         // padrão: 15
+  finAtraso31a60: number;         // padrão: 20
+  finAtraso60plus: number;        // padrão: 25
+  financeiroTeto: number;         // padrão: 30
 }
 
 export const CHURN_SCORE_DEFAULTS: ChurnScoreConfig = {
@@ -20,7 +25,12 @@ export const CHURN_SCORE_DEFAULTS: ChurnScoreConfig = {
   npsDetrator: 30,
   qualidade: 20,
   comportamental: 20,
-  faturaAtrasada: 25,
+  finAtraso1a5: 5,
+  finAtraso6a15: 10,
+  finAtraso16a30: 15,
+  finAtraso31a60: 20,
+  finAtraso60plus: 25,
+  financeiroTeto: 30,
 };
 
 interface ChurnScoreConfigContextType {
@@ -29,7 +39,7 @@ interface ChurnScoreConfigContextType {
   resetToDefaults: () => void;
 }
 
-const STORAGE_KEY = "churn_score_config_v1";
+const STORAGE_KEY = "churn_score_config_v2";
 
 const ChurnScoreConfigContext = createContext<ChurnScoreConfigContextType>({
   config: CHURN_SCORE_DEFAULTS,
@@ -70,11 +80,27 @@ export function useChurnScoreConfig() {
 }
 
 /**
+ * Calcula o score financeiro baseado nos dias em atraso e nas faixas configuráveis.
+ */
+export function calcScoreFinanceiroConfiguravel(
+  diasAtraso: number | null,
+  config: ChurnScoreConfig
+): number {
+  const dias = diasAtraso ?? 0;
+  if (dias <= 0) return 0;
+
+  let score = 0;
+  if (dias >= 1) score = config.finAtraso1a5;
+  if (dias >= 6) score = config.finAtraso6a15;
+  if (dias >= 16) score = config.finAtraso16a30;
+  if (dias >= 31) score = config.finAtraso31a60;
+  if (dias > 60) score = config.finAtraso60plus;
+
+  return Math.min(score, config.financeiroTeto);
+}
+
+/**
  * Calcula o score de suporte baseado nos chamados reais e nas configurações do usuário.
- * 2 chamados = chamados30dBase pts
- * Cada chamado acima de 2 = chamadoAdicional pts extras
- * 1 chamado 30d = 8pts (fixo, menor que o threshold de 2)
- * Chamados 90d = fallback menor
  */
 export function calcScoreSuporteConfiguravel(
   ch30: number,
@@ -82,21 +108,18 @@ export function calcScoreSuporteConfiguravel(
   config: ChurnScoreConfig
 ): number {
   const { chamados30dBase, chamadoAdicional } = config;
-  const cap = chamados30dBase + 4 * chamadoAdicional; // cap máximo
+  const cap = chamados30dBase + 4 * chamadoAdicional;
   let score = 0;
 
   if (ch30 >= 2) {
     score = chamados30dBase + (ch30 - 2) * chamadoAdicional;
   } else if (ch30 === 1) {
-    // 1 chamado 30d = base parcial, mas escala com 90d
-    const base30 = Math.round(chamados30dBase * 0.32); // ~8
+    const base30 = Math.round(chamados30dBase * 0.32);
     const extra90 = ch90 > 1 ? (ch90 - 1) * Math.round(chamadoAdicional * 0.6) : 0;
     score = base30 + extra90;
   } else if (ch90 >= 5) {
-    // Muitos chamados 90d sem nenhum 30d = risco elevado, escala progressiva
     score = Math.round(chamados30dBase * 0.5) + (ch90 - 5) * Math.round(chamadoAdicional * 0.7);
   } else if (ch90 >= 3) {
-    // 3-4 chamados 90d = risco moderado
     score = Math.round(chamados30dBase * 0.4) + (ch90 - 3) * Math.round(chamadoAdicional * 0.5);
   } else if (ch90 >= 1) {
     score = Math.round(chamados30dBase * 0.2);
