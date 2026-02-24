@@ -86,7 +86,7 @@ function DroppableColumn({ id, children, title, icon, color, count }: {
         <Badge variant="secondary" className="text-[10px] ml-auto">{count}</Badge>
       </div>
       <ScrollArea className="h-[calc(100vh-320px)]">
-        <div className="p-2 space-y-2">
+        <div className="p-2 space-y-2 flex flex-col items-center">
           {children}
         </div>
       </ScrollArea>
@@ -120,7 +120,7 @@ function KanbanCardVisual({ item, onSelect, onStart, onUpdate, isDragging }: {
   const { cliente, score, bucket, workflow, driver } = item;
   return (
     <Card
-      className={`p-4 cursor-grab active:cursor-grabbing hover:shadow-md transition-shadow space-y-3 min-h-[130px] ${isDragging ? "opacity-40 shadow-lg ring-2 ring-primary" : ""}`}
+      className={`p-4 cursor-grab active:cursor-grabbing hover:shadow-md transition-shadow space-y-3 min-h-[130px] w-full max-w-[300px] ${isDragging ? "opacity-40 shadow-lg ring-2 ring-primary" : ""}`}
       onClick={onSelect}
     >
       {/* Row 1: Name + Score Badge */}
