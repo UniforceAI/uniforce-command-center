@@ -1,5 +1,5 @@
-import { useState, useMemo } from "react";
-import { useChurnData } from "@/hooks/useChurnData";
+import { useState, useMemo, useCallback } from "react";
+import { useChurnData, ChurnStatus, ChurnEvent } from "@/hooks/useChurnData";
 import { useChamados } from "@/hooks/useChamados";
 import { useRiskBucketConfig, RiskBucket } from "@/hooks/useRiskBucketConfig";
 import { useCrmWorkflow } from "@/hooks/useCrmWorkflow";
@@ -7,16 +7,17 @@ import { IspActions } from "@/components/shared/IspActions";
 import { LoadingScreen } from "@/components/shared/LoadingScreen";
 import { KPICardNew } from "@/components/shared/KPICardNew";
 import { GlobalFilters } from "@/components/shared/GlobalFilters";
+import { CrmDrawer } from "@/components/crm/CrmDrawer";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
-  AlertCircle, Users, TrendingDown, DollarSign, Clock, CalendarX,
-  PackageX, Target, ShieldAlert, AlertTriangle, Info,
+  AlertCircle, Users, TrendingDown, DollarSign, CalendarX,
+  PackageX, ShieldAlert, Info, ArrowUpDown, ChevronUp, ChevronDown,
 } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, Legend,
+  PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from "recharts";
 
 const BUCKET_COLORS: Record<RiskBucket, string> = {
@@ -26,6 +27,7 @@ const BUCKET_COLORS: Record<RiskBucket, string> = {
 };
 
 const COLORS = ["#ef4444", "#f97316", "#eab308", "#22c55e", "#3b82f6", "#8b5cf6", "#ec4899", "#14b8a6", "#f59e0b", "#6b7280"];
+const PIE_COLORS = ["#ef4444", "#f97316", "#eab308", "#22c55e", "#3b82f6"];
 
 const STATUS_MOTIVO: Record<string, string> = {
   D: "Desativação direta",
@@ -34,18 +36,21 @@ const STATUS_MOTIVO: Record<string, string> = {
 };
 
 const COHORT_FAIXAS = [
-  { label: "0–3 meses", min: 0, max: 3 },
-  { label: "4–6 meses", min: 4, max: 6 },
-  { label: "7–12 meses", min: 7, max: 12 },
-  { label: "13–24 meses", min: 13, max: 24 },
-  { label: "24+ meses", min: 25, max: 9999 },
+  { label: "0–3m", min: 0, max: 3 },
+  { label: "4–6m", min: 4, max: 6 },
+  { label: "7–12m", min: 7, max: 12 },
+  { label: "13–24m", min: 13, max: 24 },
+  { label: "24m+", min: 25, max: 9999 },
 ];
 
+type SortField = "cliente_nome" | "data_cancelamento" | "churn_risk_score" | "valor_mensalidade" | "dias_atraso" | "tempo_cliente_meses" | "ltv_estimado";
+type SortDir = "asc" | "desc";
+
 const Cancelamentos = () => {
-  const { churnStatus, isLoading, error } = useChurnData();
-  const { getChamadosPorCliente } = useChamados();
+  const { churnStatus, churnEvents, isLoading, error } = useChurnData();
+  const { getChamadosPorCliente, chamados: allChamados } = useChamados();
   const { getBucket } = useRiskBucketConfig();
-  const { workflowMap } = useCrmWorkflow();
+  const { workflowMap, addToWorkflow, updateStatus, updateTags, updateOwner } = useCrmWorkflow();
 
   const chamadosMap90d = useMemo(() => getChamadosPorCliente(90), [getChamadosPorCliente]);
 
@@ -55,6 +60,9 @@ const Cancelamentos = () => {
   const [bucket, setBucket] = useState("todos");
   const [periodo, setPeriodo] = useState("todos");
   const [cohortMetric, setCohortMetric] = useState<"qtd" | "mrr" | "ltv">("qtd");
+  const [sortField, setSortField] = useState<SortField>("data_cancelamento");
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
+  const [selectedCliente, setSelectedCliente] = useState<ChurnStatus | null>(null);
 
   // Cancelados
   const cancelados = useMemo(
@@ -67,7 +75,6 @@ const Cancelamentos = () => {
     [churnStatus]
   );
 
-  // MaxDate for period filter (based on data_cancelamento)
   const maxDate = useMemo(() => {
     let max = new Date(0);
     cancelados.forEach((c) => {
@@ -102,7 +109,6 @@ const Cancelamentos = () => {
     if (bairro !== "todos") f = f.filter((c) => c.cliente_bairro === bairro);
     if (bucket !== "todos") f = f.filter((c) => getBucket(c.churn_risk_score) === bucket);
 
-    // Period filter: "últimos X dias" relative to maxDate
     if (periodo !== "todos") {
       const dias = parseInt(periodo);
       const limite = new Date(maxDate.getTime() - dias * 24 * 60 * 60 * 1000);
@@ -112,12 +118,30 @@ const Cancelamentos = () => {
       });
     }
 
-    return f.sort((a, b) => {
-      const dA = a.data_cancelamento ? new Date(a.data_cancelamento + "T00:00:00").getTime() : 0;
-      const dB = b.data_cancelamento ? new Date(b.data_cancelamento + "T00:00:00").getTime() : 0;
-      return dB - dA;
+    // Sort
+    f.sort((a, b) => {
+      let valA: any, valB: any;
+      switch (sortField) {
+        case "cliente_nome": valA = a.cliente_nome || ""; valB = b.cliente_nome || ""; break;
+        case "data_cancelamento":
+          valA = a.data_cancelamento ? new Date(a.data_cancelamento + "T00:00:00").getTime() : 0;
+          valB = b.data_cancelamento ? new Date(b.data_cancelamento + "T00:00:00").getTime() : 0;
+          break;
+        case "churn_risk_score": valA = a.churn_risk_score; valB = b.churn_risk_score; break;
+        case "valor_mensalidade": valA = a.valor_mensalidade ?? 0; valB = b.valor_mensalidade ?? 0; break;
+        case "dias_atraso": valA = a.dias_atraso ?? 0; valB = b.dias_atraso ?? 0; break;
+        case "tempo_cliente_meses": valA = a.tempo_cliente_meses ?? 0; valB = b.tempo_cliente_meses ?? 0; break;
+        case "ltv_estimado": valA = a.ltv_estimado ?? 0; valB = b.ltv_estimado ?? 0; break;
+        default: valA = 0; valB = 0;
+      }
+      if (typeof valA === "string") {
+        return sortDir === "asc" ? valA.localeCompare(valB) : valB.localeCompare(valA);
+      }
+      return sortDir === "asc" ? valA - valB : valB - valA;
     });
-  }, [cancelados, plano, cidade, bairro, bucket, periodo, maxDate, getBucket]);
+
+    return f;
+  }, [cancelados, plano, cidade, bairro, bucket, periodo, maxDate, getBucket, sortField, sortDir]);
 
   // ─── KPIs ───
   const kpis = useMemo(() => {
@@ -125,7 +149,12 @@ const Cancelamentos = () => {
     const totalBase = totalCancelados + totalAtivos;
     const taxaChurn = totalBase > 0 ? ((totalCancelados / totalBase) * 100).toFixed(2) : "0";
     const mrrPerdido = filtered.reduce((acc, c) => acc + (c.valor_mensalidade || 0), 0);
-    const ltvPerdido = filtered.reduce((acc, c) => acc + (c.ltv_estimado || 0), 0);
+    // LTV = mensalidade * tempo_cliente_meses (se disponível), senão usa ltv_estimado
+    const ltvPerdido = filtered.reduce((acc, c) => {
+      if (c.ltv_estimado != null && c.ltv_estimado > 0) return acc + c.ltv_estimado;
+      if (c.valor_mensalidade && c.tempo_cliente_meses) return acc + (c.valor_mensalidade * c.tempo_cliente_meses);
+      return acc;
+    }, 0);
     const tickets = filtered.filter((c) => c.valor_mensalidade != null).map((c) => c.valor_mensalidade!);
     const ticketMedio = tickets.length > 0 ? (tickets.reduce((a, b) => a + b, 0) / tickets.length).toFixed(2) : "0";
     const datas = filtered.filter((c) => c.data_cancelamento).map((c) => new Date(c.data_cancelamento! + "T00:00:00"));
@@ -135,13 +164,10 @@ const Cancelamentos = () => {
     return { totalCancelados, taxaChurn, mrrPerdido, ltvPerdido, ticketMedio, ultimoCancelamento };
   }, [filtered, totalAtivos]);
 
-  // ─── Distribuição por Bucket no cancelamento ───
+  // ─── Distribuição por Bucket ───
   const bucketDistribuicao = useMemo(() => {
     const counts = { OK: 0, ALERTA: 0, "CRÍTICO": 0 };
-    filtered.forEach((c) => {
-      const b = getBucket(c.churn_risk_score);
-      counts[b]++;
-    });
+    filtered.forEach((c) => { counts[getBucket(c.churn_risk_score)]++; });
     const total = filtered.length;
     return [
       { bucket: "CRÍTICO", qtd: counts["CRÍTICO"], pct: total > 0 ? ((counts["CRÍTICO"] / total) * 100).toFixed(1) : "0", color: "#ef4444" },
@@ -150,25 +176,7 @@ const Cancelamentos = () => {
     ];
   }, [filtered, getBucket]);
 
-  // ─── Antecedência média ───
-  const antecedencia = useMemo(() => {
-    const dias = filtered
-      .filter((c) => c.dias_em_risco != null && c.dias_em_risco > 0)
-      .map((c) => c.dias_em_risco);
-    if (dias.length === 0) return null;
-    const media = Math.round(dias.reduce((a, b) => a + b, 0) / dias.length);
-    const sorted = [...dias].sort((a, b) => a - b);
-    const mediana = sorted[Math.floor(sorted.length / 2)];
-    const faixas = [
-      { label: "0–7 dias", count: dias.filter((d) => d <= 7).length },
-      { label: "8–15 dias", count: dias.filter((d) => d >= 8 && d <= 15).length },
-      { label: "16–30 dias", count: dias.filter((d) => d >= 16 && d <= 30).length },
-      { label: "30+ dias", count: dias.filter((d) => d > 30).length },
-    ].filter((f) => f.count > 0);
-    return { media, mediana, faixas, totalComDados: dias.length };
-  }, [filtered]);
-
-  // ─── Cohort por tempo de assinatura ───
+  // ─── Cohort por tempo de assinatura (PieChart) ───
   const cohortTempo = useMemo(() => {
     return COHORT_FAIXAS.map((faixa) => {
       const clientes = filtered.filter((c) => {
@@ -179,25 +187,47 @@ const Cancelamentos = () => {
         faixa: faixa.label,
         qtd: clientes.length,
         mrr: clientes.reduce((acc, c) => acc + (c.valor_mensalidade || 0), 0),
-        ltv: clientes.reduce((acc, c) => acc + (c.ltv_estimado || 0), 0),
+        ltv: clientes.reduce((acc, c) => {
+          if (c.ltv_estimado != null && c.ltv_estimado > 0) return acc + c.ltv_estimado;
+          if (c.valor_mensalidade && c.tempo_cliente_meses) return acc + (c.valor_mensalidade * c.tempo_cliente_meses);
+          return acc;
+        }, 0),
       };
     }).filter((f) => f.qtd > 0);
   }, [filtered]);
 
-  // ─── Top Motivos ───
+  // ─── Top Motivos (using events + churn_status data, grouped by date ranges) ───
   const topMotivos = useMemo(() => {
-    const map: Record<string, number> = {};
+    // Get cancelled client IDs
+    const canceladoIds = new Set(filtered.map((c) => c.cliente_id));
+    
+    // Collect motivos from multiple sources
+    const motivoMap: Record<string, number> = {};
+    
+    // 1. From churn_status motivo_risco_principal  
     filtered.forEach((c) => {
-      const m = c.motivo_risco_principal || STATUS_MOTIVO[c.status_internet || ""] || "Motivo não identificado";
-      map[m] = (map[m] || 0) + 1;
+      const m = c.motivo_risco_principal || STATUS_MOTIVO[c.status_internet || ""] || null;
+      if (m) motivoMap[m] = (motivoMap[m] || 0) + 1;
     });
-    return Object.entries(map)
+    
+    // 2. From churn_events for cancelled clients (broader motivos)
+    churnEvents
+      .filter((e) => canceladoIds.has(e.cliente_id))
+      .forEach((e) => {
+        // Map event types to readable motivos
+        const label = e.descricao || e.tipo_evento;
+        if (label && !label.includes("score_") && e.tipo_evento !== "cancelamento_real") {
+          motivoMap[label] = (motivoMap[label] || 0) + 1;
+        }
+      });
+
+    return Object.entries(motivoMap)
       .map(([motivo, qtd]) => ({ motivo, qtd }))
       .sort((a, b) => b.qtd - a.qtd)
       .slice(0, 10);
-  }, [filtered]);
+  }, [filtered, churnEvents]);
 
-  // ─── Cancelamentos por mês ───
+  // ─── Cancelamentos por mês (all data, not just filtered) ───
   const cancelPorMes = useMemo(() => {
     const map: Record<string, number> = {};
     cancelados.forEach((c) => {
@@ -216,17 +246,34 @@ const Cancelamentos = () => {
       });
   }, [cancelados]);
 
-  // ─── Comparativo Ativos vs Cancelados ───
-  const comparativo = useMemo(() => {
-    const ativos = churnStatus.filter((c) => c.status_churn === "ativo");
-    const avg = (arr: number[]) => (arr.length > 0 ? +(arr.reduce((a, b) => a + b, 0) / arr.length).toFixed(1) : 0);
-    return [
-      { metric: "Score Risco", Ativos: avg(ativos.map((c) => c.churn_risk_score)), Cancelados: avg(filtered.map((c) => c.churn_risk_score)) },
-      { metric: "Dias Atraso", Ativos: avg(ativos.filter((c) => (c.dias_atraso ?? 0) > 0).map((c) => c.dias_atraso!)), Cancelados: avg(filtered.filter((c) => (c.dias_atraso ?? 0) > 0).map((c) => c.dias_atraso!)) },
-      { metric: "Ticket (R$)", Ativos: avg(ativos.filter((c) => c.valor_mensalidade != null).map((c) => c.valor_mensalidade!)), Cancelados: avg(filtered.filter((c) => c.valor_mensalidade != null).map((c) => c.valor_mensalidade!)) },
-      { metric: "Tempo (m)", Ativos: avg(ativos.filter((c) => c.tempo_cliente_meses != null).map((c) => c.tempo_cliente_meses!)), Cancelados: avg(filtered.filter((c) => c.tempo_cliente_meses != null).map((c) => c.tempo_cliente_meses!)) },
-    ];
-  }, [churnStatus, filtered]);
+  // ─── Sort handler ───
+  const toggleSort = useCallback((field: SortField) => {
+    if (sortField === field) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortField(field);
+      setSortDir("desc");
+    }
+  }, [sortField]);
+
+  const SortIcon = ({ field }: { field: SortField }) => {
+    if (sortField !== field) return <ArrowUpDown className="h-3 w-3 ml-1 opacity-30" />;
+    return sortDir === "asc" ? <ChevronUp className="h-3 w-3 ml-1" /> : <ChevronDown className="h-3 w-3 ml-1" />;
+  };
+
+  // ─── CRM Drawer helpers ───
+  const selectedEvents = useMemo(() => {
+    if (!selectedCliente) return [];
+    return churnEvents.filter((e) => e.cliente_id === selectedCliente.cliente_id);
+  }, [selectedCliente, churnEvents]);
+
+  const selectedChamados = useMemo(() => {
+    if (!selectedCliente) return [];
+    return allChamados.filter((ch) => {
+      const id = typeof ch.id_cliente === "string" ? parseInt(ch.id_cliente) : ch.id_cliente;
+      return id === selectedCliente.cliente_id;
+    });
+  }, [selectedCliente, allChamados]);
 
   // ─── Filters ───
   const filters = [
@@ -299,7 +346,6 @@ const Cancelamentos = () => {
 
         <GlobalFilters filters={filters} />
 
-        {/* Estado vazio */}
         {cancelados.length === 0 ? (
           <Card className="border-dashed">
             <CardContent className="py-12 flex flex-col items-center justify-center text-center gap-3">
@@ -314,18 +360,18 @@ const Cancelamentos = () => {
           </Card>
         ) : (
           <>
-            {/* ── A) Relação com o modelo ── */}
+            {/* ── KPIs ── */}
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
               <KPICardNew title="Total Cancelados" value={kpis.totalCancelados.toLocaleString()} icon={Users} variant="danger" />
               <KPICardNew title="% em Risco (Churn)" value={`${kpis.taxaChurn}%`} icon={TrendingDown} variant="danger"
-                tooltip="Cancelados / (Cancelados + Ativos). Não é taxa de risco." />
+                tooltip="Cancelados / (Cancelados + Ativos)" />
               <KPICardNew title="MRR Perdido" value={`R$ ${kpis.mrrPerdido.toLocaleString("pt-BR", { minimumFractionDigits: 0 })}`} icon={DollarSign} variant="warning" />
               <KPICardNew title="LTV Perdido" value={`R$ ${kpis.ltvPerdido.toLocaleString("pt-BR", { minimumFractionDigits: 0 })}`} icon={TrendingDown} variant="danger" />
               <KPICardNew title="Ticket Médio" value={`R$ ${kpis.ticketMedio}`} icon={DollarSign} variant="default" />
               <KPICardNew title="Último Cancelamento" value={kpis.ultimoCancelamento || "—"} icon={CalendarX} variant="default" />
             </div>
 
-            {/* Bucket distribution + Antecedência */}
+            {/* Bucket distribution + Cohort Pie */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               {/* Distribuição por Bucket */}
               <Card>
@@ -361,101 +407,65 @@ const Cancelamentos = () => {
                 </CardContent>
               </Card>
 
-              {/* Antecedência */}
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                    <Clock className="h-4 w-4" />
-                    Antecedência — Dias em Risco antes do Cancelamento
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {antecedencia ? (
-                    <div className="space-y-4">
-                      <div className="grid grid-cols-3 gap-3">
-                        <div className="text-center">
-                          <p className="text-2xl font-bold text-foreground">{antecedencia.media}d</p>
-                          <p className="text-xs text-muted-foreground">Média</p>
-                        </div>
-                        <div className="text-center">
-                          <p className="text-2xl font-bold text-foreground">{antecedencia.mediana}d</p>
-                          <p className="text-xs text-muted-foreground">Mediana</p>
-                        </div>
-                        <div className="text-center">
-                          <p className="text-2xl font-bold text-foreground">{antecedencia.totalComDados}</p>
-                          <p className="text-xs text-muted-foreground">Com dados</p>
-                        </div>
+              {/* Cohort Pie Chart */}
+              {cohortTempo.length > 0 && (
+                <Card>
+                  <CardHeader className="pb-2">
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-sm font-medium text-muted-foreground">
+                        Cohort por Tempo de Assinatura
+                      </CardTitle>
+                      <div className="flex gap-1">
+                        {(["qtd", "mrr", "ltv"] as const).map((m) => (
+                          <Button
+                            key={m}
+                            size="sm"
+                            variant={cohortMetric === m ? "default" : "ghost"}
+                            className="h-7 text-xs"
+                            onClick={() => setCohortMetric(m)}
+                          >
+                            {m === "qtd" ? "Qtd" : m === "mrr" ? "MRR" : "LTV"}
+                          </Button>
+                        ))}
                       </div>
-                      {antecedencia.faixas.length > 0 && (
-                        <div className="space-y-1.5">
-                          {antecedencia.faixas.map((f) => (
-                            <div key={f.label} className="flex items-center justify-between text-xs">
-                              <span className="text-muted-foreground">{f.label}</span>
-                              <span className="font-medium">{f.count} clientes</span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
                     </div>
-                  ) : (
-                    <div className="py-8 text-center text-sm text-muted-foreground">
-                      Sem dados de dias em risco para calcular antecedência.
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            </div>
-
-            {/* ── C) Cohort por tempo de assinatura ── */}
-            {cohortTempo.length > 0 && (
-              <Card>
-                <CardHeader className="pb-2">
-                  <div className="flex items-center justify-between">
-                    <CardTitle className="text-sm font-medium text-muted-foreground">
-                      Cohort de Cancelamento por Tempo de Assinatura
-                    </CardTitle>
-                    <div className="flex gap-1">
-                      {(["qtd", "mrr", "ltv"] as const).map((m) => (
-                        <Button
-                          key={m}
-                          size="sm"
-                          variant={cohortMetric === m ? "default" : "ghost"}
-                          className="h-7 text-xs"
-                          onClick={() => setCohortMetric(m)}
+                  </CardHeader>
+                  <CardContent>
+                    <ResponsiveContainer width="100%" height={260}>
+                      <PieChart>
+                        <Pie
+                          data={cohortTempo}
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={50}
+                          outerRadius={100}
+                          paddingAngle={3}
+                          dataKey={cohortMetric}
+                          nameKey="faixa"
+                          label={({ faixa, percent }) =>
+                            percent > 0.04 ? `${faixa} (${(percent * 100).toFixed(0)}%)` : ""
+                          }
+                          labelLine={{ strokeWidth: 1 }}
                         >
-                          {m === "qtd" ? "Quantidade" : m === "mrr" ? "MRR Perdido" : "LTV Perdido"}
-                        </Button>
-                      ))}
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <ResponsiveContainer width="100%" height={220}>
-                    <BarChart data={cohortTempo} margin={{ top: 4, right: 8, bottom: 8, left: -10 }}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="faixa" tick={{ fontSize: 11 }} />
-                      <YAxis
-                        tick={{ fontSize: 10 }}
-                        tickFormatter={
-                          cohortMetric === "qtd"
-                            ? (v) => `${v}`
-                            : (v) => `R$${(v / 1000).toFixed(0)}k`
-                        }
-                      />
-                      <Tooltip
-                        formatter={(v: any) => [
-                          cohortMetric === "qtd"
-                            ? `${v} clientes`
-                            : `R$ ${Number(v).toLocaleString("pt-BR", { minimumFractionDigits: 0 })}`,
-                          cohortMetric === "qtd" ? "Cancelados" : cohortMetric === "mrr" ? "MRR Perdido" : "LTV Perdido",
-                        ]}
-                      />
-                      <Bar dataKey={cohortMetric} fill="hsl(var(--destructive) / 0.7)" radius={[4, 4, 0, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </CardContent>
-              </Card>
-            )}
+                          {cohortTempo.map((_, idx) => (
+                            <Cell key={idx} fill={PIE_COLORS[idx % PIE_COLORS.length]} />
+                          ))}
+                        </Pie>
+                        <Tooltip
+                          formatter={(v: any) => [
+                            cohortMetric === "qtd"
+                              ? `${v} clientes`
+                              : `R$ ${Number(v).toLocaleString("pt-BR", { minimumFractionDigits: 0 })}`,
+                            cohortMetric === "qtd" ? "Cancelados" : cohortMetric === "mrr" ? "MRR Perdido" : "LTV Perdido",
+                          ]}
+                        />
+                        <Legend />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </CardContent>
+                </Card>
+              )}
+            </div>
 
             {/* Cancelamentos por mês */}
             {cancelPorMes.length > 0 && (
@@ -477,7 +487,7 @@ const Cancelamentos = () => {
               </Card>
             )}
 
-            {/* ── B) Tabela principal (cancelados) ── */}
+            {/* ── Tabela principal (cancelados) com sorting ── */}
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-medium text-muted-foreground">
@@ -489,18 +499,32 @@ const Cancelamentos = () => {
                   <Table>
                     <TableHeader className="sticky top-0 bg-card z-10">
                       <TableRow>
-                        <TableHead className="text-xs whitespace-nowrap">Cliente</TableHead>
-                        <TableHead className="text-xs whitespace-nowrap">Data Canc.</TableHead>
-                        <TableHead className="text-xs whitespace-nowrap text-center">Score/Bucket</TableHead>
+                        <TableHead className="text-xs whitespace-nowrap cursor-pointer select-none" onClick={() => toggleSort("cliente_nome")}>
+                          <span className="flex items-center">Cliente<SortIcon field="cliente_nome" /></span>
+                        </TableHead>
+                        <TableHead className="text-xs whitespace-nowrap cursor-pointer select-none" onClick={() => toggleSort("data_cancelamento")}>
+                          <span className="flex items-center">Data Canc.<SortIcon field="data_cancelamento" /></span>
+                        </TableHead>
+                        <TableHead className="text-xs whitespace-nowrap text-center cursor-pointer select-none" onClick={() => toggleSort("churn_risk_score")}>
+                          <span className="flex items-center justify-center">Score/Bucket<SortIcon field="churn_risk_score" /></span>
+                        </TableHead>
                         <TableHead className="text-xs whitespace-nowrap">Driver</TableHead>
                         <TableHead className="text-xs whitespace-nowrap">Plano</TableHead>
-                        <TableHead className="text-xs whitespace-nowrap text-right">Mensalidade</TableHead>
-                        <TableHead className="text-xs whitespace-nowrap text-center">Dias Atraso</TableHead>
+                        <TableHead className="text-xs whitespace-nowrap text-right cursor-pointer select-none" onClick={() => toggleSort("valor_mensalidade")}>
+                          <span className="flex items-center justify-end">Mensalidade<SortIcon field="valor_mensalidade" /></span>
+                        </TableHead>
+                        <TableHead className="text-xs whitespace-nowrap text-center cursor-pointer select-none" onClick={() => toggleSort("dias_atraso")}>
+                          <span className="flex items-center justify-center">Dias Atraso<SortIcon field="dias_atraso" /></span>
+                        </TableHead>
                         <TableHead className="text-xs whitespace-nowrap text-center">Chamados 90d</TableHead>
-                        <TableHead className="text-xs whitespace-nowrap text-center">Meses</TableHead>
+                        <TableHead className="text-xs whitespace-nowrap text-center cursor-pointer select-none" onClick={() => toggleSort("tempo_cliente_meses")}>
+                          <span className="flex items-center justify-center">Meses<SortIcon field="tempo_cliente_meses" /></span>
+                        </TableHead>
                         <TableHead className="text-xs whitespace-nowrap text-center">NPS</TableHead>
                         <TableHead className="text-xs whitespace-nowrap text-center">CRM</TableHead>
-                        <TableHead className="text-xs whitespace-nowrap text-right">LTV</TableHead>
+                        <TableHead className="text-xs whitespace-nowrap text-right cursor-pointer select-none" onClick={() => toggleSort("ltv_estimado")}>
+                          <span className="flex items-center justify-end">LTV<SortIcon field="ltv_estimado" /></span>
+                        </TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -514,8 +538,15 @@ const Cancelamentos = () => {
                         filtered.map((c) => {
                           const b = getBucket(c.churn_risk_score);
                           const wf = workflowMap.get(c.cliente_id);
+                          const ltvCalc = c.ltv_estimado != null && c.ltv_estimado > 0
+                            ? c.ltv_estimado
+                            : (c.valor_mensalidade && c.tempo_cliente_meses ? c.valor_mensalidade * c.tempo_cliente_meses : null);
                           return (
-                            <TableRow key={c.id || c.cliente_id} className="hover:bg-muted/50 transition-colors">
+                            <TableRow
+                              key={c.id || c.cliente_id}
+                              className="hover:bg-muted/50 transition-colors cursor-pointer"
+                              onClick={() => setSelectedCliente(c)}
+                            >
                               <TableCell className="text-xs font-medium max-w-[130px] truncate">{c.cliente_nome || "—"}</TableCell>
                               <TableCell className="text-xs font-medium text-destructive">
                                 {c.data_cancelamento
@@ -569,7 +600,7 @@ const Cancelamentos = () => {
                                 ) : <span className="text-muted-foreground">—</span>}
                               </TableCell>
                               <TableCell className="text-right text-xs">
-                                {c.ltv_estimado != null ? `R$ ${c.ltv_estimado.toLocaleString("pt-BR", { minimumFractionDigits: 0 })}` : "—"}
+                                {ltvCalc != null ? `R$ ${ltvCalc.toLocaleString("pt-BR", { minimumFractionDigits: 0 })}` : "—"}
                               </TableCell>
                             </TableRow>
                           );
@@ -581,59 +612,51 @@ const Cancelamentos = () => {
               </CardContent>
             </Card>
 
-            {/* Motivos + Comparativo */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium text-muted-foreground">Top 10 Motivos de Cancelamento</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {topMotivos.length > 0 ? (
-                    <div className="max-h-[280px] overflow-y-auto">
-                      <ResponsiveContainer width="100%" height={topMotivos.length * 30 + 20}>
-                        <BarChart data={topMotivos} layout="vertical" margin={{ left: 8 }}>
-                          <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                          <XAxis type="number" tick={{ fontSize: 10 }} />
-                          <YAxis type="category" dataKey="motivo" tick={{ fontSize: 10 }} width={150} />
-                          <Tooltip formatter={(v: any) => [v, "Cancelamentos"]} />
-                          <Bar dataKey="qtd" radius={[0, 4, 4, 0]}>
-                            {topMotivos.map((_, idx) => <Cell key={idx} fill={COLORS[idx % COLORS.length]} />)}
-                          </Bar>
-                        </BarChart>
-                      </ResponsiveContainer>
-                    </div>
-                  ) : (
-                    <div className="h-[240px] flex items-center justify-center text-muted-foreground text-sm">Sem dados disponíveis</div>
-                  )}
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium text-muted-foreground">Perfil Comparativo — Ativos vs Cancelados</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {comparativo.some((d) => d.Ativos > 0 || d.Cancelados > 0) ? (
-                    <ResponsiveContainer width="100%" height={240}>
-                      <BarChart data={comparativo} margin={{ left: 8 }}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="metric" tick={{ fontSize: 11 }} />
-                        <YAxis tick={{ fontSize: 10 }} />
-                        <Tooltip />
-                        <Legend />
-                        <Bar dataKey="Ativos" name="Ativos" fill="hsl(var(--primary) / 0.7)" radius={[4, 4, 0, 0]} />
-                        <Bar dataKey="Cancelados" name="Cancelados" fill="hsl(var(--destructive) / 0.7)" radius={[4, 4, 0, 0]} />
+            {/* Top Motivos (full width) */}
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground">Top 10 Motivos de Cancelamento</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {topMotivos.length > 0 ? (
+                  <div className="max-h-[320px] overflow-y-auto">
+                    <ResponsiveContainer width="100%" height={Math.max(200, topMotivos.length * 32 + 20)}>
+                      <BarChart data={topMotivos} layout="vertical" margin={{ left: 8 }}>
+                        <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                        <XAxis type="number" tick={{ fontSize: 10 }} />
+                        <YAxis type="category" dataKey="motivo" tick={{ fontSize: 10 }} width={180} />
+                        <Tooltip formatter={(v: any) => [v, "Ocorrências"]} />
+                        <Bar dataKey="qtd" radius={[0, 4, 4, 0]}>
+                          {topMotivos.map((_, idx) => <Cell key={idx} fill={COLORS[idx % COLORS.length]} />)}
+                        </Bar>
                       </BarChart>
                     </ResponsiveContainer>
-                  ) : (
-                    <div className="h-[240px] flex items-center justify-center text-muted-foreground text-sm">Sem dados comparativos disponíveis</div>
-                  )}
-                </CardContent>
-              </Card>
-            </div>
+                  </div>
+                ) : (
+                  <div className="h-[200px] flex items-center justify-center text-muted-foreground text-sm">Sem dados disponíveis</div>
+                )}
+              </CardContent>
+            </Card>
           </>
         )}
       </main>
+
+      {/* CRM Drawer for client history */}
+      {selectedCliente && (
+        <CrmDrawer
+          cliente={selectedCliente}
+          score={selectedCliente.churn_risk_score}
+          bucket={getBucket(selectedCliente.churn_risk_score)}
+          workflow={workflowMap.get(selectedCliente.cliente_id)}
+          events={selectedEvents}
+          chamadosCliente={selectedChamados}
+          onClose={() => setSelectedCliente(null)}
+          onStartTreatment={() => addToWorkflow(selectedCliente.cliente_id)}
+          onUpdateStatus={(s) => updateStatus(selectedCliente.cliente_id, s)}
+          onUpdateTags={(t) => updateTags(selectedCliente.cliente_id, t)}
+          onUpdateOwner={(o) => updateOwner(selectedCliente.cliente_id, o || "")}
+        />
+      )}
     </div>
   );
 };
