@@ -19,7 +19,6 @@ Deno.serve(async (req) => {
     const body = await req.json();
     const { action, isp_id, ...params } = body;
 
-    // Validate isp_id is always present and non-empty
     if (!isp_id || typeof isp_id !== "string" || isp_id.trim() === "") {
       return new Response(JSON.stringify({ error: "isp_id is required" }), {
         status: 400,
@@ -46,7 +45,6 @@ Deno.serve(async (req) => {
         const { cliente_id, status_workflow, tags, owner_user_id, entered_workflow_at } = params;
         if (!cliente_id) throw new Error("cliente_id required");
 
-        // Step 1: Check if record already exists
         const { data: existing, error: fetchErr } = await supabase
           .from("crm_workflow")
           .select("*")
@@ -56,14 +54,12 @@ Deno.serve(async (req) => {
         if (fetchErr) throw fetchErr;
 
         if (existing) {
-          // Step 2a: UPDATE only — never delete, never duplicate
           const updates: Record<string, any> = {
             last_action_at: new Date().toISOString(),
           };
           if (status_workflow !== undefined) updates.status_workflow = status_workflow;
           if (tags !== undefined) updates.tags = tags;
           if (owner_user_id !== undefined) updates.owner_user_id = owner_user_id;
-          // Never overwrite entered_workflow_at on existing records
 
           const { data, error } = await supabase
             .from("crm_workflow")
@@ -74,7 +70,6 @@ Deno.serve(async (req) => {
           if (error) throw error;
           result = data;
         } else {
-          // Step 2b: INSERT only when no record exists
           const { data, error } = await supabase
             .from("crm_workflow")
             .insert({
@@ -129,6 +124,76 @@ Deno.serve(async (req) => {
           .single();
         if (error) throw error;
         result = data;
+        break;
+      }
+
+      case "update_comment": {
+        const { comment_id, body: updatedBody } = params;
+        if (!comment_id || !updatedBody) throw new Error("comment_id and body required");
+
+        const { data, error } = await supabase
+          .from("crm_comments")
+          .update({ body: updatedBody })
+          .eq("id", comment_id)
+          .eq("isp_id", isp_id)
+          .select()
+          .single();
+        if (error) throw error;
+        result = data;
+        break;
+      }
+
+      case "delete_comment": {
+        const { comment_id } = params;
+        if (!comment_id) throw new Error("comment_id required");
+
+        const { error } = await supabase
+          .from("crm_comments")
+          .delete()
+          .eq("id", comment_id)
+          .eq("isp_id", isp_id);
+        if (error) throw error;
+        result = { success: true };
+        break;
+      }
+
+      // ── Tags catalog ──
+      case "fetch_tags": {
+        const { data, error } = await supabase
+          .from("crm_tags")
+          .select("*")
+          .eq("isp_id", isp_id)
+          .order("name");
+        if (error) throw error;
+        result = data;
+        break;
+      }
+
+      case "create_tag": {
+        const { name, color = "#6366f1" } = params;
+        if (!name) throw new Error("name required");
+
+        const { data, error } = await supabase
+          .from("crm_tags")
+          .upsert({ isp_id, name, color }, { onConflict: "isp_id,name" })
+          .select()
+          .single();
+        if (error) throw error;
+        result = data;
+        break;
+      }
+
+      case "delete_tag": {
+        const { tag_id } = params;
+        if (!tag_id) throw new Error("tag_id required");
+
+        const { error } = await supabase
+          .from("crm_tags")
+          .delete()
+          .eq("id", tag_id)
+          .eq("isp_id", isp_id);
+        if (error) throw error;
+        result = { success: true };
         break;
       }
 
