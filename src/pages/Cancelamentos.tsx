@@ -306,8 +306,13 @@ const Cancelamentos = () => {
         : `Score financeiro elevado`;
       synthetic.push(makeEvent("inadimplencia_iniciou", desc, c.score_financeiro, c.ultimo_pagamento_data || baseDate));
     }
-    if (c.score_suporte > 0) {
-      synthetic.push(makeEvent("chamado_reincidente", `${c.qtd_chamados_30d} chamados nos últimos 30 dias`, c.score_suporte));
+    if (c.score_suporte > 0 || c.qtd_chamados_90d >= 3) {
+      const total30 = c.qtd_chamados_30d || 0;
+      const total90 = c.qtd_chamados_90d || 0;
+      const desc = total30 > 0
+        ? `${total30} chamados (30d) / ${total90} chamados (90d)`
+        : `${total90} chamados nos últimos 90 dias`;
+      synthetic.push(makeEvent("chamado_reincidente", desc, c.score_suporte || 5));
     }
     if (c.score_nps > 0 && c.nps_ultimo_score != null) {
       const tipo = c.nps_ultimo_score <= 6 ? "nps_detrator" : "risco_aumentou";
