@@ -199,9 +199,31 @@ const Cancelamentos = () => {
 
   // ─── Cohort por tempo de assinatura ───
   const cohortTempo = useMemo(() => {
+    // Helper: derive months from data_instalacao + data_cancelamento when tempo_cliente_meses is null
+    const getMeses = (c: ChurnStatus): number | null => {
+      if (c.tempo_cliente_meses != null && c.tempo_cliente_meses > 0) return c.tempo_cliente_meses;
+      if (c.data_instalacao && c.data_cancelamento) {
+        const inst = new Date(c.data_instalacao + "T00:00:00");
+        const canc = new Date(c.data_cancelamento + "T00:00:00");
+        if (!isNaN(inst.getTime()) && !isNaN(canc.getTime())) {
+          const diff = (canc.getTime() - inst.getTime()) / (1000 * 60 * 60 * 24 * 30.44);
+          return Math.max(0, Math.round(diff));
+        }
+      }
+      if (c.data_instalacao) {
+        const inst = new Date(c.data_instalacao + "T00:00:00");
+        if (!isNaN(inst.getTime())) {
+          const diff = (Date.now() - inst.getTime()) / (1000 * 60 * 60 * 24 * 30.44);
+          return Math.max(0, Math.round(diff));
+        }
+      }
+      return null; // truly unknown
+    };
+
     return COHORT_FAIXAS.map((faixa) => {
       const clientes = filtered.filter((c) => {
-        const meses = c.tempo_cliente_meses ?? 0;
+        const meses = getMeses(c);
+        if (meses === null) return false; // exclude unknowns from cohort
         return meses >= faixa.min && meses <= faixa.max;
       });
       return {
