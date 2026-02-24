@@ -247,16 +247,8 @@ const Cancelamentos = () => {
     }).filter((f) => f.qtd > 0);
   }, [filtered]);
 
-  // ─── Cohort Churn por Dimensão (plano/cidade/bairro) ───
-  const ativos = useMemo(() => churnStatus.filter((c) => c.status_churn !== "cancelado"), [churnStatus]);
-
-  const riscoPorDimensao = useMemo(() => {
-    let f = [...ativos];
-    if (plano !== "todos") f = f.filter((c) => c.plano_nome === plano);
-    if (cidade !== "todos") f = f.filter((c) => c.cliente_cidade === cidade);
-    if (bairro !== "todos") f = f.filter((c) => c.cliente_bairro === bairro);
-    if (bucket !== "todos") f = f.filter((c) => getBucket(c.churn_risk_score) === bucket);
-
+  // ─── Cohort Churn por Dimensão (cancelados vs total por plano/cidade/bairro) ───
+  const churnPorDimensao = useMemo(() => {
     const getKey = (c: ChurnStatus): string | null => {
       switch (churnDimension) {
         case "plano": return c.plano_nome || null;
@@ -265,29 +257,40 @@ const Cancelamentos = () => {
       }
     };
 
-    const map: Record<string, { risco: number; total: number; mrr: number }> = {};
+    // Apply filters to full dataset
+    let f = [...churnStatus];
+    if (plano !== "todos") f = f.filter((c) => c.plano_nome === plano);
+    if (cidade !== "todos") f = f.filter((c) => c.cliente_cidade === cidade);
+    if (bairro !== "todos") f = f.filter((c) => c.cliente_bairro === bairro);
+    if (bucket !== "todos") f = f.filter((c) => getBucket(c.churn_risk_score) === bucket);
+
+    const map: Record<string, { cancelados: number; total: number; mrr: number }> = {};
     f.forEach((c) => {
       const key = getKey(c);
       if (!key) return;
-      if (!map[key]) map[key] = { risco: 0, total: 0, mrr: 0 };
+      if (!map[key]) map[key] = { cancelados: 0, total: 0, mrr: 0 };
       map[key].total++;
-      if (c.status_churn === "risco") {
-        map[key].risco++;
+      if (c.status_churn === "cancelado") {
+        map[key].cancelados++;
         map[key].mrr += c.valor_mensalidade || 0;
       }
     });
+
+    const truncate = (s: string, max: number) => s.length > max ? s.substring(0, max) + "…" : s;
+
     return Object.entries(map)
       .map(([nome, d]) => ({
-        plano: nome,
-        risco: d.risco,
+        nome,
+        label: truncate(nome, 25),
+        cancelados: d.cancelados,
         total: d.total,
-        pct: d.total > 0 ? Math.round((d.risco / d.total) * 100) : 0,
+        pct: d.total > 0 ? parseFloat(((d.cancelados / d.total) * 100).toFixed(1)) : 0,
         mrr: Math.round(d.mrr),
       }))
-      .filter((d) => d.total >= 3)
+      .filter((d) => d.total >= 3 && d.cancelados > 0)
       .sort((a, b) => b.pct - a.pct)
       .slice(0, 10);
-  }, [ativos, plano, cidade, bairro, bucket, getBucket, churnDimension]);
+  }, [churnStatus, plano, cidade, bairro, bucket, getBucket, churnDimension]);
   
 
   // ─── Top Motivos (enriched: events + status + score pillars) ───
@@ -723,16 +726,16 @@ const Cancelamentos = () => {
                     ))}
                   </div>
                 </div>
-                <p className="text-[10px] text-muted-foreground">% de clientes ativos em risco por {churnDimension} (filtros aplicados)</p>
+                <p className="text-[10px] text-muted-foreground">Taxa de churn (cancelados / total) por {churnDimension} (filtros aplicados)</p>
               </CardHeader>
               <CardContent>
-                {riscoPorDimensao.length > 0 ? (
+                {churnPorDimensao.length > 0 ? (
                   <div className="space-y-4">
                     <ResponsiveContainer width="100%" height={230}>
-                      <BarChart data={riscoPorDimensao} margin={{ top: 8, right: 8, bottom: 80, left: -10 }}>
+                      <BarChart data={churnPorDimensao} margin={{ top: 8, right: 8, bottom: 80, left: -10 }}>
                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
                         <XAxis
-                          dataKey="plano"
+                          dataKey="label"
                           tick={{ fontSize: 9, fill: "hsl(var(--muted-foreground))" }}
                           angle={-40}
                           textAnchor="end"
@@ -750,24 +753,26 @@ const Cancelamentos = () => {
                           contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 12 }}
                           formatter={(_v: any, _n: any, props: any) => {
                             const d = props.payload;
-                            return [`${d.risco} de ${d.total} (${d.pct}%)`, "Em risco"];
+                            return [`${d.cancelados} de ${d.total} (${d.pct}%)`, "Churn"];
                           }}
+                          labelFormatter={(label: any, payload: any) => payload?.[0]?.payload?.nome || label}
                         />
                         <Bar dataKey="pct" radius={[4, 4, 0, 0]} maxBarSize={44}>
-                          {riscoPorDimensao.map((e, i) => <Cell key={i} fill={barColor(e.pct)} />)}
+                          {churnPorDimensao.map((e, i) => <Cell key={i} fill={barColor(e.pct)} />)}
                         </Bar>
                       </BarChart>
                     </ResponsiveContainer>
 
                     <div className="space-y-1.5 max-h-[200px] overflow-y-auto">
-                      {riscoPorDimensao.map((d) => (
-                        <div key={d.plano} className="flex items-center justify-between py-1 border-b border-border/30 last:border-0 gap-2">
+                      {churnPorDimensao.map((d) => (
+                        <div key={d.nome} className="flex items-center justify-between py-1 border-b border-border/30 last:border-0 gap-2">
                           <div className="flex items-center gap-2 min-w-0 flex-1">
                             <span className="w-2 h-2 rounded-full shrink-0" style={{ background: barColor(d.pct) }} />
-                            <span className="text-xs text-foreground truncate">{d.plano}</span>
+                            <span className="text-xs text-foreground truncate" title={d.nome}>{d.nome}</span>
                           </div>
                           <div className="flex items-center gap-3 shrink-0 text-xs">
-                            <span className="font-semibold text-foreground">{d.risco} clientes</span>
+                            <span className="font-semibold text-foreground">{d.cancelados} de {d.total}</span>
+                            <span className="text-muted-foreground">{d.pct}%</span>
                             <span className="text-muted-foreground">MRR: {fmtBRL(d.mrr)}</span>
                           </div>
                         </div>
