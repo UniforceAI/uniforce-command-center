@@ -63,7 +63,7 @@ function NPSBadge({ classificacao, nota }: { classificacao?: string; nota?: numb
 
 const ClientesEmRisco = () => {
   const { churnStatus, churnEvents, isLoading, error } = useChurnData();
-  const { getChamadosPorCliente } = useChamados();
+  const { chamados, getChamadosPorCliente } = useChamados();
   const { ispId } = useActiveIsp();
   const { config } = useChurnScoreConfig();
   const { getBucket } = useRiskBucketConfig();
@@ -188,33 +188,61 @@ const ClientesEmRisco = () => {
     setPeriodo("todos");
   };
 
-  // Events for selected client
+  // Chamados for selected client
+  const selectedClienteChamados = useMemo(() => {
+    if (!selectedCliente) return [];
+    return chamados.filter(c => {
+      const cid = typeof c.id_cliente === 'string' ? parseInt(c.id_cliente, 10) : c.id_cliente;
+      return cid === selectedCliente.cliente_id;
+    });
+  }, [selectedCliente, chamados]);
+
+  // Events for selected client - ALL score pillars
   const clienteEvents = useMemo(() => {
     if (!selectedCliente) return [];
-    const eventos = churnEvents
-      .filter((e) => e.cliente_id === selectedCliente.cliente_id)
-      .filter((e) => e.tipo_evento !== "chamado_reincidente")
-      .filter((e) => e.tipo_evento !== "nps_detrator")
-      .slice(0, 15);
+    const c = selectedCliente;
+    const eventos: any[] = [];
+    const now = new Date().toISOString();
 
-    const ch30Real = chamadosPorClienteMap.d30.get(selectedCliente.cliente_id)?.chamados_periodo ?? 0;
-    const rawUltimoChamado = chamadosPorClienteMap.d30.get(selectedCliente.cliente_id)?.ultimo_chamado ?? selectedCliente.ultimo_atendimento_data ?? new Date().toISOString();
-    const ultimoChamadoData = typeof rawUltimoChamado === "string" ? rawUltimoChamado.replace(" ", "T") : new Date().toISOString();
+    // Real events from churn_events (excluding synthetic ones we'll recreate)
+    const realEvents = churnEvents
+      .filter((e) => e.cliente_id === c.cliente_id)
+      .filter((e) => e.tipo_evento !== "chamado_reincidente" && e.tipo_evento !== "nps_detrator")
+      .slice(0, 10);
+    eventos.push(...realEvents);
+
+    // Synthetic: Financeiro
+    const scoreFinanceiro = Math.round(((c.score_financeiro ?? 0) / 30) * config.faturaAtrasada);
+    if (scoreFinanceiro > 0) {
+      eventos.push({
+        id: "synth-financeiro", isp_id: c.isp_id, cliente_id: c.cliente_id,
+        id_contrato: null, tipo_evento: "score_financeiro", peso_evento: 3,
+        impacto_score: scoreFinanceiro,
+        descricao: `${Math.round(c.dias_atraso ?? 0)} dias em atraso — impacto de +${scoreFinanceiro}pts`,
+        dados_evento: { dias_atraso: c.dias_atraso }, data_evento: c.ultimo_pagamento_data || now, created_at: now,
+      });
+    }
+
+    // Synthetic: Suporte (chamado reincidente)
+    const ch30Real = chamadosPorClienteMap.d30.get(c.cliente_id)?.chamados_periodo ?? 0;
+    const rawUltimoChamado = chamadosPorClienteMap.d30.get(c.cliente_id)?.ultimo_chamado ?? c.ultimo_atendimento_data ?? now;
+    const ultimoChamadoData = typeof rawUltimoChamado === "string" ? rawUltimoChamado.replace(" ", "T") : now;
     if (ch30Real >= 2) {
       const impacto = ch30Real >= 3 ? config.chamados30dBase + (ch30Real - 2) * config.chamadoAdicional : config.chamados30dBase;
-      eventos.unshift({
-        id: "real-reincidente", isp_id: selectedCliente.isp_id, cliente_id: selectedCliente.cliente_id,
+      eventos.push({
+        id: "real-reincidente", isp_id: c.isp_id, cliente_id: c.cliente_id,
         id_contrato: null, tipo_evento: "chamado_reincidente", peso_evento: ch30Real >= 3 ? 3 : 2,
         impacto_score: impacto, descricao: `${ch30Real} chamados nos últimos 30 dias — impacto de +${impacto}pts`,
         dados_evento: { qtd_chamados_30d_real: ch30Real }, data_evento: ultimoChamadoData, created_at: ultimoChamadoData,
       });
     }
 
-    const npsCliente = npsMap.get(selectedCliente.cliente_id);
+    // Synthetic: NPS Detrator
+    const npsCliente = npsMap.get(c.cliente_id);
     if (npsCliente?.classificacao === "DETRATOR") {
-      const npsData = npsCliente.data ?? new Date().toISOString();
-      eventos.unshift({
-        id: "real-nps-detrator", isp_id: selectedCliente.isp_id, cliente_id: selectedCliente.cliente_id,
+      const npsData = npsCliente.data ?? now;
+      eventos.push({
+        id: "real-nps-detrator", isp_id: c.isp_id, cliente_id: c.cliente_id,
         id_contrato: null, tipo_evento: "nps_detrator", peso_evento: 4, impacto_score: config.npsDetrator,
         descricao: `NPS Detrator — nota ${npsCliente.nota}/10 — impacto de +${config.npsDetrator}pts`,
         dados_evento: { nota_nps: npsCliente.nota, classificacao: npsCliente.classificacao },
@@ -222,6 +250,33 @@ const ClientesEmRisco = () => {
       });
     }
 
+    // Synthetic: Qualidade
+    const qualidadeBase = 25;
+    const scoreQualidade = Math.round(((c.score_qualidade ?? 0) / qualidadeBase) * config.qualidade);
+    if (scoreQualidade > 0) {
+      eventos.push({
+        id: "synth-qualidade", isp_id: c.isp_id, cliente_id: c.cliente_id,
+        id_contrato: null, tipo_evento: "score_qualidade", peso_evento: 2,
+        impacto_score: scoreQualidade,
+        descricao: `Indicadores de qualidade impactando +${scoreQualidade}pts no score`,
+        dados_evento: { score_raw: c.score_qualidade }, data_evento: now, created_at: now,
+      });
+    }
+
+    // Synthetic: Comportamental
+    const scoreComportamental = Math.round(((c.score_comportamental ?? 0) / 20) * config.comportamental);
+    if (scoreComportamental > 0) {
+      eventos.push({
+        id: "synth-comportamental", isp_id: c.isp_id, cliente_id: c.cliente_id,
+        id_contrato: null, tipo_evento: "score_comportamental", peso_evento: 2,
+        impacto_score: scoreComportamental,
+        descricao: `Comportamento de uso impactando +${scoreComportamental}pts no score`,
+        dados_evento: { score_raw: c.score_comportamental }, data_evento: now, created_at: now,
+      });
+    }
+
+    // Sort by impact desc
+    eventos.sort((a, b) => (b.impacto_score || 0) - (a.impacto_score || 0));
     return eventos;
   }, [selectedCliente, churnEvents, chamadosPorClienteMap, npsMap, config]);
 
@@ -490,6 +545,7 @@ const ClientesEmRisco = () => {
           bucket={getBucket(getScoreTotalReal(selectedCliente))}
           workflow={workflowMap.get(selectedCliente.cliente_id)}
           events={clienteEvents}
+          chamadosCliente={selectedClienteChamados}
           onClose={() => setSelectedCliente(null)}
           onStartTreatment={async () => {
             await handleStartTreatment(selectedCliente);

@@ -158,6 +158,30 @@ export type Database = {
         }
         Relationships: []
       }
+      crm_tags: {
+        Row: {
+          color: string
+          created_at: string
+          id: string
+          isp_id: string
+          name: string
+        }
+        Insert: {
+          color?: string
+          created_at?: string
+          id?: string
+          isp_id: string
+          name: string
+        }
+        Update: {
+          color?: string
+          created_at?: string
+          id?: string
+          isp_id?: string
+          name?: string
+        }
+        Relationships: []
+      }
       crm_workflow: {
         Row: {
           cliente_id: number

@@ -66,5 +66,35 @@ export function useCrmComments(clienteId: number | null) {
     [ispId, clienteId, user]
   );
 
-  return { comments, isLoading, addComment, refetch: fetchComments };
+  const updateComment = useCallback(
+    async (commentId: string, body: string) => {
+      if (!ispId) return;
+      const data = await callCrmApi({
+        action: "update_comment",
+        isp_id: ispId,
+        comment_id: commentId,
+        body,
+      });
+      setComments((prev) =>
+        prev.map((c) => (c.id === commentId ? { ...c, body } : c))
+      );
+      return data;
+    },
+    [ispId]
+  );
+
+  const deleteComment = useCallback(
+    async (commentId: string) => {
+      if (!ispId) return;
+      await callCrmApi({
+        action: "delete_comment",
+        isp_id: ispId,
+        comment_id: commentId,
+      });
+      setComments((prev) => prev.filter((c) => c.id !== commentId));
+    },
+    [ispId]
+  );
+
+  return { comments, isLoading, addComment, updateComment, deleteComment, refetch: fetchComments };
 }
