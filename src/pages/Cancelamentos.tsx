@@ -6,7 +6,6 @@ import { useCrmWorkflow } from "@/hooks/useCrmWorkflow";
 import { useChurnScoreConfig, calcScoreSuporteConfiguravel } from "@/contexts/ChurnScoreConfigContext";
 import { IspActions } from "@/components/shared/IspActions";
 import { LoadingScreen } from "@/components/shared/LoadingScreen";
-import { KPICardNew } from "@/components/shared/KPICardNew";
 import { GlobalFilters } from "@/components/shared/GlobalFilters";
 import { CrmDrawer } from "@/components/crm/CrmDrawer";
 import { Badge } from "@/components/ui/badge";
@@ -15,10 +14,12 @@ import { Button } from "@/components/ui/button";
 import {
   AlertCircle, Users, TrendingDown, DollarSign, CalendarX,
   PackageX, ShieldAlert, Info, ArrowUpDown, ChevronUp, ChevronDown,
+  BarChart3, Clock,
 } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
-  PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
+  PieChart, Pie, Cell, BarChart, Bar, LineChart, Line, AreaChart, Area,
+  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from "recharts";
 
 const BUCKET_COLORS: Record<RiskBucket, string> = {
@@ -47,6 +48,8 @@ const COHORT_FAIXAS = [
 type SortField = "cliente_nome" | "data_cancelamento" | "churn_risk_score" | "valor_mensalidade" | "dias_atraso" | "tempo_cliente_meses" | "ltv_estimado";
 type SortDir = "asc" | "desc";
 
+const fmtBRL = (v: number) => `R$ ${v.toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+
 const Cancelamentos = () => {
   const { churnStatus, churnEvents, isLoading, error } = useChurnData();
   const { getChamadosPorCliente, chamados: allChamados } = useChamados();
@@ -65,7 +68,6 @@ const Cancelamentos = () => {
         const ch30 = chamadosMap30d.get(c.cliente_id)?.chamados_periodo ?? c.qtd_chamados_30d ?? 0;
         const ch90 = chamadosMap90d.get(c.cliente_id)?.chamados_periodo ?? c.qtd_chamados_90d ?? 0;
         const newScoreSuporte = calcScoreSuporteConfiguravel(ch30, ch90, config);
-        // Recalculate total score: replace old support score with new one
         const scoreDiff = newScoreSuporte - (c.score_suporte || 0);
         const newTotalScore = Math.max(0, Math.min(500, c.churn_risk_score + scoreDiff));
         return {
@@ -87,7 +89,6 @@ const Cancelamentos = () => {
   const [sortField, setSortField] = useState<SortField>("data_cancelamento");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [selectedCliente, setSelectedCliente] = useState<ChurnStatus | null>(null);
-
 
   const totalAtivos = useMemo(
     () => churnStatus.filter((c) => c.status_churn !== "cancelado").length,
@@ -137,7 +138,6 @@ const Cancelamentos = () => {
       });
     }
 
-    // Sort
     f.sort((a, b) => {
       let valA: any, valB: any;
       switch (sortField) {
@@ -168,19 +168,20 @@ const Cancelamentos = () => {
     const totalBase = totalCancelados + totalAtivos;
     const taxaChurn = totalBase > 0 ? ((totalCancelados / totalBase) * 100).toFixed(2) : "0";
     const mrrPerdido = filtered.reduce((acc, c) => acc + (c.valor_mensalidade || 0), 0);
-    // LTV = mensalidade * tempo_cliente_meses (se disponível), senão usa ltv_estimado
     const ltvPerdido = filtered.reduce((acc, c) => {
       if (c.ltv_estimado != null && c.ltv_estimado > 0) return acc + c.ltv_estimado;
       if (c.valor_mensalidade && c.tempo_cliente_meses) return acc + (c.valor_mensalidade * c.tempo_cliente_meses);
       return acc;
     }, 0);
     const tickets = filtered.filter((c) => c.valor_mensalidade != null).map((c) => c.valor_mensalidade!);
-    const ticketMedio = tickets.length > 0 ? (tickets.reduce((a, b) => a + b, 0) / tickets.length).toFixed(2) : "0";
+    const ticketMedio = tickets.length > 0 ? tickets.reduce((a, b) => a + b, 0) / tickets.length : 0;
+    const tempos = filtered.filter(c => c.tempo_cliente_meses != null).map(c => c.tempo_cliente_meses!);
+    const tempoMedio = tempos.length > 0 ? Math.round(tempos.reduce((a, b) => a + b, 0) / tempos.length) : 0;
     const datas = filtered.filter((c) => c.data_cancelamento).map((c) => new Date(c.data_cancelamento! + "T00:00:00"));
     const ultimoCancelamento = datas.length > 0
       ? new Date(Math.max(...datas.map((d) => d.getTime()))).toLocaleDateString("pt-BR")
       : null;
-    return { totalCancelados, taxaChurn, mrrPerdido, ltvPerdido, ticketMedio, ultimoCancelamento };
+    return { totalCancelados, taxaChurn, mrrPerdido, ltvPerdido, ticketMedio, tempoMedio, ultimoCancelamento };
   }, [filtered, totalAtivos]);
 
   // ─── Distribuição por Bucket ───
@@ -195,7 +196,7 @@ const Cancelamentos = () => {
     ];
   }, [filtered, getBucket]);
 
-  // ─── Cohort por tempo de assinatura (PieChart) ───
+  // ─── Cohort por tempo de assinatura ───
   const cohortTempo = useMemo(() => {
     return COHORT_FAIXAS.map((faixa) => {
       const clientes = filtered.filter((c) => {
@@ -215,30 +216,42 @@ const Cancelamentos = () => {
     }).filter((f) => f.qtd > 0);
   }, [filtered]);
 
-  // ─── Top Motivos (using events + churn_status data, grouped by date ranges) ───
+  // ─── Top Motivos (enriched: events + status + score pillars) ───
   const topMotivos = useMemo(() => {
-    // Get cancelled client IDs
     const canceladoIds = new Set(filtered.map((c) => c.cliente_id));
-    
-    // Collect motivos from multiple sources
     const motivoMap: Record<string, number> = {};
-    
-    // 1. From churn_status motivo_risco_principal  
+
+    // 1. motivo_risco_principal
     filtered.forEach((c) => {
       const m = c.motivo_risco_principal || STATUS_MOTIVO[c.status_internet || ""] || null;
       if (m) motivoMap[m] = (motivoMap[m] || 0) + 1;
     });
-    
-    // 2. From churn_events for cancelled clients (broader motivos)
+
+    // 2. churn_events
     churnEvents
       .filter((e) => canceladoIds.has(e.cliente_id))
       .forEach((e) => {
-        // Map event types to readable motivos
         const label = e.descricao || e.tipo_evento;
         if (label && !label.includes("score_") && e.tipo_evento !== "cancelamento_real") {
           motivoMap[label] = (motivoMap[label] || 0) + 1;
         }
       });
+
+    // 3. Enrich from score pillars for diversity
+    filtered.forEach((c) => {
+      if (c.score_suporte > 0 && (c.qtd_chamados_90d ?? 0) >= 3) {
+        motivoMap["Suporte recorrente"] = (motivoMap["Suporte recorrente"] || 0) + 1;
+      }
+      if (c.nps_ultimo_score != null && c.nps_ultimo_score <= 6) {
+        motivoMap["NPS Detrator"] = (motivoMap["NPS Detrator"] || 0) + 1;
+      }
+      if (c.score_comportamental > 0) {
+        motivoMap["Padrão comportamental"] = (motivoMap["Padrão comportamental"] || 0) + 1;
+      }
+      if (c.score_qualidade > 0) {
+        motivoMap["Qualidade de rede"] = (motivoMap["Qualidade de rede"] || 0) + 1;
+      }
+    });
 
     return Object.entries(motivoMap)
       .map(([motivo, qtd]) => ({ motivo, qtd }))
@@ -246,18 +259,20 @@ const Cancelamentos = () => {
       .slice(0, 10);
   }, [filtered, churnEvents]);
 
-  // ─── Cancelamentos por mês (all data, not just filtered) ───
+  // ─── Cancelamentos por mês (line chart) ───
   const cancelPorMes = useMemo(() => {
-    const map: Record<string, number> = {};
+    const map: Record<string, { qtd: number; mrr: number }> = {};
     cancelados.forEach((c) => {
       if (c.data_cancelamento) {
         const d = new Date(c.data_cancelamento + "T00:00:00");
         const key = `${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`;
-        map[key] = (map[key] || 0) + 1;
+        if (!map[key]) map[key] = { qtd: 0, mrr: 0 };
+        map[key].qtd += 1;
+        map[key].mrr += c.valor_mensalidade || 0;
       }
     });
     return Object.entries(map)
-      .map(([mes, qtd]) => ({ mes, qtd }))
+      .map(([mes, data]) => ({ mes, ...data }))
       .sort((a, b) => {
         const [ma, ya] = a.mes.split("/").map(Number);
         const [mb, yb] = b.mes.split("/").map(Number);
@@ -281,13 +296,11 @@ const Cancelamentos = () => {
   };
 
   // ─── CRM Drawer helpers ───
-  // Build events: real events + synthetic fallback from client data
   const selectedEvents = useMemo(() => {
     if (!selectedCliente) return [];
     const c = selectedCliente;
     const realEvents = churnEvents.filter((e) => e.cliente_id === c.cliente_id);
-    
-    // Deduplicate: remove events with same tipo_evento on the same date
+
     const deduped: typeof realEvents = [];
     const seen = new Set<string>();
     for (const e of realEvents) {
@@ -299,7 +312,6 @@ const Cancelamentos = () => {
       }
     }
 
-    // Always generate synthetic events from score pillars to fill gaps
     const synthetic: ChurnEvent[] = [];
     const baseDate = c.data_cancelamento || c.updated_at || new Date().toISOString();
     const makeEvent = (tipo: string, desc: string, impacto: number, date?: string): ChurnEvent => ({
@@ -316,7 +328,6 @@ const Cancelamentos = () => {
       created_at: baseDate,
     });
 
-    // Generate synthetic for each score pillar that contributed
     if (c.score_financeiro > 0) {
       const desc = c.dias_atraso && c.dias_atraso > 0
         ? `Atraso de ${Math.round(c.dias_atraso)} dias detectado`
@@ -345,7 +356,6 @@ const Cancelamentos = () => {
       synthetic.push(makeEvent("cancelamento_real", `Cancelamento confirmado em ${new Date(c.data_cancelamento + "T00:00:00").toLocaleDateString("pt-BR")}`, 0, c.data_cancelamento));
     }
 
-    // Merge real + synthetic, deduplicating by tipo_evento+date (real events take priority)
     const merged = [...deduped];
     const seenTypes = new Set<string>();
     for (const e of deduped) {
@@ -362,7 +372,6 @@ const Cancelamentos = () => {
     }
 
     return merged.sort((a, b) => new Date(b.data_evento).getTime() - new Date(a.data_evento).getTime());
-    return synthetic.sort((a, b) => new Date(b.data_evento).getTime() - new Date(a.data_evento).getTime());
   }, [selectedCliente, churnEvents]);
 
   const selectedChamados = useMemo(() => {
@@ -426,7 +435,7 @@ const Cancelamentos = () => {
                 Cancelamentos
               </h1>
               <p className="text-muted-foreground text-sm mt-0.5">
-                {cancelados.length.toLocaleString()} cancelamentos · Prova do sistema de churn
+                {cancelados.length.toLocaleString()} cancelamentos · Análise de perdas
               </p>
             </div>
             <IspActions />
@@ -458,54 +467,208 @@ const Cancelamentos = () => {
           </Card>
         ) : (
           <>
-            {/* ── KPIs ── */}
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-              <KPICardNew title="Total Cancelados" value={kpis.totalCancelados.toLocaleString()} icon={Users} variant="danger" />
-              <KPICardNew title="% em Risco (Churn)" value={`${kpis.taxaChurn}%`} icon={TrendingDown} variant="danger"
-                tooltip="Cancelados / (Cancelados + Ativos)" />
-              <KPICardNew title="MRR Perdido" value={`R$ ${kpis.mrrPerdido.toLocaleString("pt-BR", { minimumFractionDigits: 0 })}`} icon={DollarSign} variant="warning" />
-              <KPICardNew title="LTV Perdido" value={`R$ ${kpis.ltvPerdido.toLocaleString("pt-BR", { minimumFractionDigits: 0 })}`} icon={TrendingDown} variant="danger" />
-              <KPICardNew title="Ticket Médio" value={`R$ ${kpis.ticketMedio}`} icon={DollarSign} variant="default" />
-              <KPICardNew title="Último Cancelamento" value={kpis.ultimoCancelamento || "—"} icon={CalendarX} variant="default" />
+            {/* ── KPIs — 2 rows of 3 ── */}
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+              {/* Row 1: Volume */}
+              <Card className="border-l-4 border-l-destructive">
+                <CardContent className="p-5">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Total Cancelados</p>
+                      <p className="text-3xl font-bold mt-1">{kpis.totalCancelados.toLocaleString()}</p>
+                    </div>
+                    <div className="p-2.5 rounded-lg bg-destructive/10"><Users className="h-5 w-5 text-destructive" /></div>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card className="border-l-4 border-l-destructive">
+                <CardContent className="p-5">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Taxa Churn</p>
+                      <p className="text-3xl font-bold mt-1">{kpis.taxaChurn}%</p>
+                      <p className="text-[10px] text-muted-foreground mt-0.5">Cancelados / Base total</p>
+                    </div>
+                    <div className="p-2.5 rounded-lg bg-destructive/10"><TrendingDown className="h-5 w-5 text-destructive" /></div>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card className="border-l-4 border-l-warning">
+                <CardContent className="p-5">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">MRR Perdido</p>
+                      <p className="text-3xl font-bold mt-1">{fmtBRL(kpis.mrrPerdido)}</p>
+                    </div>
+                    <div className="p-2.5 rounded-lg bg-warning/10"><DollarSign className="h-5 w-5 text-warning" /></div>
+                  </div>
+                </CardContent>
+              </Card>
+              {/* Row 2: Financial */}
+              <Card className="border-l-4 border-l-destructive">
+                <CardContent className="p-5">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">LTV Perdido</p>
+                      <p className="text-3xl font-bold mt-1">{fmtBRL(kpis.ltvPerdido)}</p>
+                    </div>
+                    <div className="p-2.5 rounded-lg bg-destructive/10"><TrendingDown className="h-5 w-5 text-destructive" /></div>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card className="border-l-4 border-l-primary">
+                <CardContent className="p-5">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Ticket Médio</p>
+                      <p className="text-3xl font-bold mt-1">{fmtBRL(kpis.ticketMedio)}</p>
+                    </div>
+                    <div className="p-2.5 rounded-lg bg-primary/10"><DollarSign className="h-5 w-5 text-primary" /></div>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card className="border-l-4 border-l-primary">
+                <CardContent className="p-5">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Tempo Médio</p>
+                      <p className="text-3xl font-bold mt-1">{kpis.tempoMedio}<span className="text-lg font-normal text-muted-foreground ml-1">meses</span></p>
+                      <p className="text-[10px] text-muted-foreground mt-0.5">
+                        Último canc.: {kpis.ultimoCancelamento || "—"}
+                      </p>
+                    </div>
+                    <div className="p-2.5 rounded-lg bg-primary/10"><Clock className="h-5 w-5 text-primary" /></div>
+                  </div>
+                </CardContent>
+              </Card>
             </div>
 
-            {/* Bucket distribution + Cohort Pie */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Distribuição por Bucket */}
+            {/* ── Evolução de Cancelamentos (Line) + Bucket Distribution ── */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              {/* Line Chart — 2/3 width */}
+              {cancelPorMes.length > 0 && (
+                <Card className="lg:col-span-2">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                      <BarChart3 className="h-4 w-4" />
+                      Evolução de Cancelamentos
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <ResponsiveContainer width="100%" height={260}>
+                      <AreaChart data={cancelPorMes} margin={{ top: 8, right: 12, bottom: 8, left: -10 }}>
+                        <defs>
+                          <linearGradient id="cancelGradient" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="hsl(var(--destructive))" stopOpacity={0.3} />
+                            <stop offset="95%" stopColor="hsl(var(--destructive))" stopOpacity={0} />
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                        <XAxis dataKey="mes" tick={{ fontSize: 11 }} />
+                        <YAxis tick={{ fontSize: 10 }} />
+                        <Tooltip
+                          formatter={(v: any, name: string) => [
+                            name === "qtd" ? `${v} cancelamentos` : fmtBRL(v),
+                            name === "qtd" ? "Cancelamentos" : "MRR Perdido"
+                          ]}
+                          contentStyle={{ fontSize: 12, borderRadius: 8 }}
+                        />
+                        <Area
+                          type="monotone"
+                          dataKey="qtd"
+                          stroke="hsl(var(--destructive))"
+                          strokeWidth={2}
+                          fill="url(#cancelGradient)"
+                          dot={{ r: 3, fill: "hsl(var(--destructive))" }}
+                          activeDot={{ r: 5 }}
+                        />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Distribuição por Bucket — 1/3 */}
               <Card>
                 <CardHeader className="pb-2">
                   <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
                     <ShieldAlert className="h-4 w-4" />
-                    Distribuição por Bucket no Cancelamento
+                    Bucket no Cancelamento
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="space-y-3">
+                  <div className="space-y-4">
                     {bucketDistribuicao.map((b) => (
-                      <div key={b.bucket} className="flex items-center gap-3">
-                        <Badge className={`${BUCKET_COLORS[b.bucket as RiskBucket]} border text-xs min-w-[70px] justify-center`}>
-                          {b.bucket}
-                        </Badge>
-                        <div className="flex-1 h-6 bg-muted rounded-full overflow-hidden">
+                      <div key={b.bucket}>
+                        <div className="flex items-center justify-between mb-1.5">
+                          <Badge className={`${BUCKET_COLORS[b.bucket as RiskBucket]} border text-xs`}>
+                            {b.bucket}
+                          </Badge>
+                          <span className="text-sm font-semibold tabular-nums">
+                            {b.qtd} <span className="text-muted-foreground font-normal">({b.pct}%)</span>
+                          </span>
+                        </div>
+                        <div className="h-2.5 bg-muted rounded-full overflow-hidden">
                           <div
-                            className="h-full rounded-full transition-all"
-                            style={{ width: `${b.pct}%`, backgroundColor: b.color }}
+                            className="h-full rounded-full transition-all duration-500"
+                            style={{ width: `${Math.max(Number(b.pct), 2)}%`, backgroundColor: b.color }}
                           />
                         </div>
-                        <span className="text-sm font-semibold min-w-[80px] text-right">
-                          {b.qtd} ({b.pct}%)
-                        </span>
                       </div>
                     ))}
                   </div>
-                  <p className="text-[10px] text-muted-foreground mt-3 flex items-center gap-1">
+                  <p className="text-[10px] text-muted-foreground mt-4 flex items-center gap-1">
                     <Info className="h-3 w-3" />
-                    Bucket calculado pelo score de risco no momento do registro
+                    Score de risco no momento do registro
                   </p>
                 </CardContent>
               </Card>
+            </div>
 
-              {/* Cohort Pie Chart */}
+            {/* ── Top Motivos + Cohort ── */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Top Motivos */}
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">
+                    Top 10 Motivos de Cancelamento
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {topMotivos.length > 0 ? (
+                    <div className="space-y-2.5">
+                      {topMotivos.map((m, idx) => {
+                        const maxQtd = topMotivos[0].qtd;
+                        const pct = maxQtd > 0 ? (m.qtd / maxQtd) * 100 : 0;
+                        return (
+                          <div key={m.motivo}>
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="text-xs font-medium truncate max-w-[70%]" title={m.motivo}>
+                                {m.motivo}
+                              </span>
+                              <span className="text-xs font-semibold tabular-nums text-muted-foreground">
+                                {m.qtd}
+                              </span>
+                            </div>
+                            <div className="h-2 bg-muted rounded-full overflow-hidden">
+                              <div
+                                className="h-full rounded-full transition-all duration-500"
+                                style={{ width: `${Math.max(pct, 3)}%`, backgroundColor: COLORS[idx % COLORS.length] }}
+                              />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="h-[200px] flex items-center justify-center text-muted-foreground text-sm">
+                      Sem dados disponíveis
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Cohort Pie */}
               {cohortTempo.length > 0 && (
                 <Card>
                   <CardHeader className="pb-2">
@@ -553,7 +716,7 @@ const Cancelamentos = () => {
                           formatter={(v: any) => [
                             cohortMetric === "qtd"
                               ? `${v} clientes`
-                              : `R$ ${Number(v).toLocaleString("pt-BR", { minimumFractionDigits: 0 })}`,
+                              : fmtBRL(Number(v)),
                             cohortMetric === "qtd" ? "Cancelados" : cohortMetric === "mrr" ? "MRR Perdido" : "LTV Perdido",
                           ]}
                         />
@@ -565,27 +728,7 @@ const Cancelamentos = () => {
               )}
             </div>
 
-            {/* Cancelamentos por mês */}
-            {cancelPorMes.length > 0 && (
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium text-muted-foreground">Cancelamentos por Mês</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <ResponsiveContainer width="100%" height={200}>
-                    <BarChart data={cancelPorMes} margin={{ top: 4, right: 8, bottom: 8, left: -10 }}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="mes" tick={{ fontSize: 11 }} />
-                      <YAxis tick={{ fontSize: 10 }} />
-                      <Tooltip formatter={(v: any) => [v.toLocaleString(), "Cancelamentos"]} />
-                      <Bar dataKey="qtd" fill="hsl(var(--destructive) / 0.7)" radius={[4, 4, 0, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </CardContent>
-              </Card>
-            )}
-
-            {/* ── Tabela principal (cancelados) com sorting ── */}
+            {/* ── Tabela principal ── */}
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-medium text-muted-foreground">
@@ -709,37 +852,11 @@ const Cancelamentos = () => {
                 </div>
               </CardContent>
             </Card>
-
-            {/* Top Motivos (full width) */}
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">Top 10 Motivos de Cancelamento</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {topMotivos.length > 0 ? (
-                  <div className="max-h-[320px] overflow-y-auto">
-                    <ResponsiveContainer width="100%" height={Math.max(200, topMotivos.length * 32 + 20)}>
-                      <BarChart data={topMotivos} layout="vertical" margin={{ left: 8 }}>
-                        <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                        <XAxis type="number" tick={{ fontSize: 10 }} />
-                        <YAxis type="category" dataKey="motivo" tick={{ fontSize: 10 }} width={180} />
-                        <Tooltip formatter={(v: any) => [v, "Ocorrências"]} />
-                        <Bar dataKey="qtd" radius={[0, 4, 4, 0]}>
-                          {topMotivos.map((_, idx) => <Cell key={idx} fill={COLORS[idx % COLORS.length]} />)}
-                        </Bar>
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </div>
-                ) : (
-                  <div className="h-[200px] flex items-center justify-center text-muted-foreground text-sm">Sem dados disponíveis</div>
-                )}
-              </CardContent>
-            </Card>
           </>
         )}
       </main>
 
-      {/* CRM Drawer for client history */}
+      {/* CRM Drawer */}
       {selectedCliente && (
         <CrmDrawer
           cliente={selectedCliente}
