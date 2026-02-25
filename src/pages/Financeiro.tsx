@@ -7,8 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { useEventos } from "@/hooks/useEventos";
-import { useChurnData } from "@/hooks/useChurnData";
-import { useRiskBucketConfig } from "@/hooks/useRiskBucketConfig";
+import { useChurnScore } from "@/hooks/useChurnScore";
 import { GlobalFilters } from "@/components/shared/GlobalFilters";
 import { IspActions } from "@/components/shared/IspActions";
 import { LoadingScreen } from "@/components/shared/LoadingScreen";
@@ -49,17 +48,16 @@ const Financeiro = () => {
   const { signOut } = useAuth();
   const { ispNome } = useActiveIsp();
   const { eventos, isLoading, error, columns } = useEventos();
-  const { churnStatus } = useChurnData();
-  const { getBucket } = useRiskBucketConfig();
+  const { scoreMap } = useChurnScore();
 
-  // Mapa de churn por cliente_id para lookup rápido
+  // Mapa de churn por cliente_id para lookup rápido — usa score centralizado
   const churnMap = useMemo(() => {
     const m = new Map<number, { score: number; bucket: string }>();
-    churnStatus.forEach(c => {
-      m.set(c.cliente_id, { score: c.churn_risk_score, bucket: getBucket(c.churn_risk_score) });
+    scoreMap.forEach((val, clienteId) => {
+      m.set(clienteId, { score: val.score, bucket: val.bucket });
     });
     return m;
-  }, [churnStatus, getBucket]);
+  }, [scoreMap]);
 
   // Filtros
   const [periodo, setPeriodo] = useState("7");
