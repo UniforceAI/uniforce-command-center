@@ -206,14 +206,10 @@ const Cancelamentos = () => {
 
   // ─── Cohort por tempo de assinatura ───
   const cohortTempo = useMemo(() => {
-    // Helper: derive months — try multiple sources to maximize coverage
+    // Helper: derive months — for canceled clients, prefer date diff for accuracy
     const getMeses = (c: ChurnStatus): number | null => {
-      // 1. Campo direto
-      if (c.tempo_cliente_meses != null && c.tempo_cliente_meses > 0) return c.tempo_cliente_meses;
-      // 2. LTV meses (proxy calculado pelo backend)
-      if (c.ltv_meses_estimado != null && c.ltv_meses_estimado > 0) return c.ltv_meses_estimado;
-      // 3. Cálculo por datas
-      if (c.data_instalacao) {
+      // 1. Para cancelados: priorizar cálculo data_cancelamento - data_instalacao
+      if (c.status_churn === "cancelado" && c.data_instalacao) {
         const inst = new Date(c.data_instalacao + "T00:00:00");
         if (!isNaN(inst.getTime())) {
           const end = c.data_cancelamento
@@ -223,6 +219,18 @@ const Cancelamentos = () => {
             const diff = (end.getTime() - inst.getTime()) / (1000 * 60 * 60 * 24 * 30.44);
             return Math.max(0, Math.round(diff));
           }
+        }
+      }
+      // 2. Campo direto
+      if (c.tempo_cliente_meses != null && c.tempo_cliente_meses > 0) return c.tempo_cliente_meses;
+      // 3. LTV meses (proxy calculado pelo backend)
+      if (c.ltv_meses_estimado != null && c.ltv_meses_estimado > 0) return c.ltv_meses_estimado;
+      // 4. Cálculo genérico por datas
+      if (c.data_instalacao) {
+        const inst = new Date(c.data_instalacao + "T00:00:00");
+        if (!isNaN(inst.getTime())) {
+          const diff = (new Date().getTime() - inst.getTime()) / (1000 * 60 * 60 * 24 * 30.44);
+          return Math.max(0, Math.round(diff));
         }
       }
       return null;
