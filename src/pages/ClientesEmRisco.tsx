@@ -125,24 +125,6 @@ const ClientesEmRisco = () => {
     return max > 0 ? new Date(max) : new Date();
   }, [churnStatus]);
 
-  const clientesRisco = useMemo(() => churnStatus.filter((c) => c.status_churn === "risco"), [churnStatus]);
-
-  const filterOptions = useMemo(() => {
-    const planos = new Set<string>();
-    const cidades = new Set<string>();
-    const bairros = new Set<string>();
-    clientesRisco.forEach((c) => {
-      if (c.plano_nome) planos.add(c.plano_nome);
-      if (c.cliente_cidade) cidades.add(c.cliente_cidade);
-      if (c.cliente_bairro) bairros.add(c.cliente_bairro);
-    });
-    return {
-      planos: Array.from(planos).sort(),
-      cidades: Array.from(cidades).sort(),
-      bairros: Array.from(bairros).sort(),
-    };
-  }, [clientesRisco]);
-
   const getScoreSuporteReal = useCallback((cliente: ChurnStatus): number => {
     const ch30 = chamadosPorClienteMap.d30.get(cliente.cliente_id)?.chamados_periodo ?? 0;
     const ch90 = chamadosPorClienteMap.d90.get(cliente.cliente_id)?.chamados_periodo ?? 0;
@@ -164,6 +146,34 @@ const ClientesEmRisco = () => {
     const comportamental = Math.round(((cliente.score_comportamental ?? 0) / 20) * config.comportamental);
     return Math.max(0, Math.min(500, financeiro + suporteReal + comportamental + qualidade + npsReal));
   }, [getScoreSuporteReal, getScoreNPSReal, config]);
+
+  // Incluir todos os clientes cujo score recalculado é ALERTA ou CRÍTICO,
+  // independente do status_churn do banco (que pode estar desatualizado)
+  const clientesRisco = useMemo(() => {
+    return churnStatus.filter((c) => {
+      if (c.status_churn === "cancelado") return false;
+      if (c.status_churn === "risco") return true;
+      const score = getScoreTotalReal(c);
+      const b = getBucket(score);
+      return b === "ALERTA" || b === "CRÍTICO";
+    });
+  }, [churnStatus, getScoreTotalReal, getBucket]);
+
+  const filterOptions = useMemo(() => {
+    const planos = new Set<string>();
+    const cidades = new Set<string>();
+    const bairros = new Set<string>();
+    clientesRisco.forEach((c) => {
+      if (c.plano_nome) planos.add(c.plano_nome);
+      if (c.cliente_cidade) cidades.add(c.cliente_cidade);
+      if (c.cliente_bairro) bairros.add(c.cliente_bairro);
+    });
+    return {
+      planos: Array.from(planos).sort(),
+      cidades: Array.from(cidades).sort(),
+      bairros: Array.from(bairros).sort(),
+    };
+  }, [clientesRisco]);
 
   const filtered = useMemo(() => {
     let f = [...clientesRisco];
