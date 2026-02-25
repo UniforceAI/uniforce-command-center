@@ -1,11 +1,12 @@
 import { useState, useMemo, useCallback } from "react";
 import { safeFormatDate } from "@/lib/safeDate";
-import { useChurnData, ChurnStatus } from "@/hooks/useChurnData";
+import { ChurnStatus } from "@/hooks/useChurnData";
 import { useChamados } from "@/hooks/useChamados";
 import { useActiveIsp } from "@/hooks/useActiveIsp";
 import { useChurnScoreConfig, calcScoreSuporteConfiguravel, calcScoreFinanceiroConfiguravel } from "@/contexts/ChurnScoreConfigContext";
 import { useRiskBucketConfig, RiskBucket } from "@/hooks/useRiskBucketConfig";
 import { useCrmWorkflow, WorkflowStatus } from "@/hooks/useCrmWorkflow";
+import { useChurnScore } from "@/hooks/useChurnScore";
 import { IspActions } from "@/components/shared/IspActions";
 import { LoadingScreen } from "@/components/shared/LoadingScreen";
 import { KanbanBoard } from "@/components/crm/KanbanBoard";
@@ -62,28 +63,11 @@ function NPSBadge({ classificacao, nota }: { classificacao?: string; nota?: numb
 }
 
 const ClientesEmRisco = () => {
-  const { churnStatus, churnEvents, isLoading, error } = useChurnData();
+  const { churnStatus, churnEvents, isLoading, error, chamadosPorClienteMap, npsMap, getScoreSuporteReal, getScoreNPSReal, getScoreTotalReal, config, getBucket } = useChurnScore();
   const { chamados, getChamadosPorCliente } = useChamados();
   const { ispId } = useActiveIsp();
-  const { config } = useChurnScoreConfig();
-  const { getBucket } = useRiskBucketConfig();
   const { workflowMap, addToWorkflow, updateStatus, updateTags, updateOwner } = useCrmWorkflow();
   const { toast } = useToast();
-
-  const chamadosPorClienteMap = useMemo(() => ({
-    d30: getChamadosPorCliente(30),
-    d90: getChamadosPorCliente(90),
-  }), [getChamadosPorCliente]);
-
-  const npsMap = useMemo(() => {
-    const m = new Map<number, { nota: number; classificacao: string; data: string | null }>();
-    churnStatus.forEach((c) => {
-      if (c.nps_ultimo_score != null && c.nps_classificacao) {
-        m.set(c.cliente_id, { nota: c.nps_ultimo_score, classificacao: c.nps_classificacao.toUpperCase(), data: (c as any).nps_data ?? null });
-      }
-    });
-    return m;
-  }, [churnStatus]);
 
   // Filters
   const [scoreMin, setScoreMin] = useState(0);
@@ -124,28 +108,6 @@ const ClientesEmRisco = () => {
     });
     return max > 0 ? new Date(max) : new Date();
   }, [churnStatus]);
-
-  const getScoreSuporteReal = useCallback((cliente: ChurnStatus): number => {
-    const ch30 = chamadosPorClienteMap.d30.get(cliente.cliente_id)?.chamados_periodo ?? 0;
-    const ch90 = chamadosPorClienteMap.d90.get(cliente.cliente_id)?.chamados_periodo ?? 0;
-    return calcScoreSuporteConfiguravel(ch30, ch90, config);
-  }, [chamadosPorClienteMap, config]);
-
-  const getScoreNPSReal = useCallback((cliente: ChurnStatus): number => {
-    const nps = npsMap.get(cliente.cliente_id);
-    if (nps?.classificacao === "DETRATOR") return config.npsDetrator;
-    return cliente.score_nps ?? 0;
-  }, [npsMap, config]);
-
-  const getScoreTotalReal = useCallback((cliente: ChurnStatus): number => {
-    const suporteReal = getScoreSuporteReal(cliente);
-    const npsReal = getScoreNPSReal(cliente);
-    const financeiro = calcScoreFinanceiroConfiguravel(cliente.dias_atraso, config);
-    const qualidadeBase = 25;
-    const qualidade = Math.round(((cliente.score_qualidade ?? 0) / qualidadeBase) * config.qualidade);
-    const comportamental = Math.round(((cliente.score_comportamental ?? 0) / 20) * config.comportamental);
-    return Math.max(0, Math.min(500, financeiro + suporteReal + comportamental + qualidade + npsReal));
-  }, [getScoreSuporteReal, getScoreNPSReal, config]);
 
   // Incluir todos os clientes cujo score recalculado é ALERTA ou CRÍTICO,
   // independente do status_churn do banco (que pode estar desatualizado)

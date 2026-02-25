@@ -4,6 +4,7 @@ import { useChamados } from "@/hooks/useChamados";
 import { useRiskBucketConfig, RiskBucket } from "@/hooks/useRiskBucketConfig";
 import { useCrmWorkflow } from "@/hooks/useCrmWorkflow";
 import { useChurnScoreConfig, calcScoreSuporteConfiguravel } from "@/contexts/ChurnScoreConfigContext";
+import { useChurnScore } from "@/hooks/useChurnScore";
 import { IspActions } from "@/components/shared/IspActions";
 import { LoadingScreen } from "@/components/shared/LoadingScreen";
 import { GlobalFilters } from "@/components/shared/GlobalFilters";
@@ -63,11 +64,12 @@ const Cancelamentos = () => {
   const { getBucket } = useRiskBucketConfig();
   const { workflowMap, addToWorkflow, updateStatus, updateTags, updateOwner } = useCrmWorkflow();
   const { config } = useChurnScoreConfig();
+  const { getScoreTotalReal } = useChurnScore();
 
   const chamadosMap30d = useMemo(() => getChamadosPorCliente(30), [getChamadosPorCliente]);
   const chamadosMap90d = useMemo(() => getChamadosPorCliente(90), [getChamadosPorCliente]);
 
-  // Enrich cancelados with live-recalculated support score
+  // Cancelados com score recalculado centralizado
   const cancelados = useMemo(() => {
     return churnStatus
       .filter((c) => c.status_churn === "cancelado")
@@ -75,8 +77,7 @@ const Cancelamentos = () => {
         const ch30 = chamadosMap30d.get(c.cliente_id)?.chamados_periodo ?? c.qtd_chamados_30d ?? 0;
         const ch90 = chamadosMap90d.get(c.cliente_id)?.chamados_periodo ?? c.qtd_chamados_90d ?? 0;
         const newScoreSuporte = calcScoreSuporteConfiguravel(ch30, ch90, config);
-        const scoreDiff = newScoreSuporte - (c.score_suporte || 0);
-        const newTotalScore = Math.max(0, Math.min(500, c.churn_risk_score + scoreDiff));
+        const newTotalScore = getScoreTotalReal(c);
         return {
           ...c,
           qtd_chamados_30d: ch30,
@@ -85,7 +86,7 @@ const Cancelamentos = () => {
           churn_risk_score: newTotalScore,
         };
       });
-  }, [churnStatus, chamadosMap30d, chamadosMap90d, config]);
+  }, [churnStatus, chamadosMap30d, chamadosMap90d, config, getScoreTotalReal]);
 
   const [plano, setPlano] = useState("todos");
   const [cidade, setCidade] = useState("todos");

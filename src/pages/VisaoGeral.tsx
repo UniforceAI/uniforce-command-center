@@ -11,6 +11,7 @@ import { useChamados } from "@/hooks/useChamados";
 import { useNPSData } from "@/hooks/useNPSData";
 import { useChurnData } from "@/hooks/useChurnData";
 import { useRiskBucketConfig } from "@/hooks/useRiskBucketConfig";
+import { useChurnScore } from "@/hooks/useChurnScore";
 
 import { Evento } from "@/types/evento";
 import { AlertasMapa } from "@/components/map/AlertasMapa";
@@ -194,6 +195,7 @@ const VisaoGeral = () => {
   const { npsData } = useNPSData(ispId);
   const { churnStatus } = useChurnData();
   const { getBucket: getBucketVisao } = useRiskBucketConfig();
+  const { scoreMap } = useChurnScore();
 
   // Detect first load (after login) vs sub-page navigation — module-level flag survives remounts
   const [showInitialScreen, setShowInitialScreen] = useState(() => !getHasShownInitial());
@@ -463,11 +465,12 @@ const VisaoGeral = () => {
       : "0.0";
 
     // MRR em Risco — usa base total (não varia com período por ser snapshot)
-    const clientesEmRisco = clientesUnicos.filter(e => 
-      (e.churn_risk_score && e.churn_risk_score >= 50) ||
-      e.alerta_tipo ||
-      (e.downtime_min_24h && e.downtime_min_24h > 60)
-    );
+    const clientesEmRisco = clientesUnicos.filter(e => {
+      const sm = scoreMap.get(e.cliente_id);
+      return (sm && (sm.bucket === "ALERTA" || sm.bucket === "CRÍTICO")) ||
+        e.alerta_tipo ||
+        (e.downtime_min_24h && e.downtime_min_24h > 60);
+    });
     const mrrEmRisco = clientesEmRisco.reduce((acc, e) => acc + (e.valor_mensalidade || 0), 0);
     const ltvEmRisco = clientesEmRisco.reduce((acc, e) => acc + (e.ltv_reais_estimado || (e.valor_mensalidade || 0) * 12), 0);
 
@@ -887,7 +890,7 @@ const VisaoGeral = () => {
         }
         
         // Risco
-        if (e.alerta_tipo || (e.downtime_min_24h && e.downtime_min_24h > 60) || (e.churn_risk_score && e.churn_risk_score >= 50)) {
+        if (e.alerta_tipo || (e.downtime_min_24h && e.downtime_min_24h > 60) || (scoreMap.get(e.cliente_id) && (scoreMap.get(e.cliente_id)!.bucket === "ALERTA" || scoreMap.get(e.cliente_id)!.bucket === "CRÍTICO"))) {
           stats[key].risco++;
         }
         
@@ -1166,7 +1169,7 @@ const VisaoGeral = () => {
       .filter(e => 
         e.alerta_tipo || // Tem alerta
         (e.downtime_min_24h && e.downtime_min_24h > 60) || // Downtime alto
-        (e.churn_risk_score && e.churn_risk_score >= 60) || // Score alto
+        (scoreMap.get(e.cliente_id) && (scoreMap.get(e.cliente_id)!.bucket === "ALERTA" || scoreMap.get(e.cliente_id)!.bucket === "CRÍTICO")) || // Score recalculado alto
         (e.dias_atraso && e.dias_atraso > 30) // Muito atrasado
       )
       .forEach(e => {
@@ -1183,13 +1186,13 @@ const VisaoGeral = () => {
         local: e.cliente_bairro 
           ? `${e.cliente_bairro}, ${e.cliente_cidade || ""}` 
           : e.cliente_cidade || "-",
-        score: e.churn_risk_score || (e.downtime_min_24h ? Math.min(100, 50 + e.downtime_min_24h / 2) : 70),
+        score: scoreMap.get(e.cliente_id)?.score ?? e.churn_risk_score ?? (e.downtime_min_24h ? Math.min(100, 50 + e.downtime_min_24h / 2) : 70),
         driver: e.alerta_tipo || (e.dias_atraso && e.dias_atraso > 0 ? "Atraso financeiro" : "Risco técnico"),
         celular: e.cliente_celular,
       }))
       .sort((a, b) => b.score - a.score)
       .slice(0, 8);
-  }, [filteredEventos]);
+  }, [filteredEventos, scoreMap]);
 
   // Cobrança Inteligente — usa eventos do PERÍODO para refletir vencidos na janela selecionada
   const cobrancaInteligente = useMemo(() => {
@@ -1304,7 +1307,7 @@ const VisaoGeral = () => {
           cliente_bairro: e.cliente_bairro,
           geo_lat: lat,
           geo_lng: lng,
-          churn_risk_score: e.churn_risk_score,
+          churn_risk_score: scoreMap.get(e.cliente_id)?.score ?? e.churn_risk_score,
           dias_atraso: e.dias_atraso,
           vencido: e.vencido,
           alerta_tipo: e.alerta_tipo,
@@ -1515,10 +1518,10 @@ const VisaoGeral = () => {
 
             {/* Resumo Executivo do Dia */}
             {(() => {
-              const clientesAlertaChurn = churnStatus.filter(c => c.status_churn === "risco" && getBucketVisao(c.churn_risk_score) === "ALERTA").length;
-              const clientesCriticoChurn = churnStatus.filter(c => c.status_churn === "risco" && getBucketVisao(c.churn_risk_score) === "CRÍTICO").length;
+               const clientesAlertaChurn = churnStatus.filter(c => c.status_churn !== "cancelado" && (scoreMap.get(c.cliente_id)?.bucket === "ALERTA")).length;
+              const clientesCriticoChurn = churnStatus.filter(c => c.status_churn !== "cancelado" && (scoreMap.get(c.cliente_id)?.bucket === "CRÍTICO")).length;
               const totalEmRisco = clientesAlertaChurn + clientesCriticoChurn;
-              const mrrRisco = churnStatus.filter(c => c.status_churn === "risco" && (getBucketVisao(c.churn_risk_score) === "ALERTA" || getBucketVisao(c.churn_risk_score) === "CRÍTICO"))
+              const mrrRisco = churnStatus.filter(c => c.status_churn !== "cancelado" && (scoreMap.get(c.cliente_id)?.bucket === "ALERTA" || scoreMap.get(c.cliente_id)?.bucket === "CRÍTICO"))
                 .reduce((acc, c) => acc + (c.valor_mensalidade || 0), 0);
               const hasRiskData = totalEmRisco > 0;
               const hasFinData = vencidosStats.totalVencidos > 0;
@@ -1601,17 +1604,17 @@ const VisaoGeral = () => {
               />
               <RiskKPICard
                 title="Clientes em Alerta"
-                value={churnStatus.filter(c => c.status_churn === "risco" && getBucketVisao(c.churn_risk_score) === "ALERTA").length}
+                value={churnStatus.filter(c => c.status_churn !== "cancelado" && scoreMap.get(c.cliente_id)?.bucket === "ALERTA").length}
                 icon={AlertTriangle}
                 variant="warning"
-                subtitle="bucket ALERTA (churn_status)"
+                subtitle="bucket ALERTA (score recalculado)"
               />
               <RiskKPICard
                 title="Clientes Críticos"
-                value={churnStatus.filter(c => c.status_churn === "risco" && getBucketVisao(c.churn_risk_score) === "CRÍTICO").length}
+                value={churnStatus.filter(c => c.status_churn !== "cancelado" && scoreMap.get(c.cliente_id)?.bucket === "CRÍTICO").length}
                 icon={ShieldAlert}
                 variant="danger"
-                subtitle="bucket CRÍTICO (churn_status)"
+                subtitle="bucket CRÍTICO (score recalculado)"
               />
               <RiskKPICard
                 title="RR Vencido"
