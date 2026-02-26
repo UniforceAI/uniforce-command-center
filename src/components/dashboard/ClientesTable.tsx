@@ -478,7 +478,7 @@ export const ClientesTable = memo(({ chamados, onClienteClick, churnMap }: Clien
     },
     {
       id: 'score-risco',
-      header: 'Score/Risco',
+      header: 'Churn Score',
       cell: ({ row }) => {
         if (!churnMap) return <span className="text-xs text-muted-foreground">—</span>;
         const clienteId = typeof row.original["ID Cliente"] === 'string' 
