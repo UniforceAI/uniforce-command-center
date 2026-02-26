@@ -160,7 +160,7 @@ export function AlertasMapa({ data, activeFilter }: AlertasMapaProps) {
 
   if (validPoints.length === 0) {
     return (
-      <div className="relative h-[280px] bg-slate-800 rounded-b-lg overflow-hidden flex items-center justify-center">
+      <div className="relative h-[360px] bg-slate-800 rounded-b-lg overflow-hidden flex items-center justify-center">
         <div className="text-center text-white/60">
           <p className="text-sm">Nenhum cliente com geolocalização disponível</p>
           <p className="text-xs mt-1">Verifique os campos geo_lat e geo_lng nos dados</p>
@@ -170,7 +170,7 @@ export function AlertasMapa({ data, activeFilter }: AlertasMapaProps) {
   }
 
   return (
-    <div className="relative h-[280px] overflow-hidden rounded-b-lg">
+    <div className="relative h-[360px] overflow-hidden rounded-b-lg">
       <MapContainer
         center={centerPoint}
         zoom={5}
