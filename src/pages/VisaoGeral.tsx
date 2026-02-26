@@ -93,6 +93,15 @@ const MapTabs = ({ activeTab, onTabChange, availableTabs }: { activeTab: string;
   );
 };
 
+// Geo metric types
+type GeoMetric = "churn" | "financeiro" | "nps" | "ltv";
+const GEO_METRIC_LABELS: Record<GeoMetric, string> = {
+  churn: "Churn por Bairro",
+  financeiro: "Inadimplência por Bairro",
+  nps: "NPS por Bairro",
+  ltv: "LTV por Bairro",
+};
+
 // Session-level flag
 const getHasShownInitial = () => {
   const stored = sessionStorage.getItem("uf_initial_shown");
@@ -138,6 +147,7 @@ const VisaoGeral = () => {
   const [filial, setFilial] = useState("todos");
   const [mapTab, setMapTab] = useState("chamados");
   const [churnChartMode, setChurnChartMode] = useState<"volume" | "taxa">("taxa");
+  const [geoMetric, setGeoMetric] = useState<GeoMetric>("churn");
   const [fatoresMode, setFatoresMode] = useState<"risco" | "cancelados">("risco");
   const [selectedClienteRisco, setSelectedClienteRisco] = useState<ChurnStatus | null>(null);
 
@@ -250,11 +260,9 @@ const VisaoGeral = () => {
     let ticketsPerdidos: number[] = [];
     churnStatus.forEach(cs => {
       if (cs.status_churn !== "cancelado") return;
-      // Aplicar filtros geo
       if (cidade !== "todos" && String(cs.cliente_cidade) !== cidade && getCidadeNome(cs.cliente_cidade) !== cidade) return;
       if (bairro !== "todos" && cs.cliente_bairro !== bairro) return;
       if (plano !== "todos" && cs.plano_nome !== plano) return;
-      // Filtro de período
       if (dataLimiteChurn && cs.data_cancelamento) {
         const d = new Date(cs.data_cancelamento);
         if (!isNaN(d.getTime()) && d < dataLimiteChurn) return;
@@ -269,22 +277,25 @@ const VisaoGeral = () => {
       ? ticketsPerdidos.reduce((a, b) => a + b, 0) / ticketsPerdidos.length
       : 0;
 
-    // Clientes em alto risco (ALERTA + CRÍTICO via scoreMap)
-    let clientesAltoRisco = 0;
-    let mrrEmRisco = 0;
+    // Clientes em alto risco — DEDUPLICATED by cliente_id (same logic as ClientesEmRisco menu)
+    const riscoMap = new Map<number, { score: number; bucket: RiskBucket; mrr: number }>();
     churnStatus.forEach(cs => {
       if (cs.status_churn === "cancelado") return;
       if (cs.status_internet === "D") return;
-      // Aplicar filtros geo
       if (cidade !== "todos" && String(cs.cliente_cidade) !== cidade && getCidadeNome(cs.cliente_cidade) !== cidade) return;
       if (bairro !== "todos" && cs.cliente_bairro !== bairro) return;
       if (plano !== "todos" && cs.plano_nome !== plano) return;
-      const sm = scoreMap.get(cs.cliente_id);
-      if (sm && (sm.bucket === "ALERTA" || sm.bucket === "CRÍTICO")) {
-        clientesAltoRisco++;
-        mrrEmRisco += cs.valor_mensalidade || 0;
+      const score = getScoreTotalReal(cs);
+      const bucket = getBucketVisao(score);
+      if (bucket !== "ALERTA" && bucket !== "CRÍTICO") return;
+      const existing = riscoMap.get(cs.cliente_id);
+      if (!existing || score > existing.score) {
+        riscoMap.set(cs.cliente_id, { score, bucket, mrr: cs.valor_mensalidade || 0 });
       }
     });
+    const clientesAltoRisco = riscoMap.size;
+    let mrrEmRisco = 0;
+    riscoMap.forEach(v => { mrrEmRisco += v.mrr; });
     const pctAltoRisco = clientesAtivos > 0 ? (clientesAltoRisco / clientesAtivos * 100) : 0;
 
     // Inadimplência ativa
@@ -306,20 +317,16 @@ const VisaoGeral = () => {
       totalVencido,
       pctInadimplencia,
     };
-  }, [filteredEventos, churnStatus, scoreMap, dataLimiteChurn, cidade, bairro, plano]);
+  }, [filteredEventos, churnStatus, scoreMap, dataLimiteChurn, cidade, bairro, plano, getScoreTotalReal, getBucketVisao]);
 
   // =========================================================
   // BLOCO 2 — FATORES DE RISCO
   // =========================================================
   const fatoresRisco = useMemo(() => {
-    // Base depends on toggle: "risco" = ativos, "cancelados" = cancelados no período
     const isRisco = fatoresMode === "risco";
-
-    // Build the relevant population
     let populacao: { cliente_id: number; dias_atraso?: number; nps_classificacao?: string; cliente_cidade?: string; cliente_bairro?: string; plano_nome?: string }[] = [];
 
     if (isRisco) {
-      // Clientes ativos (filtrados)
       const clientesMapBase = new Map<number, Evento>();
       filteredEventos.forEach(e => {
         if (e.status_contrato === "C" || e.servico_status === "C") return;
@@ -336,7 +343,6 @@ const VisaoGeral = () => {
         plano_nome: e.plano_nome,
       }));
     } else {
-      // Cancelados no período
       churnStatus.forEach(cs => {
         if (cs.status_churn !== "cancelado") return;
         if (cidade !== "todos" && String(cs.cliente_cidade) !== cidade && getCidadeNome(cs.cliente_cidade) !== cidade) return;
@@ -434,9 +440,9 @@ const VisaoGeral = () => {
   }, [fatoresMode, saudeAtual.clientesAtivos, filteredEventos, getChamadosPorCliente, churnStatus, cidade, bairro, plano, dataLimiteChurn]);
 
   // =========================================================
-  // BLOCO 3 — DISTRIBUIÇÃO GEOGRÁFICA (Churn por bairro)
+  // BLOCO 3 — DISTRIBUIÇÃO GEOGRÁFICA (multi-metric por bairro)
   // =========================================================
-  const churnPorBairro = useMemo(() => {
+  const geoPorBairro = useMemo(() => {
     // Total de clientes por bairro (base filtrada)
     const totalPorBairro = new Map<string, Set<number>>();
     filteredEventos.forEach(e => {
@@ -445,47 +451,102 @@ const VisaoGeral = () => {
       totalPorBairro.get(e.cliente_bairro)!.add(e.cliente_id);
     });
 
-    // Cancelados por bairro
-    const canceladosPorBairro = new Map<string, Set<number>>();
-    churnStatus.forEach(cs => {
-      if (cs.status_churn !== "cancelado") return;
-      if (!cs.cliente_bairro) return;
-      if (cidade !== "todos" && String(cs.cliente_cidade) !== cidade && getCidadeNome(cs.cliente_cidade) !== cidade) return;
-      if (plano !== "todos" && cs.plano_nome !== plano) return;
-      if (dataLimiteChurn && cs.data_cancelamento) {
-        const d = new Date(cs.data_cancelamento);
-        if (!isNaN(d.getTime()) && d < dataLimiteChurn) return;
-      }
-      if (!canceladosPorBairro.has(cs.cliente_bairro)) canceladosPorBairro.set(cs.cliente_bairro, new Set());
-      canceladosPorBairro.get(cs.cliente_bairro)!.add(cs.cliente_id);
-      // Garantir que o bairro aparece no total também
-      if (!totalPorBairro.has(cs.cliente_bairro)) totalPorBairro.set(cs.cliente_bairro, new Set());
-      totalPorBairro.get(cs.cliente_bairro)!.add(cs.cliente_id);
-    });
-
-    const data: { bairro: string; cancelados: number; total: number; taxa: number }[] = [];
-    canceladosPorBairro.forEach((ids, b) => {
-      const total = totalPorBairro.get(b)?.size || ids.size;
-      data.push({
-        bairro: b,
-        cancelados: ids.size,
-        total,
-        taxa: total > 0 ? (ids.size / total * 100) : 0,
+    if (geoMetric === "churn") {
+      // Cancelados por bairro
+      const canceladosPorBairro = new Map<string, Set<number>>();
+      churnStatus.forEach(cs => {
+        if (cs.status_churn !== "cancelado") return;
+        if (!cs.cliente_bairro) return;
+        if (cidade !== "todos" && String(cs.cliente_cidade) !== cidade && getCidadeNome(cs.cliente_cidade) !== cidade) return;
+        if (plano !== "todos" && cs.plano_nome !== plano) return;
+        if (dataLimiteChurn && cs.data_cancelamento) {
+          const d = new Date(cs.data_cancelamento);
+          if (!isNaN(d.getTime()) && d < dataLimiteChurn) return;
+        }
+        if (!canceladosPorBairro.has(cs.cliente_bairro)) canceladosPorBairro.set(cs.cliente_bairro, new Set());
+        canceladosPorBairro.get(cs.cliente_bairro)!.add(cs.cliente_id);
+        if (!totalPorBairro.has(cs.cliente_bairro)) totalPorBairro.set(cs.cliente_bairro, new Set());
+        totalPorBairro.get(cs.cliente_bairro)!.add(cs.cliente_id);
       });
-    });
+      const data: { bairro: string; value: number; total: number; taxa: number; label: string }[] = [];
+      canceladosPorBairro.forEach((ids, b) => {
+        const total = totalPorBairro.get(b)?.size || ids.size;
+        data.push({ bairro: b, value: ids.size, total, taxa: total > 0 ? (ids.size / total * 100) : 0, label: `${ids.size} cancelados de ${total}` });
+      });
+      return data.filter(d => d.value > 0).sort((a, b) => churnChartMode === "taxa" ? b.taxa - a.taxa : b.value - a.value).slice(0, 15);
+    }
 
-    // Sort by selected mode
-    return data
-      .filter(d => d.cancelados > 0)
-      .sort((a, b) => churnChartMode === "taxa" ? b.taxa - a.taxa : b.cancelados - a.cancelados)
-      .slice(0, 15);
-  }, [filteredEventos, churnStatus, dataLimiteChurn, cidade, plano, churnChartMode]);
+    if (geoMetric === "financeiro") {
+      // Vencidos por bairro
+      const vencidosPorBairro = new Map<string, Set<number>>();
+      filteredEventos.forEach(e => {
+        if (!e.cliente_bairro || !isClienteVencido(e)) return;
+        if (!vencidosPorBairro.has(e.cliente_bairro)) vencidosPorBairro.set(e.cliente_bairro, new Set());
+        vencidosPorBairro.get(e.cliente_bairro)!.add(e.cliente_id);
+      });
+      const data: { bairro: string; value: number; total: number; taxa: number; label: string }[] = [];
+      vencidosPorBairro.forEach((ids, b) => {
+        const total = totalPorBairro.get(b)?.size || ids.size;
+        data.push({ bairro: b, value: ids.size, total, taxa: total > 0 ? (ids.size / total * 100) : 0, label: `${ids.size} inadimplentes de ${total}` });
+      });
+      return data.filter(d => d.value > 0).sort((a, b) => churnChartMode === "taxa" ? b.taxa - a.taxa : b.value - a.value).slice(0, 15);
+    }
+
+    if (geoMetric === "nps") {
+      // Detratores NPS por bairro
+      const detratoresPorBairro = new Map<string, Set<number>>();
+      const respondeuPorBairro = new Map<string, Set<number>>();
+      churnStatus.forEach(cs => {
+        if (cs.status_churn === "cancelado" || cs.status_internet === "D") return;
+        if (!cs.cliente_bairro) return;
+        if (cidade !== "todos" && String(cs.cliente_cidade) !== cidade && getCidadeNome(cs.cliente_cidade) !== cidade) return;
+        if (plano !== "todos" && cs.plano_nome !== plano) return;
+        if (cs.nps_classificacao) {
+          if (!respondeuPorBairro.has(cs.cliente_bairro)) respondeuPorBairro.set(cs.cliente_bairro, new Set());
+          respondeuPorBairro.get(cs.cliente_bairro)!.add(cs.cliente_id);
+          if (cs.nps_classificacao.toUpperCase() === "DETRATOR") {
+            if (!detratoresPorBairro.has(cs.cliente_bairro)) detratoresPorBairro.set(cs.cliente_bairro, new Set());
+            detratoresPorBairro.get(cs.cliente_bairro)!.add(cs.cliente_id);
+          }
+        }
+      });
+      const data: { bairro: string; value: number; total: number; taxa: number; label: string }[] = [];
+      detratoresPorBairro.forEach((ids, b) => {
+        const respondeu = respondeuPorBairro.get(b)?.size || ids.size;
+        data.push({ bairro: b, value: ids.size, total: respondeu, taxa: respondeu > 0 ? (ids.size / respondeu * 100) : 0, label: `${ids.size} detratores de ${respondeu} respondentes` });
+      });
+      return data.filter(d => d.value > 0).sort((a, b) => churnChartMode === "taxa" ? b.taxa - a.taxa : b.value - a.value).slice(0, 15);
+    }
+
+    if (geoMetric === "ltv") {
+      // LTV médio por bairro
+      const ltvPorBairro = new Map<string, { total: number; count: number }>();
+      churnStatus.forEach(cs => {
+        if (cs.status_churn === "cancelado" || cs.status_internet === "D") return;
+        if (!cs.cliente_bairro) return;
+        if (cidade !== "todos" && String(cs.cliente_cidade) !== cidade && getCidadeNome(cs.cliente_cidade) !== cidade) return;
+        if (plano !== "todos" && cs.plano_nome !== plano) return;
+        const ltv = cs.ltv_estimado || (cs.valor_mensalidade || 0) * (cs.tempo_cliente_meses || 12);
+        if (!ltvPorBairro.has(cs.cliente_bairro)) ltvPorBairro.set(cs.cliente_bairro, { total: 0, count: 0 });
+        const v = ltvPorBairro.get(cs.cliente_bairro)!;
+        v.total += ltv;
+        v.count++;
+      });
+      const data: { bairro: string; value: number; total: number; taxa: number; label: string }[] = [];
+      ltvPorBairro.forEach((v, b) => {
+        const avg = v.count > 0 ? v.total / v.count : 0;
+        data.push({ bairro: b, value: Math.round(avg), total: v.count, taxa: avg, label: `LTV médio R$ ${avg.toFixed(0)} (${v.count} clientes)` });
+      });
+      return data.filter(d => d.value > 0).sort((a, b) => b.value - a.value).slice(0, 15);
+    }
+
+    return [];
+  }, [filteredEventos, churnStatus, dataLimiteChurn, cidade, plano, churnChartMode, geoMetric]);
 
   // =========================================================
   // BLOCO 4 — IMPACTO FINANCEIRO
   // =========================================================
   const impactoFinanceiro = useMemo(() => {
-    // Receita em risco (LTV de clientes alto risco)
     let receitaEmRisco = 0;
     let ltvsPerdidos: number[] = [];
 
@@ -501,7 +562,6 @@ const VisaoGeral = () => {
       }
     });
 
-    // LTV médio perdido (cancelados no período)
     churnStatus.forEach(cs => {
       if (cs.status_churn !== "cancelado") return;
       if (cidade !== "todos" && String(cs.cliente_cidade) !== cidade && getCidadeNome(cs.cliente_cidade) !== cidade) return;
@@ -533,7 +593,6 @@ const VisaoGeral = () => {
   const acoesPrioritarias = useMemo(() => {
     const acoes: { id: string; texto: string; severity: "critical" | "high" | "medium"; route: string; count: number }[] = [];
 
-    // 1. Clientes alto risco + atraso > 15 dias
     let riscoComAtraso = 0;
     churnStatus.forEach(cs => {
       if (cs.status_churn === "cancelado" || cs.status_internet === "D") return;
@@ -546,32 +605,18 @@ const VisaoGeral = () => {
       }
     });
     if (riscoComAtraso > 0) {
-      acoes.push({
-        id: "risco_atraso",
-        texto: `${riscoComAtraso} clientes com alto risco + atraso > 15 dias. Priorizar cobrança preventiva.`,
-        severity: "critical",
-        route: "/clientes-em-risco",
-        count: riscoComAtraso,
-      });
+      acoes.push({ id: "risco_atraso", texto: `${riscoComAtraso} clientes com alto risco + atraso > 15 dias. Priorizar cobrança preventiva.`, severity: "critical", route: "/clientes-em-risco", count: riscoComAtraso });
     }
 
-    // 2. Bairro com churn acima da média
-    if (churnPorBairro.length > 0) {
-      const mediaChurn = churnPorBairro.reduce((s, d) => s + d.taxa, 0) / churnPorBairro.length;
-      const bairrosAltos = churnPorBairro.filter(b => b.taxa > mediaChurn * 1.5);
+    if (geoPorBairro.length > 0 && geoMetric === "churn") {
+      const mediaChurn = geoPorBairro.reduce((s, d) => s + d.taxa, 0) / geoPorBairro.length;
+      const bairrosAltos = geoPorBairro.filter(b => b.taxa > mediaChurn * 1.5);
       if (bairrosAltos.length > 0) {
         const top = bairrosAltos[0];
-        acoes.push({
-          id: "bairro_churn",
-          texto: `${top.bairro} com churn ${top.taxa.toFixed(1)}% — ${(top.taxa / (mediaChurn || 1)).toFixed(1)}x acima da média.`,
-          severity: "high",
-          route: "/cancelamentos",
-          count: top.cancelados,
-        });
+        acoes.push({ id: "bairro_churn", texto: `${top.bairro} com churn ${top.taxa.toFixed(1)}% — ${(top.taxa / (mediaChurn || 1)).toFixed(1)}x acima da média.`, severity: "high", route: "/cancelamentos", count: top.value });
       }
     }
 
-    // 3. Detratores NPS sem contato recente
     let detratoresSemContato = 0;
     churnStatus.forEach(cs => {
       if (cs.status_churn === "cancelado" || cs.status_internet === "D") return;
@@ -579,43 +624,27 @@ const VisaoGeral = () => {
       if (bairro !== "todos" && cs.cliente_bairro !== bairro) return;
       if (plano !== "todos" && cs.plano_nome !== plano) return;
       if (cs.nps_classificacao?.toUpperCase() === "DETRATOR") {
-        // Verificar se tem atendimento recente (últimos 7 dias)
-        if (!cs.ultimo_atendimento_data) {
-          detratoresSemContato++;
-        } else {
+        if (!cs.ultimo_atendimento_data) { detratoresSemContato++; }
+        else {
           const lastContact = new Date(cs.ultimo_atendimento_data);
-          const sevenDaysAgo = new Date();
-          sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+          const sevenDaysAgo = new Date(); sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
           if (lastContact < sevenDaysAgo) detratoresSemContato++;
         }
       }
     });
     if (detratoresSemContato > 0) {
-      acoes.push({
-        id: "detratores",
-        texto: `${detratoresSemContato} detratores NPS sem contato nos últimos 7 dias.`,
-        severity: "medium",
-        route: "/nps",
-        count: detratoresSemContato,
-      });
+      acoes.push({ id: "detratores", texto: `${detratoresSemContato} detratores NPS sem contato nos últimos 7 dias.`, severity: "medium", route: "/nps", count: detratoresSemContato });
     }
 
-    // 4. Inadimplência alta
     if (saudeAtual.pctInadimplencia > 10) {
-      acoes.push({
-        id: "inadimplencia",
-        texto: `Inadimplência em ${saudeAtual.pctInadimplencia.toFixed(1)}% da base (${saudeAtual.vencidosCount} clientes). Ação de cobrança recomendada.`,
-        severity: saudeAtual.pctInadimplencia > 20 ? "critical" : "high",
-        route: "/financeiro",
-        count: saudeAtual.vencidosCount,
-      });
+      acoes.push({ id: "inadimplencia", texto: `Inadimplência em ${saudeAtual.pctInadimplencia.toFixed(1)}% da base (${saudeAtual.vencidosCount} clientes). Ação de cobrança recomendada.`, severity: saudeAtual.pctInadimplencia > 20 ? "critical" : "high", route: "/financeiro", count: saudeAtual.vencidosCount });
     }
 
     return acoes.sort((a, b) => {
       const order = { critical: 0, high: 1, medium: 2 };
       return order[a.severity] - order[b.severity];
     });
-  }, [churnStatus, scoreMap, churnPorBairro, saudeAtual, cidade, bairro, plano]);
+  }, [churnStatus, scoreMap, geoPorBairro, geoMetric, saudeAtual, cidade, bairro, plano]);
 
   // =========================================================
   // FILA DE RISCO (top 8 clientes - mesma lógica do Clientes em Risco)
@@ -771,18 +800,10 @@ const VisaoGeral = () => {
       const existing = clientesMap.get(e.cliente_id);
       if (!existing || (e.dias_atraso && e.dias_atraso > (existing.dias_atraso || 0))) {
         clientesMap.set(e.cliente_id, {
-          cliente_id: e.cliente_id,
-          cliente_nome: e.cliente_nome,
-          cliente_cidade: e.cliente_cidade,
-          cliente_bairro: e.cliente_bairro,
-          geo_lat: lat,
-          geo_lng: lng,
+          cliente_id: e.cliente_id, cliente_nome: e.cliente_nome, cliente_cidade: e.cliente_cidade, cliente_bairro: e.cliente_bairro,
+          geo_lat: lat, geo_lng: lng,
           churn_risk_score: scoreMap.get(e.cliente_id)?.score ?? e.churn_risk_score,
-          dias_atraso: e.dias_atraso,
-          vencido: e.vencido,
-          alerta_tipo: e.alerta_tipo,
-          downtime_min_24h: e.downtime_min_24h,
-          qtd_chamados: qtdChamados,
+          dias_atraso: e.dias_atraso, vencido: e.vencido, alerta_tipo: e.alerta_tipo, downtime_min_24h: e.downtime_min_24h, qtd_chamados: qtdChamados,
         });
       }
     });
@@ -827,75 +848,59 @@ const VisaoGeral = () => {
               <span>{saudeAtual.clientesAtivos.toLocaleString()} clientes ativos</span>
               {snapshotDate && (
                 <span className="bg-muted px-1.5 py-0.5 rounded border">
-                  Atualizado: {snapshotDate.toLocaleDateString("pt-BR")} {snapshotDate.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+                  Snapshot: {snapshotDate.toLocaleDateString("pt-BR")}
                 </span>
               )}
             </div>
           </div>
-          <IspActions />
+          <div className="flex items-center gap-2">
+            <div className="flex gap-1 bg-muted rounded-lg p-0.5">
+              {["7", "30", "90"].map(p => (
+                <button key={p} onClick={() => setPeriodo(p)}
+                  className={`px-3 py-1 text-xs rounded-md font-medium transition-colors ${periodo === p ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:bg-background"}`}>
+                  {p}d
+                </button>
+              ))}
+            </div>
+            <IspActions />
+          </div>
         </div>
       </header>
 
-      <main className="p-4 space-y-5 max-w-[1600px] mx-auto">
-        {isLoading || showInitialScreen ? (
-          showInitialScreen ? <InitialLoadingScreen /> : <LoadingScreen />
+      <main className="container mx-auto px-4 py-4 space-y-5">
+        {showInitialScreen && <InitialLoadingScreen />}
+
+        {isLoading && !showInitialScreen ? (
+          <LoadingScreen />
         ) : error ? (
-          <div className="flex items-center justify-center py-12">
-            <AlertCircle className="h-12 w-12 text-destructive" />
-            <p className="ml-4">{error}</p>
+          <div className="flex items-center gap-2 text-destructive bg-destructive/10 rounded-lg p-4">
+            <AlertCircle className="h-4 w-4" />
+            <span className="text-sm">Erro ao carregar dados: {error}</span>
           </div>
         ) : (
           <>
-            {/* Filtros */}
+            {/* FILTROS GLOBAIS */}
             <GlobalFilters filters={[
               {
-                id: "periodo",
-                label: "Período",
-                value: periodo,
-                onChange: setPeriodo,
-                options: [
-                  { value: "7", label: "7 dias" },
-                  { value: "30", label: "30 dias" },
-                  { value: "90", label: "90 dias" },
-                  { value: "365", label: "1 ano" },
-                  { value: "todos", label: "Todos" },
-                ],
+                id: "plano", label: "Plano", value: plano, onChange: setPlano,
+                disabled: filterOptions.planos.length === 0,
+                tooltip: "Nenhum plano encontrado",
+                options: [{ value: "todos", label: "Todos" }, ...filterOptions.planos.map(p => ({ value: p, label: p.length > 30 ? p.substring(0, 30) + "…" : p }))],
               },
               {
-                id: "cidade",
-                label: "Cidade",
-                value: cidade,
-                onChange: setCidade,
-                options: [
-                  { value: "todos", label: "Todas" },
-                  ...filterOptions.cidades.map(c => ({ value: c, label: c })),
-                ],
+                id: "cidade", label: "Cidade", value: cidade, onChange: setCidade,
+                disabled: filterOptions.cidades.length === 0,
+                tooltip: "Nenhuma cidade encontrada",
+                options: [{ value: "todos", label: "Todas" }, ...filterOptions.cidades.map(c => ({ value: c, label: cidadeIdMap[c] || c }))],
               },
               {
-                id: "bairro",
-                label: "Bairro",
-                value: bairro,
-                onChange: setBairro,
-                options: [
-                  { value: "todos", label: "Todos" },
-                  ...filterOptions.bairros.map(b => ({ value: b, label: b })),
-                ],
+                id: "bairro", label: "Bairro", value: bairro, onChange: setBairro,
+                disabled: filterOptions.bairros.length === 0,
+                tooltip: "Nenhum bairro encontrado",
+                options: [{ value: "todos", label: "Todos" }, ...filterOptions.bairros.map(b => ({ value: b, label: b }))],
               },
               {
-                id: "plano",
-                label: "Plano",
-                value: plano,
-                onChange: setPlano,
-                options: [
-                  { value: "todos", label: "Todos" },
-                  ...filterOptions.planos.map(p => ({ value: p, label: p.length > 20 ? p.substring(0, 20) + "…" : p })),
-                ],
-              },
-              {
-                id: "filial",
-                label: "Filial",
-                value: filial,
-                onChange: setFilial,
+                id: "filial", label: "Filial", value: filial, onChange: setFilial,
                 disabled: filterOptions.filiais.length === 0,
                 tooltip: "Campo filial não encontrado nos dados",
                 options: [
@@ -1023,46 +1028,37 @@ const VisaoGeral = () => {
                     </button>
                   </div>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   {fatoresRisco.factors.map((f) => (
                     <Card key={f.id} className="hover:shadow-md transition-shadow cursor-pointer group" onClick={() => navigate(f.route)}>
                       <CardContent className="p-4">
-                        <div className="flex items-start justify-between">
+                        <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2.5">
                             <div className="p-2 rounded-lg bg-muted group-hover:bg-primary/10 transition-colors">
                               {f.icon}
                             </div>
                             <div>
-                              <p className="text-2xl font-bold">{f.pct.toFixed(1)}%</p>
-                              <p className="text-xs text-muted-foreground">{f.label}</p>
+                              <p className="text-xl font-bold">{f.pct.toFixed(1)}%</p>
+                              <p className="text-[11px] text-muted-foreground leading-tight">{f.label}</p>
                             </div>
                           </div>
-                          <Badge variant="secondary" className="text-xs">
-                            {f.count} clientes
+                          <Badge variant="secondary" className="text-[10px]">
+                            {f.count}
                           </Badge>
                         </div>
-                        {/* Aging breakdown inside card */}
+                        {/* Aging breakdown — compact inline */}
                         {f.aging && (
-                          <div className="mt-3 space-y-1 text-xs text-muted-foreground border-t pt-2">
-                            <div className="flex justify-between">
-                              <span>7–14 dias</span>
-                              <span className="font-medium text-foreground">{(f.aging.totalBase > 0 ? (f.aging.aging7_14 / f.aging.totalBase * 100) : 0).toFixed(1)}% ({f.aging.aging7_14})</span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span>15–30 dias</span>
-                              <span className="font-medium text-warning">{(f.aging.totalBase > 0 ? (f.aging.aging15_30 / f.aging.totalBase * 100) : 0).toFixed(1)}% ({f.aging.aging15_30})</span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span>30+ dias</span>
-                              <span className="font-medium text-destructive">{(f.aging.totalBase > 0 ? (f.aging.aging30plus / f.aging.totalBase * 100) : 0).toFixed(1)}% ({f.aging.aging30plus})</span>
-                            </div>
+                          <div className="mt-2 flex gap-2 text-[10px]">
+                            <span className="bg-muted px-1.5 py-0.5 rounded">7–14d: <strong>{f.aging.aging7_14}</strong></span>
+                            <span className="bg-warning/10 text-warning px-1.5 py-0.5 rounded">15–30d: <strong>{f.aging.aging15_30}</strong></span>
+                            <span className="bg-destructive/10 text-destructive px-1.5 py-0.5 rounded">30+d: <strong>{f.aging.aging30plus}</strong></span>
                           </div>
                         )}
                         {!f.aging && (
-                          <div className="mt-3">
-                            <div className="w-full bg-muted rounded-full h-1.5">
+                          <div className="mt-2">
+                            <div className="w-full bg-muted rounded-full h-1">
                               <div
-                                className={`h-1.5 rounded-full transition-all ${f.pct > 20 ? "bg-destructive" : f.pct > 10 ? "bg-warning" : "bg-primary"}`}
+                                className={`h-1 rounded-full transition-all ${f.pct > 20 ? "bg-destructive" : f.pct > 10 ? "bg-warning" : "bg-primary"}`}
                                 style={{ width: `${Math.min(100, f.pct)}%` }}
                               />
                             </div>
@@ -1084,34 +1080,48 @@ const VisaoGeral = () => {
                 Distribuição Geográfica
               </h2>
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                {/* Gráfico de churn por bairro */}
+                {/* Gráfico por bairro — multi-metric */}
                 <Card>
                   <CardHeader className="pb-2">
-                    <div className="flex items-center justify-between">
-                      <CardTitle className="text-sm">Churn por Bairro</CardTitle>
-                      <div className="flex gap-1">
-                        <button
-                          onClick={() => setChurnChartMode("taxa")}
-                          className={`px-2.5 py-1 text-xs rounded-md font-medium transition-colors ${churnChartMode === "taxa" ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:bg-muted/80"}`}
-                        >
-                          Taxa
-                        </button>
-                        <button
-                          onClick={() => setChurnChartMode("volume")}
-                          className={`px-2.5 py-1 text-xs rounded-md font-medium transition-colors ${churnChartMode === "volume" ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:bg-muted/80"}`}
-                        >
-                          Volume
-                        </button>
+                    <div className="flex items-center justify-between gap-2">
+                      {/* Metric selector (clickable title) */}
+                      <div className="flex flex-wrap gap-1">
+                        {(["churn", "financeiro", "nps", "ltv"] as GeoMetric[]).map(m => (
+                          <button
+                            key={m}
+                            onClick={() => setGeoMetric(m)}
+                            className={`px-2.5 py-1 text-xs rounded-md font-medium transition-colors ${geoMetric === m ? "bg-primary text-primary-foreground" : "bg-muted/60 text-muted-foreground hover:bg-muted"}`}
+                          >
+                            {m === "churn" ? "Churn" : m === "financeiro" ? "Financeiro" : m === "nps" ? "NPS" : "LTV"}
+                          </button>
+                        ))}
                       </div>
+                      {/* Taxa / Volume toggle (not for LTV) */}
+                      {geoMetric !== "ltv" && (
+                        <div className="flex gap-1">
+                          <button
+                            onClick={() => setChurnChartMode("taxa")}
+                            className={`px-2 py-1 text-[10px] rounded font-medium transition-colors ${churnChartMode === "taxa" ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}
+                          >
+                            Taxa
+                          </button>
+                          <button
+                            onClick={() => setChurnChartMode("volume")}
+                            className={`px-2 py-1 text-[10px] rounded font-medium transition-colors ${churnChartMode === "volume" ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}
+                          >
+                            Volume
+                          </button>
+                        </div>
+                      )}
                     </div>
                     <p className="text-[10px] text-muted-foreground">
-                      {churnPorBairro.length} bairros · {churnPorBairro.reduce((s, d) => s + d.cancelados, 0)} cancelados · Ordenado por {churnChartMode === "taxa" ? "taxa %" : "volume"}
+                      {geoPorBairro.length} bairros · {geoMetric === "ltv" ? "Ordenado por LTV médio" : `Ordenado por ${churnChartMode === "taxa" ? "taxa %" : "volume"}`}
                     </p>
                   </CardHeader>
                   <CardContent className="p-0 px-2 pb-2">
-                    {churnPorBairro.length > 0 ? (
-                      <ResponsiveContainer width="100%" height={Math.max(300, churnPorBairro.length * 32)}>
-                        <BarChart data={churnPorBairro} layout="vertical" margin={{ left: 10, right: 16, top: 4, bottom: 4 }} barCategoryGap="16%">
+                    {geoPorBairro.length > 0 ? (
+                      <ResponsiveContainer width="100%" height={Math.max(300, geoPorBairro.length * 32)}>
+                        <BarChart data={geoPorBairro} layout="vertical" margin={{ left: 10, right: 16, top: 4, bottom: 4 }} barCategoryGap="16%">
                           <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="hsl(var(--border))" strokeOpacity={0.4} />
                           <XAxis type="number" fontSize={10} tick={{ fill: 'hsl(var(--muted-foreground))' }} />
                           <YAxis dataKey="bairro" type="category" width={130} fontSize={9} tick={{ fill: 'hsl(var(--muted-foreground))' }} />
@@ -1122,25 +1132,30 @@ const VisaoGeral = () => {
                               return (
                                 <div className="bg-popover border rounded-lg shadow-lg p-3 text-sm min-w-[220px]">
                                   <p className="font-semibold text-foreground mb-1">{d.bairro}</p>
-                                  <p className="text-muted-foreground">Cancelados: <span className="text-destructive font-medium">{d.cancelados}</span> clientes</p>
-                                  <p className="text-muted-foreground">Churn rate: <span className="font-medium text-foreground">{d.taxa.toFixed(1)}%</span> ({d.cancelados} de {d.total} total)</p>
+                                  <p className="text-muted-foreground">{d.label}</p>
+                                  {geoMetric !== "ltv" && <p className="text-muted-foreground">Taxa: <span className="font-medium text-foreground">{d.taxa.toFixed(1)}%</span></p>}
                                 </div>
                               );
                             }}
                           />
-                          <Bar dataKey={churnChartMode === "taxa" ? "taxa" : "cancelados"} radius={[0, 4, 4, 0]}>
-                            {churnPorBairro.map((entry, index) => {
-                              const v = churnChartMode === "taxa" ? entry.taxa : entry.cancelados;
-                              const color = churnChartMode === "taxa"
-                                ? (v > 10 ? "hsl(var(--destructive))" : v > 5 ? "hsl(var(--warning))" : "hsl(var(--success))")
-                                : (v > 15 ? "hsl(var(--destructive))" : v > 8 ? "hsl(var(--warning))" : "hsl(var(--success))");
+                          <Bar dataKey={geoMetric === "ltv" || churnChartMode === "volume" ? "value" : "taxa"} radius={[0, 4, 4, 0]}>
+                            {geoPorBairro.map((entry, index) => {
+                              const v = geoMetric === "ltv" ? entry.value : (churnChartMode === "taxa" ? entry.taxa : entry.value);
+                              let color: string;
+                              if (geoMetric === "ltv") {
+                                color = v > 5000 ? "hsl(var(--primary))" : v > 2000 ? "hsl(var(--success))" : "hsl(var(--muted-foreground))";
+                              } else {
+                                color = churnChartMode === "taxa"
+                                  ? (v > 10 ? "hsl(var(--destructive))" : v > 5 ? "hsl(var(--warning))" : "hsl(var(--success))")
+                                  : (v > 15 ? "hsl(var(--destructive))" : v > 8 ? "hsl(var(--warning))" : "hsl(var(--success))");
+                              }
                               return <Cell key={index} fill={color} />;
                             })}
                           </Bar>
                         </BarChart>
                       </ResponsiveContainer>
                     ) : (
-                      <p className="text-center text-muted-foreground py-12 text-sm">Sem dados de cancelamento por bairro</p>
+                      <p className="text-center text-muted-foreground py-12 text-sm">Sem dados para "{GEO_METRIC_LABELS[geoMetric]}"</p>
                     )}
                   </CardContent>
                 </Card>
@@ -1254,7 +1269,7 @@ const VisaoGeral = () => {
                       <Badge variant="destructive" className="text-xs">{filaRisco.length}</Badge>
                     </div>
                     <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => navigate("/clientes-em-risco")}>
-                      Ver todos
+                      Ver todos ({saudeAtual.clientesAltoRisco})
                       <ArrowRight className="h-3 w-3 ml-1" />
                     </Button>
                   </div>
@@ -1268,6 +1283,7 @@ const VisaoGeral = () => {
                             <TableHead className="text-xs whitespace-nowrap">Cliente</TableHead>
                             <TableHead className="text-xs whitespace-nowrap text-center">Churn Score</TableHead>
                             <TableHead className="text-xs whitespace-nowrap text-center">Dias Atraso</TableHead>
+                            <TableHead className="text-xs whitespace-nowrap text-center">Chamados 90d</TableHead>
                             <TableHead className="text-xs whitespace-nowrap text-center">NPS</TableHead>
                             <TableHead className="text-xs whitespace-nowrap text-center">Prioridade</TableHead>
                             <TableHead className="text-xs whitespace-nowrap">Motivo</TableHead>
@@ -1280,6 +1296,7 @@ const VisaoGeral = () => {
                             const bucket = getBucketVisao(score);
                             const npsCliente = npsMap.get(c.cliente_id);
                             const prioridade = getPrioridade(c, bucket);
+                            const ch90 = chamadosPorClienteMap.d90.get(c.cliente_id)?.chamados_periodo ?? c.qtd_chamados_90d ?? 0;
                             const PRIORIDADE_COLORS: Record<string, string> = {
                               P0: "bg-red-100 text-red-800 border-red-300",
                               P1: "bg-orange-100 text-orange-800 border-orange-300",
@@ -1302,6 +1319,11 @@ const VisaoGeral = () => {
                                 <TableCell className="text-center text-xs">
                                   {c.dias_atraso != null && c.dias_atraso > 0 ? (
                                     <span className={c.dias_atraso > 30 ? "text-destructive font-medium" : "text-yellow-600"}>{Math.round(c.dias_atraso)}d</span>
+                                  ) : "—"}
+                                </TableCell>
+                                <TableCell className="text-center text-xs">
+                                  {ch90 > 0 ? (
+                                    <span className={ch90 >= 5 ? "text-destructive font-medium" : ch90 >= 3 ? "text-yellow-600" : ""}>{ch90}</span>
                                   ) : "—"}
                                 </TableCell>
                                 <TableCell className="text-center">
