@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { getScopedClient } from "@/integrations/supabase/scoped-client";
+import { supabase } from "@/integrations/supabase/client";
 import { useActiveIsp } from "@/hooks/useActiveIsp";
 
 export interface RiskBucketConfig {
@@ -28,46 +28,42 @@ export function useRiskBucketConfig() {
   useEffect(() => {
     if (!ispId) return;
 
-    const fetch = async () => {
+    const fetchConfig = async () => {
       setIsLoading(true);
-      const client = getScopedClient(ispId);
-      const { data, error } = await client
-        .from("risk_bucket_config")
-        .select("*")
-        .eq("isp_id", ispId)
-        .maybeSingle();
-
-      if (error) {
-        console.warn("⚠️ useRiskBucketConfig fetch error:", error.message);
+      try {
+        const { data, error } = await supabase.functions.invoke("crm-api", {
+          body: { action: "fetch_risk_bucket_config", isp_id: ispId },
+        });
+        if (error) {
+          console.warn("⚠️ useRiskBucketConfig fetch error:", error.message);
+        }
+        setConfig(data ? (data as RiskBucketConfig) : { ...DEFAULTS, isp_id: ispId });
+      } catch (e: any) {
+        console.warn("⚠️ useRiskBucketConfig fetch error:", e.message);
+        setConfig({ ...DEFAULTS, isp_id: ispId });
       }
-
-      setConfig(data ? (data as RiskBucketConfig) : { ...DEFAULTS, isp_id: ispId });
       setIsLoading(false);
     };
 
-    fetch();
+    fetchConfig();
   }, [ispId]);
 
   const saveConfig = useCallback(async (updates: Partial<Omit<RiskBucketConfig, "isp_id" | "id">>) => {
     const merged = { ...config, ...updates };
-    const client = getScopedClient(ispId);
 
-    const { data, error } = await client
-      .from("risk_bucket_config")
-      .upsert(
-        {
-          isp_id: ispId,
-          ok_max: merged.ok_max,
-          alert_min: merged.alert_min,
-          alert_max: merged.alert_max,
-          critical_min: merged.critical_min,
-        },
-        { onConflict: "isp_id" }
-      )
-      .select()
-      .single();
+    const { data, error } = await supabase.functions.invoke("crm-api", {
+      body: {
+        action: "save_risk_bucket_config",
+        isp_id: ispId,
+        ok_max: merged.ok_max,
+        alert_min: merged.alert_min,
+        alert_max: merged.alert_max,
+        critical_min: merged.critical_min,
+      },
+    });
 
     if (error) throw error;
+    if (data?.error) throw new Error(data.error);
     setConfig(data as RiskBucketConfig);
     return data;
   }, [config, ispId]);
