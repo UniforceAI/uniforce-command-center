@@ -503,7 +503,7 @@ const ClientesEmRisco = () => {
                         <span className="flex items-center">Cliente<SortIcon field="cliente_nome" /></span>
                       </TableHead>
                       <TableHead className="text-xs whitespace-nowrap text-center cursor-pointer select-none" onClick={() => toggleSort("score")}>
-                        <span className="flex items-center justify-center">Score/Bucket<SortIcon field="score" /></span>
+                        <span className="flex items-center justify-center">Churn Score<SortIcon field="score" /></span>
                       </TableHead>
                       <TableHead className="text-xs whitespace-nowrap text-center cursor-pointer select-none" onClick={() => toggleSort("dias_atraso")}>
                         <span className="flex items-center justify-center">Dias Atraso<SortIcon field="dias_atraso" /></span>

@@ -705,7 +705,7 @@ const Cancelamentos = () => {
                   </div>
                   <p className="text-[10px] text-muted-foreground mt-4 flex items-center gap-1">
                     <Info className="h-3 w-3" />
-                    Score de risco no momento do registro
+                    Churn Score no momento do registro
                   </p>
                 </CardContent>
               </Card>
@@ -898,7 +898,7 @@ const Cancelamentos = () => {
                           <span className="flex items-center">Data Canc.<SortIcon field="data_cancelamento" /></span>
                         </TableHead>
                         <TableHead className="text-xs whitespace-nowrap text-center cursor-pointer select-none" onClick={() => toggleSort("churn_risk_score")}>
-                          <span className="flex items-center justify-center">Score/Bucket<SortIcon field="churn_risk_score" /></span>
+                          <span className="flex items-center justify-center">Churn Score<SortIcon field="churn_risk_score" /></span>
                         </TableHead>
                         <TableHead className="text-xs whitespace-nowrap">Driver</TableHead>
                         <TableHead className="text-xs whitespace-nowrap">Plano</TableHead>

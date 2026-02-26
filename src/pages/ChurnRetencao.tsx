@@ -302,7 +302,7 @@ const ChurnRetencao = () => {
     { key: "cliente_nome", label: "Cliente" },
     { key: "plano", label: "Plano" },
     { key: "cidade", label: "Cidade" },
-    { key: "score", label: "Score", render: (item) => `${item.score}%` },
+    { key: "score", label: "Churn Score", render: (item) => `${item.score}%` },
     { key: "bucket", label: "Risco", render: (item) => <RiskBadge level={item.bucket} /> },
     { key: "dias_atraso", label: "Dias Atraso" },
     { key: "valor_mensalidade", label: "MRR", render: (item) => `R$ ${(item.valor_mensalidade || 0).toFixed(2)}` },
@@ -659,7 +659,7 @@ const ChurnRetencao = () => {
               <CardHeader>
                 <CardTitle>🚨 Fila de Ação - Clientes em Risco</CardTitle>
                 <CardDescription>
-                  Clientes ordenados por score de churn - priorize ações de retenção
+                  Clientes ordenados por Churn Score - priorize ações de retenção
                 </CardDescription>
               </CardHeader>
               <CardContent>

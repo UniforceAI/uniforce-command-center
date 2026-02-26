@@ -735,7 +735,7 @@ const Financeiro = () => {
                             )}
                           </div>
                         </TableHead>
-                        <TableHead className="text-xs text-center">Score/Risco</TableHead>
+                        <TableHead className="text-xs text-center">Churn Score</TableHead>
                         <TableHead className="text-xs">Status</TableHead>
                       </TableRow>
                     </TableHeader>
