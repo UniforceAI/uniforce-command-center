@@ -1,4 +1,5 @@
 import { useState, useMemo, useCallback } from "react";
+import { FAIXAS_AGING } from "@/types/evento";
 import { useChurnData, ChurnStatus, ChurnEvent } from "@/hooks/useChurnData";
 import { useChamados } from "@/hooks/useChamados";
 import { useRiskBucketConfig, RiskBucket } from "@/hooks/useRiskBucketConfig";
@@ -365,6 +366,31 @@ const Cancelamentos = () => {
         return ya !== yb ? ya - yb : ma - mb;
       });
   }, [cancelados]);
+
+  // ─── Churn por Aging (Dias de Atraso) ───
+  const agingChurnData = useMemo(() => {
+    const faixas = [
+      ...FAIXAS_AGING.map(f => ({ ...f, qtd: 0 })),
+      { min: 0, max: 0, label: "Sem atraso", qtd: 0 },
+    ];
+
+    filtered.forEach((c) => {
+      const dias = c.dias_atraso ?? 0;
+      if (dias <= 0) {
+        faixas[faixas.length - 1].qtd++;
+        return;
+      }
+      const idx = FAIXAS_AGING.findIndex(f => dias >= f.min && dias <= f.max);
+      if (idx >= 0) faixas[idx].qtd++;
+    });
+
+    const total = filtered.length;
+    return faixas.map(f => ({
+      faixa: f.label,
+      qtd: f.qtd,
+      pct: total > 0 ? parseFloat(((f.qtd / total) * 100).toFixed(1)) : 0,
+    }));
+  }, [filtered]);
 
   // ─── Sort handler ───
   const toggleSort = useCallback((field: SortField) => {
@@ -878,6 +904,66 @@ const Cancelamentos = () => {
                 </CardContent>
               </Card>
             </div>
+
+            {/* ── Churn por Aging (Dias de Atraso) ── */}
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                  <CalendarX className="h-4 w-4" />
+                  Churn por Aging (Dias de Atraso)
+                </CardTitle>
+                <p className="text-[10px] text-muted-foreground">Distribuição dos cancelados por faixa de inadimplência no momento do cancelamento</p>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {/* Bar Chart */}
+                  <ResponsiveContainer width="100%" height={240}>
+                    <BarChart data={agingChurnData} margin={{ top: 8, right: 8, bottom: 8, left: -10 }}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
+                      <XAxis dataKey="faixa" tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} tickLine={false} axisLine={false} />
+                      <YAxis tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} tickLine={false} axisLine={false} />
+                      <Tooltip
+                        contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 12 }}
+                        formatter={(v: any, _n: any, props: any) => {
+                          const d = props.payload;
+                          return [`${d.qtd} cancelados (${d.pct}%)`, "Qtd"];
+                        }}
+                      />
+                      <Bar dataKey="qtd" radius={[4, 4, 0, 0]} maxBarSize={48}>
+                        {agingChurnData.map((e, i) => (
+                          <Cell key={i} fill={e.faixa === "Sem atraso" ? "#22c55e" : e.pct >= 20 ? "#ef4444" : e.pct >= 10 ? "#f97316" : "#eab308"} />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+
+                  {/* List breakdown */}
+                  <div className="space-y-2.5">
+                    {agingChurnData.map((item, idx) => {
+                      const maxQtd = Math.max(...agingChurnData.map(d => d.qtd), 1);
+                      const barPct = (item.qtd / maxQtd) * 100;
+                      const color = item.faixa === "Sem atraso" ? "#22c55e" : COLORS[idx % COLORS.length];
+                      return (
+                        <div key={item.faixa}>
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-xs font-medium">{item.faixa}</span>
+                            <span className="text-xs font-semibold tabular-nums">
+                              {item.qtd} <span className="text-muted-foreground font-normal">({item.pct}%)</span>
+                            </span>
+                          </div>
+                          <div className="h-2 bg-muted rounded-full overflow-hidden">
+                            <div
+                              className="h-full rounded-full transition-all duration-500"
+                              style={{ width: `${Math.max(barPct, 3)}%`, backgroundColor: color }}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
 
             {/* ── Tabela principal ── */}
             <Card>
