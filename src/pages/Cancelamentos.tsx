@@ -411,7 +411,9 @@ const Cancelamentos = () => {
   const selectedEvents = useMemo(() => {
     if (!selectedCliente) return [];
     const c = selectedCliente;
-    const realEvents = churnEvents.filter((e) => e.cliente_id === c.cliente_id);
+    const realEvents = churnEvents
+      .filter((e) => e.cliente_id === c.cliente_id)
+      .filter((e) => e.tipo_evento !== "chamado_reincidente" && e.tipo_evento !== "nps_detrator");
 
     const deduped: typeof realEvents = [];
     const seen = new Set<string>();
