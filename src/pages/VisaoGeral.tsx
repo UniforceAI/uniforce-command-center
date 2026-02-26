@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useActiveIsp } from "@/hooks/useActiveIsp";
@@ -9,10 +9,13 @@ import { useToast } from "@/hooks/use-toast";
 import { useEventos } from "@/hooks/useEventos";
 import { useChamados } from "@/hooks/useChamados";
 import { useNPSData } from "@/hooks/useNPSData";
-import { useChurnData } from "@/hooks/useChurnData";
-import { useRiskBucketConfig } from "@/hooks/useRiskBucketConfig";
+import { useChurnData, ChurnStatus } from "@/hooks/useChurnData";
+import { useRiskBucketConfig, RiskBucket } from "@/hooks/useRiskBucketConfig";
 import { useChurnScore } from "@/hooks/useChurnScore";
-
+import { useCrmWorkflow, WorkflowStatus } from "@/hooks/useCrmWorkflow";
+import { useChurnScoreConfig, calcScoreFinanceiroConfiguravel } from "@/contexts/ChurnScoreConfigContext";
+import { CrmDrawer } from "@/components/crm/CrmDrawer";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Evento } from "@/types/evento";
 import { AlertasMapa } from "@/components/map/AlertasMapa";
 import { IspActions } from "@/components/shared/IspActions";
@@ -110,9 +113,10 @@ const VisaoGeral = () => {
   const { eventos, isLoading, error } = useEventos();
   const { chamados, getChamadosPorCliente, isLoading: isLoadingChamados } = useChamados();
   const { npsData } = useNPSData(ispId);
-  const { churnStatus } = useChurnData();
+  const { churnStatus, churnEvents } = useChurnData();
   const { getBucket: getBucketVisao } = useRiskBucketConfig();
-  const { scoreMap } = useChurnScore();
+  const { scoreMap, getScoreTotalReal, getScoreSuporteReal, getScoreNPSReal, npsMap, chamadosPorClienteMap, config: churnConfig } = useChurnScore();
+  const { workflowMap, addToWorkflow, updateStatus, updateTags, updateOwner } = useCrmWorkflow();
 
   const [showInitialScreen, setShowInitialScreen] = useState(() => !getHasShownInitial());
 
@@ -134,6 +138,8 @@ const VisaoGeral = () => {
   const [filial, setFilial] = useState("todos");
   const [mapTab, setMapTab] = useState("chamados");
   const [churnChartMode, setChurnChartMode] = useState<"volume" | "taxa">("taxa");
+  const [fatoresMode, setFatoresMode] = useState<"risco" | "cancelados">("risco");
+  const [selectedClienteRisco, setSelectedClienteRisco] = useState<ChurnStatus | null>(null);
 
   // Mapeamento de IDs de cidade para nomes
   const cidadeIdMap: Record<string, string> = {
@@ -306,49 +312,93 @@ const VisaoGeral = () => {
   // BLOCO 2 — FATORES DE RISCO
   // =========================================================
   const fatoresRisco = useMemo(() => {
-    const totalBase = saudeAtual.clientesAtivos;
-    if (totalBase === 0) return [];
+    // Base depends on toggle: "risco" = ativos, "cancelados" = cancelados no período
+    const isRisco = fatoresMode === "risco";
 
-    // % clientes com 2+ chamados em 30 dias
+    // Build the relevant population
+    let populacao: { cliente_id: number; dias_atraso?: number; nps_classificacao?: string; cliente_cidade?: string; cliente_bairro?: string; plano_nome?: string }[] = [];
+
+    if (isRisco) {
+      // Clientes ativos (filtrados)
+      const clientesMapBase = new Map<number, Evento>();
+      filteredEventos.forEach(e => {
+        if (e.status_contrato === "C" || e.servico_status === "C") return;
+        if (!clientesMapBase.has(e.cliente_id) ||
+          new Date(e.event_datetime) > new Date(clientesMapBase.get(e.cliente_id)!.event_datetime)) {
+          clientesMapBase.set(e.cliente_id, e);
+        }
+      });
+      populacao = Array.from(clientesMapBase.values()).map(e => ({
+        cliente_id: e.cliente_id,
+        dias_atraso: e.dias_atraso,
+        cliente_cidade: e.cliente_cidade,
+        cliente_bairro: e.cliente_bairro,
+        plano_nome: e.plano_nome,
+      }));
+    } else {
+      // Cancelados no período
+      churnStatus.forEach(cs => {
+        if (cs.status_churn !== "cancelado") return;
+        if (cidade !== "todos" && String(cs.cliente_cidade) !== cidade && getCidadeNome(cs.cliente_cidade) !== cidade) return;
+        if (bairro !== "todos" && cs.cliente_bairro !== bairro) return;
+        if (plano !== "todos" && cs.plano_nome !== plano) return;
+        if (dataLimiteChurn && cs.data_cancelamento) {
+          const d = new Date(cs.data_cancelamento);
+          if (!isNaN(d.getTime()) && d < dataLimiteChurn) return;
+        }
+        populacao.push({
+          cliente_id: cs.cliente_id,
+          dias_atraso: cs.dias_atraso,
+          nps_classificacao: cs.nps_classificacao,
+          cliente_cidade: cs.cliente_cidade,
+          cliente_bairro: cs.cliente_bairro,
+          plano_nome: cs.plano_nome,
+        });
+      });
+    }
+
+    const totalBase = populacao.length;
+    if (totalBase === 0) return { factors: [], totalBase: 0 };
+
+    // 1. 2+ chamados em 30 dias
     const chamados30 = getChamadosPorCliente(30);
+    const clienteIds = new Set(populacao.map(p => p.cliente_id));
     let com2maisChamados = 0;
-    chamados30.forEach((data) => {
-      if (data.chamados_periodo >= 2) com2maisChamados++;
+    chamados30.forEach((data, cId) => {
+      if (clienteIds.has(cId) && data.chamados_periodo >= 2) com2maisChamados++;
     });
 
-    // % clientes com atraso recorrente (>15 dias)
-    const clientesMapBase = new Map<number, Evento>();
-    filteredEventos.forEach(e => {
-      if (!clientesMapBase.has(e.cliente_id) ||
-        new Date(e.event_datetime) > new Date(clientesMapBase.get(e.cliente_id)!.event_datetime)) {
-        clientesMapBase.set(e.cliente_id, e);
-      }
+    // 2. Pressão Financeira (Aging Progressivo)
+    let aging7_14 = 0, aging15_30 = 0, aging30plus = 0;
+    populacao.forEach(p => {
+      const da = p.dias_atraso ?? 0;
+      if (da >= 7 && da <= 14) aging7_14++;
+      else if (da > 14 && da <= 30) aging15_30++;
+      else if (da > 30) aging30plus++;
     });
-    const clientesUnicos = Array.from(clientesMapBase.values());
-    const comAtrasoRecorrente = clientesUnicos.filter(e =>
-      e.dias_atraso && e.dias_atraso > 15 && e.status_contrato !== "C" && e.servico_status !== "C"
-    ).length;
+    const totalAging = aging7_14 + aging15_30 + aging30plus;
 
-    // % detratores NPS
+    // 3. Detratores NPS
     let detratores = 0;
     let comNps = 0;
-    churnStatus.forEach(cs => {
-      if (cs.status_churn === "cancelado") return;
-      if (cs.status_internet === "D") return;
-      if (cidade !== "todos" && String(cs.cliente_cidade) !== cidade && getCidadeNome(cs.cliente_cidade) !== cidade) return;
-      if (bairro !== "todos" && cs.cliente_bairro !== bairro) return;
-      if (plano !== "todos" && cs.plano_nome !== plano) return;
-      if (cs.nps_classificacao) {
-        comNps++;
-        if (cs.nps_classificacao.toUpperCase() === "DETRATOR") detratores++;
-      }
-    });
-
-    // % clientes com instabilidade técnica (downtime ou alerta)
-    const comInstabilidade = clientesUnicos.filter(e =>
-      (e.alerta_tipo || (e.downtime_min_24h && e.downtime_min_24h > 60)) &&
-      e.status_contrato !== "C" && e.servico_status !== "C"
-    ).length;
+    if (isRisco) {
+      churnStatus.forEach(cs => {
+        if (cs.status_churn === "cancelado" || cs.status_internet === "D") return;
+        if (!clienteIds.has(cs.cliente_id)) return;
+        if (cs.nps_classificacao) {
+          comNps++;
+          if (cs.nps_classificacao.toUpperCase() === "DETRATOR") detratores++;
+        }
+      });
+    } else {
+      populacao.forEach(p => {
+        const cs = churnStatus.find(c => c.cliente_id === p.cliente_id && c.status_churn === "cancelado");
+        if (cs?.nps_classificacao) {
+          comNps++;
+          if (cs.nps_classificacao.toUpperCase() === "DETRATOR") detratores++;
+        }
+      });
+    }
 
     const factors = [
       {
@@ -358,14 +408,16 @@ const VisaoGeral = () => {
         count: com2maisChamados,
         pct: totalBase > 0 ? (com2maisChamados / totalBase * 100) : 0,
         route: "/",
+        aging: null,
       },
       {
-        id: "atraso",
-        label: "Atraso recorrente (>15 dias)",
-        icon: <Clock className="h-4 w-4" />,
-        count: comAtrasoRecorrente,
-        pct: totalBase > 0 ? (comAtrasoRecorrente / totalBase * 100) : 0,
+        id: "aging",
+        label: "Pressão Financeira (Aging)",
+        icon: <CreditCard className="h-4 w-4" />,
+        count: totalAging,
+        pct: totalBase > 0 ? (totalAging / totalBase * 100) : 0,
         route: "/financeiro",
+        aging: { aging7_14, aging15_30, aging30plus, totalBase },
       },
       {
         id: "nps",
@@ -374,19 +426,12 @@ const VisaoGeral = () => {
         count: detratores,
         pct: comNps > 0 ? (detratores / comNps * 100) : 0,
         route: "/nps",
-      },
-      {
-        id: "tecnico",
-        label: "Instabilidade técnica",
-        icon: <Wifi className="h-4 w-4" />,
-        count: comInstabilidade,
-        pct: totalBase > 0 ? (comInstabilidade / totalBase * 100) : 0,
-        route: "/",
+        aging: null,
       },
     ].filter(f => f.count > 0).sort((a, b) => b.pct - a.pct);
 
-    return factors;
-  }, [saudeAtual.clientesAtivos, filteredEventos, getChamadosPorCliente, churnStatus, cidade, bairro, plano]);
+    return { factors, totalBase };
+  }, [fatoresMode, saudeAtual.clientesAtivos, filteredEventos, getChamadosPorCliente, churnStatus, cidade, bairro, plano, dataLimiteChurn]);
 
   // =========================================================
   // BLOCO 3 — DISTRIBUIÇÃO GEOGRÁFICA (Churn por bairro)
@@ -576,30 +621,91 @@ const VisaoGeral = () => {
   // FILA DE RISCO (top 8 clientes - mesma lógica do Clientes em Risco)
   // =========================================================
   const filaRisco = useMemo(() => {
-    const items: { id: number; nome: string; plano: string; local: string; score: number; bucket: string; driver: string; celular?: string }[] = [];
+    const map = new Map<number, ChurnStatus>();
     churnStatus.forEach(cs => {
-      if (cs.status_churn === "cancelado") return;
       if (cs.status_internet === "D") return;
+      if (cs.status_churn === "cancelado") return;
       if (cidade !== "todos" && String(cs.cliente_cidade) !== cidade && getCidadeNome(cs.cliente_cidade) !== cidade) return;
       if (bairro !== "todos" && cs.cliente_bairro !== bairro) return;
       if (plano !== "todos" && cs.plano_nome !== plano) return;
-      const sm = scoreMap.get(cs.cliente_id);
-      if (!sm || sm.bucket === "OK") return;
-      items.push({
-        id: cs.cliente_id,
-        nome: cs.cliente_nome || `Cliente ${cs.cliente_id}`,
-        plano: cs.plano_nome || "-",
-        local: cs.cliente_bairro
-          ? `${cs.cliente_bairro}, ${getCidadeNome(cs.cliente_cidade) || ""}`
-          : getCidadeNome(cs.cliente_cidade) || "-",
-        score: sm.score,
-        bucket: sm.bucket,
-        driver: cs.motivo_risco_principal || (cs.dias_atraso && cs.dias_atraso > 0 ? "Atraso financeiro" : "Risco identificado"),
-        celular: undefined,
-      });
+      const score = getScoreTotalReal(cs);
+      const b = getBucketVisao(score);
+      if (b !== "ALERTA" && b !== "CRÍTICO") return;
+      const existing = map.get(cs.cliente_id);
+      if (!existing || score > getScoreTotalReal(existing)) {
+        map.set(cs.cliente_id, cs);
+      }
     });
-    return items.sort((a, b) => b.score - a.score).slice(0, 8);
-  }, [churnStatus, scoreMap, cidade, bairro, plano]);
+    return Array.from(map.values())
+      .sort((a, b) => getScoreTotalReal(b) - getScoreTotalReal(a))
+      .slice(0, 8);
+  }, [churnStatus, scoreMap, cidade, bairro, plano, getScoreTotalReal, getBucketVisao]);
+
+  // Handlers for CRM drawer in Visão Geral
+  const handleStartTreatmentVG = useCallback(async (c: ChurnStatus) => {
+    const autoTags: string[] = [];
+    const b = getBucketVisao(getScoreTotalReal(c));
+    if (b === "CRÍTICO") autoTags.push("Crítico");
+    if ((c.ltv_estimado ?? 0) >= 3000) autoTags.push("Alto Ticket");
+    const nps = npsMap.get(c.cliente_id);
+    if (nps?.classificacao === "DETRATOR") autoTags.push("NPS Detrator");
+    await addToWorkflow(c.cliente_id, autoTags);
+    toast({ title: "Cliente adicionado ao workflow" });
+  }, [getBucketVisao, getScoreTotalReal, npsMap, addToWorkflow, toast]);
+
+  const handleUpdateStatusVG = useCallback(async (clienteId: number, status: WorkflowStatus) => {
+    await updateStatus(clienteId, status);
+    toast({ title: `Marcado como ${status}` });
+  }, [updateStatus, toast]);
+
+  // Events for selected client in drawer
+  const selectedClienteRiscoEvents = useMemo(() => {
+    if (!selectedClienteRisco) return [];
+    const c = selectedClienteRisco;
+    const evts: any[] = [];
+    const now = new Date().toISOString();
+    const realEvents = churnEvents
+      .filter((e) => e.cliente_id === c.cliente_id)
+      .filter((e) => e.tipo_evento !== "chamado_reincidente" && e.tipo_evento !== "nps_detrator")
+      .slice(0, 10);
+    evts.push(...realEvents);
+    const scoreFinanceiro = calcScoreFinanceiroConfiguravel(c.dias_atraso, churnConfig);
+    if (scoreFinanceiro > 0) {
+      evts.push({ id: "synth-financeiro", isp_id: c.isp_id, cliente_id: c.cliente_id, id_contrato: null, tipo_evento: "score_financeiro", peso_evento: 3, impacto_score: scoreFinanceiro, descricao: `${Math.round(c.dias_atraso ?? 0)} dias em atraso — impacto de +${scoreFinanceiro}pts`, dados_evento: { dias_atraso: c.dias_atraso }, data_evento: c.ultimo_pagamento_data || now, created_at: now });
+    }
+    const ch30Real = chamadosPorClienteMap.d30.get(c.cliente_id)?.chamados_periodo ?? 0;
+    const rawUltimoChamado = chamadosPorClienteMap.d30.get(c.cliente_id)?.ultimo_chamado ?? c.ultimo_atendimento_data ?? now;
+    const ultimoChamadoData = typeof rawUltimoChamado === "string" ? rawUltimoChamado.replace(" ", "T") : now;
+    if (ch30Real >= 2) {
+      const impacto = ch30Real >= 3 ? churnConfig.chamados30dBase + (ch30Real - 2) * churnConfig.chamadoAdicional : churnConfig.chamados30dBase;
+      evts.push({ id: "real-reincidente", isp_id: c.isp_id, cliente_id: c.cliente_id, id_contrato: null, tipo_evento: "chamado_reincidente", peso_evento: ch30Real >= 3 ? 3 : 2, impacto_score: impacto, descricao: `${ch30Real} chamados nos últimos 30 dias — impacto de +${impacto}pts`, dados_evento: { qtd_chamados_30d_real: ch30Real }, data_evento: ultimoChamadoData, created_at: ultimoChamadoData });
+    }
+    const npsCliente = npsMap.get(c.cliente_id);
+    if (npsCliente?.classificacao === "DETRATOR") {
+      const npsData = npsCliente.data ?? now;
+      evts.push({ id: "real-nps-detrator", isp_id: c.isp_id, cliente_id: c.cliente_id, id_contrato: null, tipo_evento: "nps_detrator", peso_evento: 4, impacto_score: churnConfig.npsDetrator, descricao: `NPS Detrator — nota ${npsCliente.nota}/10 — impacto de +${churnConfig.npsDetrator}pts`, dados_evento: { nota_nps: npsCliente.nota, classificacao: npsCliente.classificacao }, data_evento: npsData, created_at: npsData });
+    }
+    evts.sort((a, b) => (b.impacto_score || 0) - (a.impacto_score || 0));
+    return evts;
+  }, [selectedClienteRisco, churnEvents, chamadosPorClienteMap, npsMap, churnConfig]);
+
+  const selectedClienteRiscoChamados = useMemo(() => {
+    if (!selectedClienteRisco) return [];
+    return chamados.filter(c => {
+      const cid = typeof c.id_cliente === 'string' ? parseInt(c.id_cliente as any, 10) : c.id_cliente;
+      return cid === selectedClienteRisco.cliente_id;
+    });
+  }, [selectedClienteRisco, chamados]);
+
+  function getPrioridade(c: ChurnStatus, bucket: RiskBucket): string {
+    const ltv = c.ltv_estimado ?? 0;
+    if (ltv >= 3000 && bucket === "CRÍTICO") return "P0";
+    if (ltv >= 3000 && bucket === "ALERTA") return "P1";
+    if (bucket === "CRÍTICO") return "P1";
+    if (ltv >= 1500 && bucket === "ALERTA") return "P2";
+    if (bucket === "ALERTA") return "P2";
+    return "P3";
+  }
 
   // =========================================================
   // MAP DATA
@@ -894,14 +1000,31 @@ const VisaoGeral = () => {
             {/* ============================================= */}
             {/* BLOCO 2 — PRINCIPAIS FATORES DE RISCO */}
             {/* ============================================= */}
-            {fatoresRisco.length > 0 && (
+            {fatoresRisco.factors.length > 0 && (
               <section>
-                <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-2">
-                  <AlertTriangle className="h-3.5 w-3.5" />
-                  Principais Fatores de Risco
-                </h2>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                  {fatoresRisco.map((f) => (
+                <div className="flex items-center justify-between mb-3">
+                  <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-2">
+                    <AlertTriangle className="h-3.5 w-3.5" />
+                    Principais Fatores de Risco
+                    <span className="text-[10px] font-normal normal-case">({fatoresRisco.totalBase} {fatoresMode === "risco" ? "clientes ativos" : "cancelados no período"})</span>
+                  </h2>
+                  <div className="flex gap-1">
+                    <button
+                      onClick={() => setFatoresMode("risco")}
+                      className={`px-3 py-1 text-xs rounded-md font-medium transition-colors ${fatoresMode === "risco" ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:bg-muted/80"}`}
+                    >
+                      Em Risco
+                    </button>
+                    <button
+                      onClick={() => setFatoresMode("cancelados")}
+                      className={`px-3 py-1 text-xs rounded-md font-medium transition-colors ${fatoresMode === "cancelados" ? "bg-destructive text-destructive-foreground" : "bg-muted text-muted-foreground hover:bg-muted/80"}`}
+                    >
+                      Cancelados
+                    </button>
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {fatoresRisco.factors.map((f) => (
                     <Card key={f.id} className="hover:shadow-md transition-shadow cursor-pointer group" onClick={() => navigate(f.route)}>
                       <CardContent className="p-4">
                         <div className="flex items-start justify-between">
@@ -918,14 +1041,33 @@ const VisaoGeral = () => {
                             {f.count} clientes
                           </Badge>
                         </div>
-                        <div className="mt-3">
-                          <div className="w-full bg-muted rounded-full h-1.5">
-                            <div
-                              className={`h-1.5 rounded-full transition-all ${f.pct > 20 ? "bg-destructive" : f.pct > 10 ? "bg-warning" : "bg-primary"}`}
-                              style={{ width: `${Math.min(100, f.pct)}%` }}
-                            />
+                        {/* Aging breakdown inside card */}
+                        {f.aging && (
+                          <div className="mt-3 space-y-1 text-xs text-muted-foreground border-t pt-2">
+                            <div className="flex justify-between">
+                              <span>7–14 dias</span>
+                              <span className="font-medium text-foreground">{(f.aging.totalBase > 0 ? (f.aging.aging7_14 / f.aging.totalBase * 100) : 0).toFixed(1)}% ({f.aging.aging7_14})</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span>15–30 dias</span>
+                              <span className="font-medium text-warning">{(f.aging.totalBase > 0 ? (f.aging.aging15_30 / f.aging.totalBase * 100) : 0).toFixed(1)}% ({f.aging.aging15_30})</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span>30+ dias</span>
+                              <span className="font-medium text-destructive">{(f.aging.totalBase > 0 ? (f.aging.aging30plus / f.aging.totalBase * 100) : 0).toFixed(1)}% ({f.aging.aging30plus})</span>
+                            </div>
                           </div>
-                        </div>
+                        )}
+                        {!f.aging && (
+                          <div className="mt-3">
+                            <div className="w-full bg-muted rounded-full h-1.5">
+                              <div
+                                className={`h-1.5 rounded-full transition-all ${f.pct > 20 ? "bg-destructive" : f.pct > 10 ? "bg-warning" : "bg-primary"}`}
+                                style={{ width: `${Math.min(100, f.pct)}%` }}
+                              />
+                            </div>
+                          </div>
+                        )}
                       </CardContent>
                     </Card>
                   ))}
@@ -1100,7 +1242,7 @@ const VisaoGeral = () => {
             )}
 
             {/* ============================================= */}
-            {/* CLIENTES EM RISCO (preview - top 8) */}
+            {/* CLIENTES EM RISCO (top 8 - mesma UX do menu) */}
             {/* ============================================= */}
             <section>
               <Card>
@@ -1117,58 +1259,82 @@ const VisaoGeral = () => {
                     </Button>
                   </div>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="p-0">
                   {filaRisco.length > 0 ? (
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-sm">
-                        <thead>
-                          <tr className="border-b text-muted-foreground">
-                            <th className="text-left py-2 font-medium text-xs">Cliente</th>
-                            <th className="text-left py-2 font-medium text-xs">Plano</th>
-                            <th className="text-center py-2 font-medium text-xs">Score</th>
-                            <th className="text-center py-2 font-medium text-xs">Risco</th>
-                            <th className="text-left py-2 font-medium text-xs">Driver</th>
-                            <th className="text-right py-2 font-medium text-xs">Ações</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {filaRisco.map((item) => (
-                            <tr key={item.id} className="border-b last:border-0 hover:bg-muted/50 transition-colors">
-                              <td className="py-2.5">
-                                <div className="max-w-[160px]">
-                                  <p className="font-medium truncate text-sm">{item.nome}</p>
-                                  <p className="text-[10px] text-muted-foreground truncate">{item.local}</p>
-                                </div>
-                              </td>
-                              <td className="py-2.5 max-w-[120px] truncate text-muted-foreground text-xs">
-                                {item.plano.length > 25 ? item.plano.substring(0, 25) + "..." : item.plano}
-                              </td>
-                              <td className="py-2.5 text-center">
-                                <span className="font-mono font-bold text-sm">{item.score}</span>
-                              </td>
-                              <td className="py-2.5 text-center">
-                                <Badge className={`${BUCKET_COLORS[item.bucket] || "bg-muted"} border text-[10px]`}>
-                                  {item.bucket}
-                                </Badge>
-                              </td>
-                              <td className="py-2.5">
-                                <Badge variant="secondary" className="text-[10px]">
-                                  {item.driver.length > 20 ? item.driver.substring(0, 20) + "..." : item.driver}
-                                </Badge>
-                              </td>
-                              <td className="py-2.5 text-right">
-                                <div className="flex justify-end items-center gap-1">
-                                  <QuickActions clientId={item.id} clientName={item.nome} clientPhone={item.celular} />
-                                  <ActionMenu clientId={item.id} clientName={item.nome} clientPhone={item.celular} variant="risco" />
-                                </div>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                    <div className="overflow-auto max-h-[450px]">
+                      <Table>
+                        <TableHeader className="sticky top-0 bg-card z-10">
+                          <TableRow>
+                            <TableHead className="text-xs whitespace-nowrap">Cliente</TableHead>
+                            <TableHead className="text-xs whitespace-nowrap text-center">Churn Score</TableHead>
+                            <TableHead className="text-xs whitespace-nowrap text-center">Dias Atraso</TableHead>
+                            <TableHead className="text-xs whitespace-nowrap text-center">NPS</TableHead>
+                            <TableHead className="text-xs whitespace-nowrap text-center">Prioridade</TableHead>
+                            <TableHead className="text-xs whitespace-nowrap">Motivo</TableHead>
+                            <TableHead className="text-xs whitespace-nowrap text-right">Ações</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {filaRisco.map((c) => {
+                            const score = getScoreTotalReal(c);
+                            const bucket = getBucketVisao(score);
+                            const npsCliente = npsMap.get(c.cliente_id);
+                            const prioridade = getPrioridade(c, bucket);
+                            const PRIORIDADE_COLORS: Record<string, string> = {
+                              P0: "bg-red-100 text-red-800 border-red-300",
+                              P1: "bg-orange-100 text-orange-800 border-orange-300",
+                              P2: "bg-yellow-100 text-yellow-800 border-yellow-300",
+                              P3: "bg-gray-100 text-gray-700 border-gray-200",
+                            };
+                            return (
+                              <TableRow key={c.id || c.cliente_id} className="cursor-pointer hover:bg-muted/50" onClick={() => setSelectedClienteRisco(c)}>
+                                <TableCell className="text-xs font-medium max-w-[160px]">
+                                  <div>
+                                    <p className="truncate font-medium">{c.cliente_nome || `Cliente ${c.cliente_id}`}</p>
+                                    <p className="text-[10px] text-muted-foreground truncate">
+                                      {c.cliente_bairro ? `${c.cliente_bairro}, ${getCidadeNome(c.cliente_cidade) || ""}` : getCidadeNome(c.cliente_cidade) || ""}
+                                    </p>
+                                  </div>
+                                </TableCell>
+                                <TableCell className="text-center">
+                                  <Badge className={`${BUCKET_COLORS[bucket] || "bg-muted"} border font-mono text-xs`}>{score}</Badge>
+                                </TableCell>
+                                <TableCell className="text-center text-xs">
+                                  {c.dias_atraso != null && c.dias_atraso > 0 ? (
+                                    <span className={c.dias_atraso > 30 ? "text-destructive font-medium" : "text-yellow-600"}>{Math.round(c.dias_atraso)}d</span>
+                                  ) : "—"}
+                                </TableCell>
+                                <TableCell className="text-center">
+                                  {npsCliente ? (
+                                    <Badge className={`border text-[10px] ${
+                                      npsCliente.classificacao === "DETRATOR" ? "bg-red-100 text-red-800 border-red-200" :
+                                      npsCliente.classificacao === "NEUTRO" ? "bg-yellow-100 text-yellow-800 border-yellow-200" :
+                                      npsCliente.classificacao === "PROMOTOR" ? "bg-green-100 text-green-800 border-green-200" : "bg-muted"
+                                    }`}>{npsCliente.nota ?? npsCliente.classificacao}</Badge>
+                                  ) : <span className="text-xs text-muted-foreground">—</span>}
+                                </TableCell>
+                                <TableCell className="text-center">
+                                  <Badge className={`${PRIORIDADE_COLORS[prioridade] || "bg-muted"} border text-[10px]`}>{prioridade}</Badge>
+                                </TableCell>
+                                <TableCell className="text-xs max-w-[150px] truncate text-muted-foreground">
+                                  {c.motivo_risco_principal || (c.dias_atraso && c.dias_atraso > 0 ? "Atraso financeiro" : "Risco identificado")}
+                                </TableCell>
+                                <TableCell className="text-right">
+                                  <div className="flex justify-end items-center gap-1">
+                                    <QuickActions clientId={c.cliente_id} clientName={c.cliente_nome || `Cliente ${c.cliente_id}`} />
+                                    <ActionMenu clientId={c.cliente_id} clientName={c.cliente_nome || `Cliente ${c.cliente_id}`} variant="risco" />
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })}
+                        </TableBody>
+                      </Table>
                     </div>
                   ) : (
-                    <EmptyState title="Nenhum cliente em risco alto" description="Não há clientes com sinais de alerta no momento." variant="card" />
+                    <div className="p-6">
+                      <EmptyState title="Nenhum cliente em risco alto" description="Não há clientes com sinais de alerta no momento." variant="card" />
+                    </div>
                   )}
                 </CardContent>
               </Card>
@@ -1176,6 +1342,31 @@ const VisaoGeral = () => {
           </>
         )}
       </main>
+
+      {/* CRM Drawer for selected risk client */}
+      {selectedClienteRisco && (
+        <CrmDrawer
+          cliente={selectedClienteRisco}
+          score={getScoreTotalReal(selectedClienteRisco)}
+          bucket={getBucketVisao(getScoreTotalReal(selectedClienteRisco))}
+          workflow={workflowMap.get(selectedClienteRisco.cliente_id)}
+          events={selectedClienteRiscoEvents}
+          chamadosCliente={selectedClienteRiscoChamados}
+          onClose={() => setSelectedClienteRisco(null)}
+          onStartTreatment={async () => {
+            await handleStartTreatmentVG(selectedClienteRisco);
+          }}
+          onUpdateStatus={async (status) => {
+            await handleUpdateStatusVG(selectedClienteRisco.cliente_id, status);
+          }}
+          onUpdateTags={async (tags) => {
+            await updateTags(selectedClienteRisco.cliente_id, tags);
+          }}
+          onUpdateOwner={async (ownerId) => {
+            await updateOwner(selectedClienteRisco.cliente_id, ownerId);
+          }}
+        />
+      )}
     </div>
   );
 };
