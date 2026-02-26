@@ -5,8 +5,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { externalSupabase } from "@/integrations/supabase/external-client";
 import { getCategoriaName } from "@/lib/categoriasMap";
 import { useActiveIsp } from "@/hooks/useActiveIsp";
-import { useChurnData } from "@/hooks/useChurnData";
-import { useRiskBucketConfig } from "@/hooks/useRiskBucketConfig";
+import { useChurnScore } from "@/hooks/useChurnScore";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { KPICard } from "@/components/dashboard/KPICard";
@@ -24,8 +23,7 @@ const Index = () => {
   const { toast } = useToast();
   const { signOut, isSuperAdmin, clearSelectedIsp } = useAuth();
   const { ispId, ispNome } = useActiveIsp();
-  const { churnStatus } = useChurnData();
-  const { getBucket } = useRiskBucketConfig();
+  const { scoreMap } = useChurnScore();
   const [chamados, setChamados] = useState<Chamado[]>([]);
   const [selectedCliente, setSelectedCliente] = useState<Chamado | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -498,14 +496,14 @@ const Index = () => {
       .sort((a, b) => b["Qtd. Chamados"] - a["Qtd. Chamados"]);
   }, [chamados, periodo, status, urgencia, setor, dataMaisRecente]);
 
-  // Churn score map for enriching chamados table
+  // Churn score map — usa scoreMap centralizado do useChurnScore (recalculado com chamados reais)
   const churnMap = useMemo(() => {
     const m = new Map<number, { score: number; bucket: string }>();
-    churnStatus.forEach(c => {
-      m.set(c.cliente_id, { score: c.churn_risk_score, bucket: getBucket(c.churn_risk_score) });
+    scoreMap.forEach((val, clienteId) => {
+      m.set(clienteId, { score: val.score, bucket: val.bucket });
     });
     return m;
-  }, [churnStatus, getBucket]);
+  }, [scoreMap]);
 
   const handleLogout = async () => {
     await signOut();
