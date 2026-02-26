@@ -109,21 +109,17 @@ const ClientesEmRisco = () => {
     return max > 0 ? new Date(max) : new Date();
   }, [churnStatus]);
 
-  // Incluir todos os clientes cujo score recalculado é ALERTA ou CRÍTICO,
-  // independente do status_churn do banco (que pode estar desatualizado)
+  // Filtro 100% baseado no score recalculado — ignora status_churn do banco
+  // Apenas clientes cujo score >= alert_min (bucket ALERTA ou CRÍTICO) entram
   const clientesRisco = useMemo(() => {
-    const filtered = churnStatus.filter((c) => {
-      if (c.status_churn === "cancelado") return false;
-      if (c.status_churn === "risco") return true;
+    // Deduplicar por cliente_id — manter o registro com maior score
+    const map = new Map<number, typeof churnStatus[0]>();
+    churnStatus.forEach((c) => {
       const score = getScoreTotalReal(c);
       const b = getBucket(score);
-      return b === "ALERTA" || b === "CRÍTICO";
-    });
-    // Deduplicar por cliente_id — manter o registro com maior score
-    const map = new Map<number, typeof filtered[0]>();
-    filtered.forEach((c) => {
+      if (b !== "ALERTA" && b !== "CRÍTICO") return; // Ignora OK
       const existing = map.get(c.cliente_id);
-      if (!existing || getScoreTotalReal(c) > getScoreTotalReal(existing)) {
+      if (!existing || score > getScoreTotalReal(existing)) {
         map.set(c.cliente_id, c);
       }
     });

@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useChurnScoreConfig, CHURN_SCORE_DEFAULTS, ChurnScoreConfig } from "@/contexts/ChurnScoreConfigContext";
+import { useRiskBucketConfig } from "@/hooks/useRiskBucketConfig";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -148,15 +149,25 @@ function GatilhoRow({ g, value, onChange }: { g: GatilhoField; value: number; on
 
 export default function ConfiguracaoChurnScore() {
   const { config, setConfig, resetToDefaults } = useChurnScoreConfig();
+  const { config: bucketConfig, saveConfig: saveBucketConfig, isLoading: bucketLoading } = useRiskBucketConfig();
   const { toast } = useToast();
   const [form, setForm] = useState<ChurnScoreConfig>({ ...config });
+  const [bucketForm, setBucketForm] = useState({ ok_max: bucketConfig.ok_max, alert_min: bucketConfig.alert_min, alert_max: bucketConfig.alert_max, critical_min: bucketConfig.critical_min });
   const [hasChanges, setHasChanges] = useState(false);
+  const [hasBucketChanges, setHasBucketChanges] = useState(false);
   const [pageLoading, setPageLoading] = useState(true);
 
   useEffect(() => {
     const timer = setTimeout(() => setPageLoading(false), 600);
     return () => clearTimeout(timer);
   }, []);
+
+  // Sync bucket form when config loads from DB
+  useEffect(() => {
+    if (!bucketLoading) {
+      setBucketForm({ ok_max: bucketConfig.ok_max, alert_min: bucketConfig.alert_min, alert_max: bucketConfig.alert_max, critical_min: bucketConfig.critical_min });
+    }
+  }, [bucketLoading, bucketConfig]);
 
   const handleChange = (key: keyof ChurnScoreConfig, raw: string) => {
     const val = parseInt(raw, 10);
@@ -176,6 +187,29 @@ export default function ConfiguracaoChurnScore() {
     resetToDefaults();
     setHasChanges(false);
     toast({ title: "Padrões restaurados", description: "Os pesos voltaram para os valores padrão do sistema." });
+  };
+
+  const handleBucketChange = (key: keyof typeof bucketForm, raw: string) => {
+    const val = parseInt(raw, 10);
+    if (isNaN(val) || val < 0 || val > 500) return;
+    setBucketForm((prev) => ({ ...prev, [key]: val }));
+    setHasBucketChanges(true);
+  };
+
+  const handleSaveBuckets = async () => {
+    // Auto-fix consistency: ok_max < alert_min < alert_max < critical_min
+    const fixed = { ...bucketForm };
+    if (fixed.alert_min <= fixed.ok_max) fixed.alert_min = fixed.ok_max + 1;
+    if (fixed.alert_max < fixed.alert_min) fixed.alert_max = fixed.alert_min;
+    if (fixed.critical_min <= fixed.alert_max) fixed.critical_min = fixed.alert_max + 1;
+    try {
+      await saveBucketConfig(fixed);
+      setBucketForm(fixed);
+      setHasBucketChanges(false);
+      toast({ title: "Faixas de risco salvas", description: "Os pontos de corte foram atualizados. Todo o sistema reflete automaticamente." });
+    } catch (e: any) {
+      toast({ title: "Erro ao salvar", description: e.message, variant: "destructive" });
+    }
   };
 
   const exampleScore30d2 = form.chamados30dBase;
@@ -266,6 +300,100 @@ export default function ConfiguracaoChurnScore() {
                 <GatilhoRow g={g} value={form[g.key]} onChange={handleChange} />
               </div>
             ))}
+          </CardContent>
+        </Card>
+
+        {/* Faixas de Classificação de Risco */}
+        <Card className="border-2 border-primary/20">
+          <CardHeader>
+            <CardTitle className="text-base">🎯 Faixas de Classificação de Risco</CardTitle>
+            <CardDescription>Defina os pontos de corte que determinam se um cliente é OK, Alerta ou Crítico. Apenas clientes em Alerta ou Crítico aparecem em "Clientes em Risco".</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {/* OK */}
+              <div className="rounded-lg border-2 border-green-200 bg-green-50 dark:bg-green-900/10 p-4 space-y-3">
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full bg-green-500" />
+                  <Label className="text-sm font-bold text-green-800 dark:text-green-400">OK (Saudável)</Label>
+                </div>
+                <p className="text-xs text-muted-foreground">Score de 0 até:</p>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground">≤</span>
+                  <Input
+                    type="number" min={0} max={499}
+                    value={bucketForm.ok_max}
+                    onChange={(e) => handleBucketChange("ok_max", e.target.value)}
+                    className="w-20 h-9 text-center font-mono font-bold text-base"
+                  />
+                  <span className="text-xs text-muted-foreground">pts</span>
+                </div>
+              </div>
+
+              {/* ALERTA */}
+              <div className="rounded-lg border-2 border-yellow-200 bg-yellow-50 dark:bg-yellow-900/10 p-4 space-y-3">
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full bg-yellow-500" />
+                  <Label className="text-sm font-bold text-yellow-800 dark:text-yellow-400">Alerta</Label>
+                </div>
+                <p className="text-xs text-muted-foreground">Score entre:</p>
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="number" min={1} max={499}
+                    value={bucketForm.alert_min}
+                    onChange={(e) => handleBucketChange("alert_min", e.target.value)}
+                    className="w-20 h-9 text-center font-mono font-bold text-base"
+                  />
+                  <span className="text-xs text-muted-foreground">a</span>
+                  <Input
+                    type="number" min={1} max={499}
+                    value={bucketForm.alert_max}
+                    onChange={(e) => handleBucketChange("alert_max", e.target.value)}
+                    className="w-20 h-9 text-center font-mono font-bold text-base"
+                  />
+                  <span className="text-xs text-muted-foreground">pts</span>
+                </div>
+              </div>
+
+              {/* CRÍTICO */}
+              <div className="rounded-lg border-2 border-red-200 bg-red-50 dark:bg-red-900/10 p-4 space-y-3">
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full bg-red-500" />
+                  <Label className="text-sm font-bold text-red-800 dark:text-red-400">Crítico</Label>
+                </div>
+                <p className="text-xs text-muted-foreground">Score a partir de:</p>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground">≥</span>
+                  <Input
+                    type="number" min={1} max={500}
+                    value={bucketForm.critical_min}
+                    onChange={(e) => handleBucketChange("critical_min", e.target.value)}
+                    className="w-20 h-9 text-center font-mono font-bold text-base"
+                  />
+                  <span className="text-xs text-muted-foreground">pts</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Visual scale */}
+            <div className="flex items-center gap-0 h-6 rounded-full overflow-hidden text-[10px] font-bold text-center">
+              <div className="bg-green-400 h-full flex items-center justify-center" style={{ flex: bucketForm.ok_max }}>
+                OK ≤{bucketForm.ok_max}
+              </div>
+              <div className="bg-yellow-400 h-full flex items-center justify-center" style={{ flex: bucketForm.alert_max - bucketForm.alert_min + 1 }}>
+                Alerta {bucketForm.alert_min}–{bucketForm.alert_max}
+              </div>
+              <div className="bg-red-400 text-white h-full flex items-center justify-center" style={{ flex: 100 }}>
+                Crítico ≥{bucketForm.critical_min}
+              </div>
+            </div>
+
+            <div className="flex justify-end">
+              <Button onClick={handleSaveBuckets} disabled={!hasBucketChanges} className="gap-2" size="sm">
+                <Save className="h-4 w-4" />
+                Salvar faixas de risco
+              </Button>
+            </div>
           </CardContent>
         </Card>
 
