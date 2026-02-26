@@ -85,7 +85,7 @@ const GATILHOS_FINANCEIRO: GatilhoField[] = [
   {
     key: "financeiroTeto",
     label: "Teto máximo do pilar Financeiro",
-    description: "Limite máximo de pontos que o pilar financeiro pode contribuir ao score total.",
+    description: "Limite máximo de pontos que o pilar financeiro pode contribuir ao Churn Score.",
     example: "Independente da faixa, nunca ultrapassará este valor.",
     defaultVal: 30, min: 0, max: 60,
     color: "bg-destructive/10 text-destructive border-destructive/20",
@@ -104,7 +104,7 @@ const GATILHOS_OUTROS: GatilhoField[] = [
   {
     key: "qualidade",
     label: "Qualidade",
-    description: "Peso máximo do pilar de Qualidade de sinal/serviço no score de risco.",
+    description: "Peso máximo do pilar de Qualidade de sinal/serviço no Churn Score.",
     example: "Ex: problemas técnicos recorrentes = até 20pts (padrão)",
     defaultVal: 20, min: 0, max: 40,
     color: "bg-purple-100 text-purple-800 border-purple-200",
@@ -112,7 +112,7 @@ const GATILHOS_OUTROS: GatilhoField[] = [
   {
     key: "comportamental",
     label: "Comportamental",
-    description: "Peso máximo do pilar Comportamental (padrão de uso e engajamento) no score de risco.",
+    description: "Peso máximo do pilar Comportamental (padrão de uso e engajamento) no Churn Score.",
     example: "Ex: baixo engajamento = até 20pts (padrão)",
     defaultVal: 20, min: 0, max: 40,
     color: "bg-blue-100 text-blue-800 border-blue-200",
@@ -179,7 +179,7 @@ export default function ConfiguracaoChurnScore() {
   const handleSave = () => {
     setConfig(form);
     setHasChanges(false);
-    toast({ title: "Configurações salvas", description: "Os pesos do Churn Risk Score foram atualizados com sucesso." });
+    toast({ title: "Configurações salvas", description: "Os pesos do Churn Score foram atualizados com sucesso." });
   };
 
   const handleReset = () => {
@@ -226,9 +226,9 @@ export default function ConfiguracaoChurnScore() {
               <Settings2 className="h-5 w-5 text-primary" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">Ajustar Churn Risk Score</h1>
+              <h1 className="text-2xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">Ajustar Churn Score</h1>
               <p className="text-muted-foreground text-sm mt-0.5">
-                Configure os pesos de cada gatilho de risco — o sistema recalculará os scores automaticamente
+                Configure os pesos de cada gatilho — o sistema recalculará o Churn Score automaticamente
               </p>
             </div>
           </div>
@@ -317,7 +317,7 @@ export default function ConfiguracaoChurnScore() {
                   <div className="w-3 h-3 rounded-full bg-green-500" />
                   <Label className="text-sm font-bold text-green-800 dark:text-green-400">OK (Saudável)</Label>
                 </div>
-                <p className="text-xs text-muted-foreground">Score de 0 até:</p>
+                <p className="text-xs text-muted-foreground">Churn Score de 0 até:</p>
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-muted-foreground">≤</span>
                   <Input
@@ -336,7 +336,7 @@ export default function ConfiguracaoChurnScore() {
                   <div className="w-3 h-3 rounded-full bg-yellow-500" />
                   <Label className="text-sm font-bold text-yellow-800 dark:text-yellow-400">Alerta</Label>
                 </div>
-                <p className="text-xs text-muted-foreground">Score entre:</p>
+                <p className="text-xs text-muted-foreground">Churn Score entre:</p>
                 <div className="flex items-center gap-2">
                   <Input
                     type="number" min={1} max={499}
@@ -361,7 +361,7 @@ export default function ConfiguracaoChurnScore() {
                   <div className="w-3 h-3 rounded-full bg-red-500" />
                   <Label className="text-sm font-bold text-red-800 dark:text-red-400">Crítico</Label>
                 </div>
-                <p className="text-xs text-muted-foreground">Score a partir de:</p>
+                <p className="text-xs text-muted-foreground">Churn Score a partir de:</p>
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-muted-foreground">≥</span>
                   <Input
@@ -460,7 +460,7 @@ export default function ConfiguracaoChurnScore() {
               </div>
 
               <div className="flex justify-between items-center pt-2 border-t-2 mt-2">
-                <span className="font-semibold">Score máximo possível (estimado)</span>
+                <span className="font-semibold">Churn Score máximo possível (estimado)</span>
                 <span className="font-mono font-bold text-lg text-destructive">{totalMax}</span>
               </div>
             </div>
