@@ -197,6 +197,33 @@ Deno.serve(async (req) => {
         break;
       }
 
+      // ── Risk Bucket Config ──
+      case "fetch_risk_bucket_config": {
+        const { data, error } = await supabase
+          .from("risk_bucket_config")
+          .select("*")
+          .eq("isp_id", isp_id)
+          .maybeSingle();
+        if (error) throw error;
+        result = data;
+        break;
+      }
+
+      case "save_risk_bucket_config": {
+        const { ok_max, alert_min, alert_max, critical_min } = params;
+        const { data, error } = await supabase
+          .from("risk_bucket_config")
+          .upsert(
+            { isp_id, ok_max, alert_min, alert_max, critical_min },
+            { onConflict: "isp_id" }
+          )
+          .select()
+          .single();
+        if (error) throw error;
+        result = data;
+        break;
+      }
+
       default:
         return new Response(JSON.stringify({ error: `Unknown action: ${action}` }), {
           status: 400,
