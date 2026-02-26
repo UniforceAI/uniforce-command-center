@@ -106,7 +106,7 @@ function DraggableCard({ item, onSelect, onStart, onUpdate }: {
   });
 
   return (
-    <div ref={setNodeRef} {...listeners} {...attributes}>
+    <div ref={setNodeRef} {...listeners} {...attributes} className="w-full max-w-[300px]">
       <KanbanCardVisual item={item} onSelect={onSelect} onStart={onStart} onUpdate={onUpdate} isDragging={isDragging} />
     </div>
   );
