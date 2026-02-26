@@ -113,8 +113,10 @@ const ClientesEmRisco = () => {
   // Apenas clientes cujo score >= alert_min (bucket ALERTA ou CRÍTICO) entram
   const clientesRisco = useMemo(() => {
     // Deduplicar por cliente_id — manter o registro com maior score
+    // Excluir clientes cancelados (status_internet = "D") — não há retenção possível
     const map = new Map<number, typeof churnStatus[0]>();
     churnStatus.forEach((c) => {
+      if (c.status_internet === "D") return; // Cancelado — ignorar
       const score = getScoreTotalReal(c);
       const b = getBucket(score);
       if (b !== "ALERTA" && b !== "CRÍTICO") return; // Ignora OK
