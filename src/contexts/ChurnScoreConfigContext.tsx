@@ -108,10 +108,10 @@ export function calcScoreSuporteConfiguravel(
   config: ChurnScoreConfig
 ): number {
   const { chamados30dBase, chamadoAdicional } = config;
-  const cap = chamados30dBase + 4 * chamadoAdicional;
   let score = 0;
 
   if (ch30 >= 2) {
+    // Base para 2 chamados + progressivo sem teto fixo
     score = chamados30dBase + (ch30 - 2) * chamadoAdicional;
   } else if (ch30 === 1) {
     const base30 = Math.round(chamados30dBase * 0.32);
@@ -125,5 +125,6 @@ export function calcScoreSuporteConfiguravel(
     score = Math.round(chamados30dBase * 0.2);
   }
 
-  return Math.min(score, cap);
+  // Sem teto fixo — escala proporcionalmente ao volume
+  return score;
 }

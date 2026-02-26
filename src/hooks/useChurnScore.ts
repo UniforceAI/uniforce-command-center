@@ -34,8 +34,11 @@ export function useChurnScore() {
   }, [churnStatus]);
 
   const getScoreSuporteReal = useCallback((cliente: ChurnStatus): number => {
-    const ch30 = chamadosPorClienteMap.d30.get(cliente.cliente_id)?.chamados_periodo ?? 0;
-    const ch90 = chamadosPorClienteMap.d90.get(cliente.cliente_id)?.chamados_periodo ?? 0;
+    // Usar dados reais de chamados; fallback para qtd do churn_status se não houver match
+    const chamadoData30 = chamadosPorClienteMap.d30.get(cliente.cliente_id);
+    const chamadoData90 = chamadosPorClienteMap.d90.get(cliente.cliente_id);
+    const ch30 = chamadoData30?.chamados_periodo ?? cliente.qtd_chamados_30d ?? 0;
+    const ch90 = chamadoData90?.chamados_periodo ?? cliente.qtd_chamados_90d ?? 0;
     return calcScoreSuporteConfiguravel(ch30, ch90, config);
   }, [chamadosPorClienteMap, config]);
 
