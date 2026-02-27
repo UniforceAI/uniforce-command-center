@@ -97,8 +97,25 @@ const EDGE_FN_URL = `https://ohvddptghpcrenxdpyxm.supabase.co/functions/v1/manag
 // ─────────────────────────────────────────────────────────────
 
 async function callManageUsers(body: Record<string, unknown>) {
-  const { data: { session } } = await externalSupabase.auth.getSession();
-  if (!session?.access_token) throw new Error("Sessão expirada. Faça login novamente.");
+  // Force a fresh token – getSession() returns cached (possibly expired) tokens
+  const { data: { session }, error: refreshErr } = await externalSupabase.auth.refreshSession();
+  if (refreshErr || !session?.access_token) {
+    // Fallback: try cached session in case refresh fails but token is still valid
+    const { data: { session: cached } } = await externalSupabase.auth.getSession();
+    if (!cached?.access_token) throw new Error("Sessão expirada. Faça login novamente.");
+    // Use cached token
+    const res = await fetch(EDGE_FN_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${cached.access_token}`,
+      },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (!res.ok || data.error) throw new Error(data.error || "Erro na operação.");
+    return data;
+  }
 
   const res = await fetch(EDGE_FN_URL, {
     method: "POST",
