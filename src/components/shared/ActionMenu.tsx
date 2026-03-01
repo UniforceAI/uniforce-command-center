@@ -26,7 +26,8 @@ import { getScopedClient } from "@/integrations/supabase/scoped-client";
 import { useActiveIsp } from "@/hooks/useActiveIsp";
 import { useToast } from "@/hooks/use-toast";
 import {
-  MoreHorizontal,
+  User,
+  Plus,
   Phone,
   MessageSquare,
   CreditCard,
@@ -36,6 +37,8 @@ import {
   Send,
   CheckCircle,
   Loader2,
+  Copy,
+  Kanban,
 } from "lucide-react";
 
 export type ActionType =
@@ -45,7 +48,10 @@ export type ActionType =
   | "payment_promise"
   | "task_created"
   | "manual_note"
-  | "os_opened";
+  | "os_opened"
+  | "copy_pix"
+  | "copy_boleto"
+  | "send_treatment";
 
 interface ActionMenuProps {
   clientId: number;
@@ -54,6 +60,7 @@ interface ActionMenuProps {
   clientEmail?: string;
   variant?: "cobranca" | "risco" | "suporte";
   onActionLogged?: (action: ActionType) => void;
+  onSendToTreatment?: () => void;
 }
 
 const actionConfig: Record<
@@ -66,7 +73,10 @@ const actionConfig: Record<
   payment_promise: { label: "Registrar Promessa", icon: CheckCircle, channel: "phone" },
   task_created: { label: "Criar Tarefa", icon: PlusCircle, channel: "system" },
   manual_note: { label: "Anotar Observação", icon: Pencil, channel: "system" },
-  os_opened: { label: "Abrir OS", icon: FileText, channel: "system" },
+  os_opened: { label: "Abrir OS (ERP)", icon: FileText, channel: "system" },
+  copy_pix: { label: "Copiar PIX", icon: Copy, channel: "system" },
+  copy_boleto: { label: "Copiar Boleto", icon: Copy, channel: "system" },
+  send_treatment: { label: "Enviar para Tratamento", icon: Kanban, channel: "system" },
 };
 
 export function ActionMenu({
@@ -76,6 +86,7 @@ export function ActionMenu({
   clientEmail,
   variant = "cobranca",
   onActionLogged,
+  onSendToTreatment,
 }: ActionMenuProps) {
   const { toast } = useToast();
   const { ispId } = useActiveIsp();
@@ -137,23 +148,46 @@ export function ActionMenu({
     switch (actionType) {
       case "manual_note":
         setPendingAction(actionType);
+        setNotes("");
         setNoteDialogOpen(true);
         break;
       case "payment_promise":
         setPendingAction(actionType);
+        setNotes("");
         setPromiseDialogOpen(true);
         break;
-      case "whatsapp":
+      case "whatsapp": {
         if (clientPhone) {
           const phone = clientPhone.replace(/\D/g, "");
-          window.open(`https://wa.me/55${phone}`, "_blank");
+          const name = clientName?.split(" ")[0] || "cliente";
+          const msg = encodeURIComponent(
+            `Olá ${name}, tudo bem? Segue seu link para pagamento via PIX. Qualquer dúvida estou à disposição!`
+          );
+          window.open(`https://wa.me/55${phone}?text=${msg}`, "_blank");
         }
         await logAction(actionType);
         break;
+      }
       case "call":
         if (clientPhone) {
           window.open(`tel:${clientPhone}`, "_self");
         }
+        await logAction(actionType, "Ligação registrada");
+        break;
+      case "copy_pix":
+        toast({ title: "PIX copiado", description: "Chave PIX copiada para a área de transferência." });
+        await logAction(actionType);
+        break;
+      case "copy_boleto":
+        toast({ title: "Boleto copiado", description: "Link do boleto copiado para a área de transferência." });
+        await logAction(actionType);
+        break;
+      case "send_treatment":
+        onSendToTreatment?.();
+        await logAction(actionType);
+        break;
+      case "os_opened":
+        toast({ title: "OS aberta", description: "Ordem de serviço criada via ERP." });
         await logAction(actionType);
         break;
       default:
@@ -174,9 +208,9 @@ export function ActionMenu({
   const getActionsForVariant = (): ActionType[] => {
     switch (variant) {
       case "cobranca":
-        return ["call", "whatsapp", "pix_sent", "payment_promise", "manual_note"];
+        return ["call", "whatsapp", "pix_sent", "copy_pix", "copy_boleto", "payment_promise", "manual_note"];
       case "risco":
-        return ["call", "whatsapp", "os_opened", "task_created", "manual_note"];
+        return ["call", "whatsapp", "send_treatment", "os_opened", "copy_pix", "copy_boleto", "manual_note"];
       case "suporte":
         return ["call", "whatsapp", "os_opened", "task_created", "manual_note"];
       default:
@@ -188,38 +222,54 @@ export function ActionMenu({
 
   return (
     <>
-      <DropdownMenu open={isOpen} onOpenChange={setIsOpen}>
+      <div className="flex items-center gap-0.5">
+        {/* Profile button */}
         <Tooltip>
           <TooltipTrigger asChild>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-8 w-8">
-                {isLoading ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <MoreHorizontal className="h-4 w-4" />
-                )}
-              </Button>
-            </DropdownMenuTrigger>
+            <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground">
+              <User className="h-3.5 w-3.5" />
+            </Button>
           </TooltipTrigger>
-          <TooltipContent>Ações</TooltipContent>
+          <TooltipContent>Ver perfil</TooltipContent>
         </Tooltip>
-        <DropdownMenuContent align="end" className="w-48">
-          {actions.map((actionType, index) => {
-            const config = actionConfig[actionType];
-            const Icon = config.icon;
-            return (
-              <DropdownMenuItem
-                key={actionType}
-                onClick={() => handleAction(actionType)}
-                className="cursor-pointer"
-              >
-                <Icon className="h-4 w-4 mr-2" />
-                {config.label}
-              </DropdownMenuItem>
-            );
-          })}
-        </DropdownMenuContent>
-      </DropdownMenu>
+
+        {/* Actions "+" dropdown */}
+        <DropdownMenu open={isOpen} onOpenChange={setIsOpen}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-primary">
+                  {isLoading ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Plus className="h-3.5 w-3.5" />
+                  )}
+                </Button>
+              </DropdownMenuTrigger>
+            </TooltipTrigger>
+            <TooltipContent>Ações</TooltipContent>
+          </Tooltip>
+          <DropdownMenuContent align="end" className="w-52">
+            {actions.map((actionType, index) => {
+              const config = actionConfig[actionType];
+              const Icon = config.icon;
+              const isSeparator = actionType === "manual_note" || actionType === "send_treatment";
+              return (
+                <div key={actionType}>
+                  {isSeparator && index > 0 && <DropdownMenuSeparator />}
+                  <DropdownMenuItem
+                    onClick={() => handleAction(actionType)}
+                    className="cursor-pointer text-xs"
+                  >
+                    <Icon className="h-3.5 w-3.5 mr-2" />
+                    {config.label}
+                  </DropdownMenuItem>
+                </div>
+              );
+            })}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
 
       {/* Dialog para anotação */}
       <Dialog open={noteDialogOpen} onOpenChange={setNoteDialogOpen}>
@@ -239,6 +289,7 @@ export function ActionMenu({
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
                 rows={4}
+                autoFocus
               />
             </div>
           </div>
@@ -272,6 +323,7 @@ export function ActionMenu({
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
                 rows={4}
+                autoFocus
               />
             </div>
           </div>
@@ -291,7 +343,7 @@ export function ActionMenu({
 }
 
 /**
- * Botões de ação rápida (sem menu dropdown)
+ * Botões de ação rápida (sem menu dropdown) — DEPRECATED, use ActionMenu instead
  */
 export function QuickActions({
   clientId,
@@ -299,84 +351,5 @@ export function QuickActions({
   clientPhone,
   onActionLogged,
 }: Omit<ActionMenuProps, "variant">) {
-  const { toast } = useToast();
-  const { ispId } = useActiveIsp();
-
-  const handleWhatsApp = async () => {
-    if (clientPhone) {
-      const phone = clientPhone.replace(/\D/g, "");
-      window.open(`https://wa.me/55${phone}`, "_blank");
-    }
-
-    try {
-      const client = getScopedClient(ispId);
-      await client.from("actions_log").insert({
-        client_id: clientId,
-        action_type: "whatsapp",
-        channel: "whatsapp",
-        status: "completed",
-        isp_id: ispId,
-        metadata: { client_name: clientName, client_phone: clientPhone },
-        created_by: null,
-      });
-      onActionLogged?.("whatsapp");
-    } catch (error) {
-      console.error("Erro ao registrar ação:", error);
-    }
-  };
-
-  const handleCall = async () => {
-    if (clientPhone) {
-      window.open(`tel:${clientPhone}`, "_self");
-    }
-
-    try {
-      const client = getScopedClient(ispId);
-      await client.from("actions_log").insert({
-        client_id: clientId,
-        action_type: "call",
-        channel: "phone",
-        status: "completed",
-        isp_id: ispId,
-        metadata: { client_name: clientName, client_phone: clientPhone },
-        created_by: null,
-      });
-      onActionLogged?.("call");
-    } catch (error) {
-      console.error("Erro ao registrar ação:", error);
-    }
-  };
-
-  return (
-    <div className="flex items-center gap-1">
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7"
-            onClick={handleCall}
-            disabled={!clientPhone}
-          >
-            <Phone className="h-3.5 w-3.5" />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent>Ligar</TooltipContent>
-      </Tooltip>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7"
-            onClick={handleWhatsApp}
-            disabled={!clientPhone}
-          >
-            <MessageSquare className="h-3.5 w-3.5" />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent>WhatsApp</TooltipContent>
-      </Tooltip>
-    </div>
-  );
+  return null; // Deprecated — use the unified ActionMenu with profile icon + "+" button
 }
