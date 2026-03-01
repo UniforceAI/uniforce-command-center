@@ -23,6 +23,7 @@ import { GlobalFilters } from "@/components/shared/GlobalFilters";
 import { LoadingScreen } from "@/components/shared/LoadingScreen";
 import { InitialLoadingScreen } from "@/components/shared/InitialLoadingScreen";
 import { ActionMenu, QuickActions } from "@/components/shared/ActionMenu";
+import { RiskClientsTable } from "@/components/dashboard/RiskClientsTable";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { RiskKPICard } from "@/components/shared/RiskKPICard";
 import {
@@ -788,12 +789,12 @@ const VisaoGeral = () => {
 
   function getPrioridade(c: ChurnStatus, bucket: RiskBucket): string {
     const ltv = c.ltv_estimado ?? 0;
-    if (ltv >= 3000 && bucket === "CRÍTICO") return "P0";
-    if (ltv >= 3000 && bucket === "ALERTA") return "P1";
-    if (bucket === "CRÍTICO") return "P1";
-    if (ltv >= 1500 && bucket === "ALERTA") return "P2";
-    if (bucket === "ALERTA") return "P2";
-    return "P3";
+    if (ltv >= 3000 && bucket === "CRÍTICO") return "Em Churn";
+    if (ltv >= 3000 && bucket === "ALERTA") return "Alta";
+    if (bucket === "CRÍTICO") return "Alta";
+    if (ltv >= 1500 && bucket === "ALERTA") return "Normal";
+    if (bucket === "ALERTA") return "Normal";
+    return "Normal";
   }
 
   // =========================================================
@@ -1417,108 +1418,18 @@ const VisaoGeral = () => {
             {/* ============================================= */}
             {/* CLIENTES EM RISCO (top 8 - mesma UX do menu) */}
             {/* ============================================= */}
-            <section>
-              <Card>
-                <CardHeader className="pb-2">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <ShieldAlert className="h-4 w-4 text-destructive" />
-                      <CardTitle className="text-base">Clientes em Risco</CardTitle>
-                      <Badge variant="destructive" className="text-xs">{filaRisco.length}</Badge>
-                    </div>
-                    <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => navigate("/clientes-em-risco")}>
-                      Ver todos ({saudeAtual.clientesAltoRisco})
-                      <ArrowRight className="h-3 w-3 ml-1" />
-                    </Button>
-                  </div>
-                </CardHeader>
-                <CardContent className="p-0">
-                  {filaRisco.length > 0 ? (
-                    <div className="overflow-auto max-h-[450px]">
-                      <Table>
-                        <TableHeader className="sticky top-0 bg-card z-10">
-                          <TableRow>
-                            <TableHead className="text-xs whitespace-nowrap">Cliente</TableHead>
-                            <TableHead className="text-xs whitespace-nowrap text-center">Churn Score</TableHead>
-                            <TableHead className="text-xs whitespace-nowrap text-center">Dias Atraso</TableHead>
-                            <TableHead className="text-xs whitespace-nowrap text-center">Chamados 90d</TableHead>
-                            <TableHead className="text-xs whitespace-nowrap text-center">NPS</TableHead>
-                            <TableHead className="text-xs whitespace-nowrap text-center">Prioridade</TableHead>
-                            <TableHead className="text-xs whitespace-nowrap">Motivo</TableHead>
-                            <TableHead className="text-xs whitespace-nowrap text-right">Ações</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {filaRisco.map((c) => {
-                            const score = getScoreTotalReal(c);
-                            const bucket = getBucketVisao(score);
-                            const npsCliente = npsMap.get(c.cliente_id);
-                            const prioridade = getPrioridade(c, bucket);
-                            const ch90 = chamadosPorClienteMap.d90.get(c.cliente_id)?.chamados_periodo ?? c.qtd_chamados_90d ?? 0;
-                            const PRIORIDADE_COLORS: Record<string, string> = {
-                              P0: "bg-red-100 text-red-800 border-red-300",
-                              P1: "bg-orange-100 text-orange-800 border-orange-300",
-                              P2: "bg-yellow-100 text-yellow-800 border-yellow-300",
-                              P3: "bg-gray-100 text-gray-700 border-gray-200",
-                            };
-                            return (
-                              <TableRow key={c.id || c.cliente_id} className="cursor-pointer hover:bg-muted/50" onClick={() => setSelectedClienteRisco(c)}>
-                                <TableCell className="text-xs font-medium max-w-[160px]">
-                                  <div>
-                                    <p className="truncate font-medium">{c.cliente_nome || `Cliente ${c.cliente_id}`}</p>
-                                    <p className="text-[10px] text-muted-foreground truncate">
-                                      {c.cliente_bairro ? `${c.cliente_bairro}, ${getCidadeNome(c.cliente_cidade) || ""}` : getCidadeNome(c.cliente_cidade) || ""}
-                                    </p>
-                                  </div>
-                                </TableCell>
-                                <TableCell className="text-center">
-                                  <Badge className={`${BUCKET_COLORS[bucket] || "bg-muted"} border font-mono text-xs`}>{score}</Badge>
-                                </TableCell>
-                                <TableCell className="text-center text-xs">
-                                  {c.dias_atraso != null && c.dias_atraso > 0 ? (
-                                    <span className={c.dias_atraso > 30 ? "text-destructive font-medium" : "text-yellow-600"}>{Math.round(c.dias_atraso)}d</span>
-                                  ) : "—"}
-                                </TableCell>
-                                <TableCell className="text-center text-xs">
-                                  {ch90 > 0 ? (
-                                    <span className={ch90 >= 5 ? "text-destructive font-medium" : ch90 >= 3 ? "text-yellow-600" : ""}>{ch90}</span>
-                                  ) : "—"}
-                                </TableCell>
-                                <TableCell className="text-center">
-                                  {npsCliente ? (
-                                    <Badge className={`border text-[10px] ${
-                                      npsCliente.classificacao === "DETRATOR" ? "bg-red-100 text-red-800 border-red-200" :
-                                      npsCliente.classificacao === "NEUTRO" ? "bg-yellow-100 text-yellow-800 border-yellow-200" :
-                                      npsCliente.classificacao === "PROMOTOR" ? "bg-green-100 text-green-800 border-green-200" : "bg-muted"
-                                    }`}>{npsCliente.nota ?? npsCliente.classificacao}</Badge>
-                                  ) : <span className="text-xs text-muted-foreground">—</span>}
-                                </TableCell>
-                                <TableCell className="text-center">
-                                  <Badge className={`${PRIORIDADE_COLORS[prioridade] || "bg-muted"} border text-[10px]`}>{prioridade}</Badge>
-                                </TableCell>
-                                <TableCell className="text-xs max-w-[150px] truncate text-muted-foreground">
-                                  {c.motivo_risco_principal || (c.dias_atraso && c.dias_atraso > 0 ? "Atraso financeiro" : "Risco identificado")}
-                                </TableCell>
-                                <TableCell className="text-right">
-                                  <div className="flex justify-end items-center gap-1">
-                                    <QuickActions clientId={c.cliente_id} clientName={c.cliente_nome || `Cliente ${c.cliente_id}`} />
-                                    <ActionMenu clientId={c.cliente_id} clientName={c.cliente_nome || `Cliente ${c.cliente_id}`} variant="risco" />
-                                  </div>
-                                </TableCell>
-                              </TableRow>
-                            );
-                          })}
-                        </TableBody>
-                      </Table>
-                    </div>
-                  ) : (
-                    <div className="p-6">
-                      <EmptyState title="Nenhum cliente em risco alto" description="Não há clientes com sinais de alerta no momento." variant="card" />
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            </section>
+            <RiskClientsTable
+              filaRisco={filaRisco}
+              totalRisco={saudeAtual.clientesAltoRisco}
+              getScoreTotalReal={getScoreTotalReal}
+              getBucketVisao={getBucketVisao}
+              npsMap={npsMap}
+              getPrioridade={getPrioridade}
+              chamadosPorClienteMap={chamadosPorClienteMap}
+              getCidadeNome={getCidadeNome}
+              onSelectCliente={setSelectedClienteRisco}
+              onNavigate={() => navigate("/clientes-em-risco")}
+            />
           </>
         )}
       </main>
