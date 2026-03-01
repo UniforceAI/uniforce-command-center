@@ -7,21 +7,27 @@ interface NPSKPICardProps {
   value: number;
   trend?: number;
   icon: LucideIcon;
-  count?: number; // N de respostas
+  count?: number;
+  isPercentage?: boolean;
 }
 
-function getNPSStatus(value: number): { label: string; variant: string; FaceIcon: LucideIcon } {
-  // Escala de 0-10 (média das notas)
+function getNPSStatus(value: number, isPercentage?: boolean): { label: string; variant: string; FaceIcon: LucideIcon } {
+  if (isPercentage) {
+    if (value >= 70) return { label: "Excelente", variant: "success", FaceIcon: Smile };
+    if (value >= 40) return { label: "Bom", variant: "default", FaceIcon: Smile };
+    if (value >= 20) return { label: "Alerta", variant: "warning", FaceIcon: Meh };
+    return { label: "Baixo", variant: "destructive", FaceIcon: Frown };
+  }
   if (value >= 9) return { label: "Excelente", variant: "success", FaceIcon: Smile };
   if (value >= 7) return { label: "Bom", variant: "default", FaceIcon: Smile };
   if (value >= 5) return { label: "Alerta", variant: "warning", FaceIcon: Meh };
   return { label: "Crítico", variant: "destructive", FaceIcon: Frown };
 }
 
-export function NPSKPICard({ title, value, trend, icon: Icon, count }: NPSKPICardProps) {
+export function NPSKPICard({ title, value, trend, icon: Icon, count, isPercentage }: NPSKPICardProps) {
   const hasData = count === undefined || count > 0;
-  const status = hasData ? getNPSStatus(value) : { label: "Sem dados", variant: "default" as const, FaceIcon: Meh };
-  
+  const status = hasData ? getNPSStatus(value, isPercentage) : { label: "Sem dados", variant: "default" as const, FaceIcon: Meh };
+
   const variantClasses = {
     success: "border-l-4 border-l-success bg-success/5",
     default: "border-l-4 border-l-primary bg-primary/5",
@@ -51,7 +57,7 @@ export function NPSKPICard({ title, value, trend, icon: Icon, count }: NPSKPICar
           {hasData ? (
             <>
               <div className="flex items-baseline gap-2">
-                <span className="text-3xl font-bold">{value}</span>
+                <span className="text-3xl font-bold">{value}{isPercentage ? "%" : ""}</span>
                 <status.FaceIcon className={cn("h-7 w-7", faceClasses[status.variant as keyof typeof faceClasses])} />
                 {trend !== undefined && (
                   <span className={cn(
@@ -74,7 +80,7 @@ export function NPSKPICard({ title, value, trend, icon: Icon, count }: NPSKPICar
                   {status.label}
                 </span>
                 {count !== undefined && (
-                  <span className="text-[10px] text-muted-foreground">N={count}</span>
+                  <span className="text-[10px] text-muted-foreground">{count} votos recebidos</span>
                 )}
               </div>
             </>

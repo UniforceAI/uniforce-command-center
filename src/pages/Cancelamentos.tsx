@@ -1068,9 +1068,14 @@ const Cancelamentos = () => {
                               </TableCell>
                               <TableCell className="text-center text-xs">
                                 {c.dias_atraso != null && c.dias_atraso > 0 ? (
-                                  <span className={c.dias_atraso > 30 ? "text-destructive font-medium" : "text-yellow-600"}>
+                                  <Badge variant="outline" className={`text-[10px] font-mono ${
+                                    c.dias_atraso > 60 ? "border-destructive text-destructive bg-destructive/10" :
+                                    c.dias_atraso > 30 ? "border-orange-500 text-orange-600 bg-orange-500/10" :
+                                    c.dias_atraso > 7 ? "border-yellow-500 text-yellow-600 bg-yellow-500/10" :
+                                    "border-green-500 text-green-600 bg-green-500/10"
+                                  }`}>
                                     {Math.round(c.dias_atraso)}d
-                                  </span>
+                                  </Badge>
                                 ) : "—"}
                               </TableCell>
                               <TableCell className="text-center text-xs">

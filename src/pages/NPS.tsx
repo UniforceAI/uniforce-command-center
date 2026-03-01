@@ -1,11 +1,14 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useActiveIsp } from "@/hooks/useActiveIsp";
 import { externalSupabase } from "@/integrations/supabase/external-client";
-import type { User } from "@supabase/supabase-js";
 import { Button } from "@/components/ui/button";
-import { ThumbsUp, Gauge, Wrench, Headphones, AlertCircle } from "lucide-react";
+import { Card, CardContent } from "@/components/ui/card";
+import {
+  ThumbsUp, Gauge, Wrench, BarChart3, Upload, Sparkles,
+  TrendingUp, MessageSquarePlus, Percent,
+} from "lucide-react";
 import { NPSFilters } from "@/components/nps/NPSFilters";
 import { IspActions } from "@/components/shared/IspActions";
 import { LoadingScreen } from "@/components/shared/LoadingScreen";
@@ -13,6 +16,7 @@ import { NPSKPICard } from "@/components/nps/NPSKPICard";
 import { NPSCharts } from "@/components/nps/NPSCharts";
 import { NPSTable } from "@/components/nps/NPSTable";
 import { NPSInsightsPanel } from "@/components/nps/NPSInsightsPanel";
+import { NPSImportDialog } from "@/components/nps/NPSImportDialog";
 import { RespostaNPS, ClassificacaoNPS, TipoNPS } from "@/types/nps";
 import { useToast } from "@/hooks/use-toast";
 
@@ -23,166 +27,209 @@ const NPS = () => {
   const { ispId, ispNome } = useActiveIsp();
   const [respostasNPS, setRespostasNPS] = useState<RespostaNPS[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [importOpen, setImportOpen] = useState(false);
 
   // Filtros
-  const [periodo, setPeriodo] = useState("7");
+  const [periodo, setPeriodo] = useState("30");
   const [tipoNPS, setTipoNPS] = useState("todos");
   const [classificacao, setClassificacao] = useState("todos");
 
-
-  // Função para mapear tipo_nps do banco para o formato esperado
   const mapTipoNPS = (tipo: string): TipoNPS => {
     const tipoLower = tipo?.toLowerCase().trim() || "";
     if (tipoLower === "contrato") return "contrato";
-    if (tipoLower === "atendimento") return "atendimento";
     if (tipoLower === "ordem_servico" || tipoLower.includes("os") || tipoLower.includes("o.s") || tipoLower.includes("ordem") || tipoLower.includes("pós")) return "os";
-    return tipoLower as TipoNPS || "atendimento";
+    return "contrato"; // Default to contrato, no atendimento
   };
 
-  // Função para calcular classificação baseada na nota
   const calcClassificacao = (nota: number): ClassificacaoNPS => {
     if (nota <= 6) return "Detrator";
     if (nota <= 8) return "Neutro";
     return "Promotor";
   };
 
-  // Buscar dados do Supabase externo - tabela nps_check
-  useEffect(() => {
-    
+  const fetchNPSData = useCallback(async () => {
+    try {
+      setIsLoading(true);
+      const { data, error } = await externalSupabase
+        .from("nps_check")
+        .select("*")
+        .eq("isp_id", ispId)
+        .order("data_resposta", { ascending: false })
+        .limit(5000);
 
-    const fetchNPSData = async () => {
-      try {
-        setIsLoading(true);
+      if (error) throw error;
 
-        // Primeiro buscar sem filtro para debug
-        const { data: allData } = await externalSupabase
-          .from("nps_check")
-          .select("*")
-          .limit(5);
-        
-        console.log("🔍 DEBUG - Amostra de dados:", allData);
-        console.log("🔍 DEBUG - isp_ids disponíveis:", [...new Set(allData?.map((d: any) => d.isp_id) || [])]);
+      const totalRecords = data?.length || 0;
 
-        const { data, error } = await externalSupabase
-          .from("nps_check")
-          .select("*")
-          .eq("isp_id", ispId)
-          .not("data_resposta", "is", null) // Filtrar apenas respondidas
-          .order("data_resposta", { ascending: false })
-          .limit(1000);
-
-        if (error) throw error;
-
-        console.log(`✅ ${data?.length || 0} respostas NPS respondidas para ${ispId}`);
-
-        // Transformar dados do banco para o formato esperado
-        const respostasTransformadas: RespostaNPS[] = (data || []).map((item: any) => {
-          // Garantir que nota é sempre um número válido entre 0-10
+      const respostasTransformadas: RespostaNPS[] = (data || [])
+        .filter((item: any) => item.data_resposta != null)
+        .map((item: any) => {
           const rawNota = item.nota_numerica != null ? Number(item.nota_numerica) : Number(item.nota);
           const nota = (!isNaN(rawNota) && rawNota >= 0 && rawNota <= 10) ? rawNota : 0;
-          
-          // Mapear classificação do banco (MAIÚSCULO) para formato esperado (Capitalizado)
-          const mapClassificacao = (classif: string): "Promotor" | "Neutro" | "Detrator" => {
+
+          const mapClassificacaoFromDB = (classif: string): ClassificacaoNPS => {
             const lower = classif?.toLowerCase().trim() || "";
             if (lower === "promotor") return "Promotor";
             if (lower === "neutro") return "Neutro";
             if (lower === "detrator") return "Detrator";
             return calcClassificacao(nota);
           };
-          
+
           return {
             cliente_id: item.id_cliente || item.cliente_id || 0,
             cliente_nome: item.nome || item.cliente_nome || "N/A",
             tipo_nps: mapTipoNPS(item.nps_type || item.origem || ""),
             nota,
-            classificacao: mapClassificacao(item.classificacao_nps),
+            classificacao: mapClassificacaoFromDB(item.classificacao_nps),
             comentario: item.mensagem_melhoria || item.comentario || "",
-            data_resposta: item.data_resposta || item.data_envio || new Date().toISOString().split('T')[0],
+            data_resposta: item.data_resposta || new Date().toISOString().split("T")[0],
+            celular: item.celular || item.telefone || "",
+            // Store total records for taxa de resposta
+            _totalPesquisas: totalRecords,
           };
         });
 
-        setRespostasNPS(respostasTransformadas);
-      } catch (error: any) {
-        console.error("❌ Erro:", error);
-        toast({
-          title: "Erro ao carregar dados NPS",
-          description: error.message || "Não foi possível carregar os dados.",
-          variant: "destructive",
-        });
-      } finally {
-        setIsLoading(false);
-      }
-    };
+      setRespostasNPS(respostasTransformadas);
+    } catch (error: any) {
+      console.error("❌ Erro NPS:", error);
+      toast({
+        title: "Erro ao carregar dados NPS",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  }, [ispId, toast]);
 
+  useEffect(() => {
     fetchNPSData();
-  }, [toast, ispId]);
+  }, [fetchNPSData]);
 
-  // Encontrar a data mais recente nos dados para usar como referência
   const dataReferencia = useMemo(() => {
     if (respostasNPS.length === 0) return new Date();
-    const datas = respostasNPS.map(r => new Date(r.data_resposta).getTime());
+    const datas = respostasNPS.map((r) => new Date(r.data_resposta).getTime());
     return new Date(Math.max(...datas));
   }, [respostasNPS]);
 
-  // Aplicar filtros
-  const filteredRespostas = useMemo(() => {
-    let filtered = [...respostasNPS];
+  // Filter out "atendimento" type globally
+  const respostasSemAtendimento = useMemo(() => 
+    respostasNPS.filter(r => r.tipo_nps !== "atendimento"),
+    [respostasNPS]
+  );
 
-    console.log("🔍 Filtro período:", periodo, "| Total antes:", filtered.length, "| Data ref:", dataReferencia.toISOString());
-    
-    // Filtro por período - relativo à data mais recente dos dados
+  const filteredRespostas = useMemo(() => {
+    let filtered = [...respostasSemAtendimento];
+
     if (periodo !== "todos") {
       const diasAtras = parseInt(periodo);
       const dataLimite = new Date(dataReferencia);
       dataLimite.setDate(dataLimite.getDate() - diasAtras);
       dataLimite.setHours(0, 0, 0, 0);
-      
-      filtered = filtered.filter(r => {
-        const dataResposta = new Date(r.data_resposta);
-        return dataResposta >= dataLimite;
-      });
-      
-      console.log("📅 Data limite:", dataLimite.toISOString(), "| Após filtro:", filtered.length);
+      filtered = filtered.filter((r) => new Date(r.data_resposta) >= dataLimite);
     }
-
-    // Filtro por tipo
     if (tipoNPS !== "todos") {
-      filtered = filtered.filter(r => r.tipo_nps === tipoNPS);
+      filtered = filtered.filter((r) => r.tipo_nps === tipoNPS);
     }
-
-    // Filtro por classificação
     if (classificacao !== "todos") {
-      filtered = filtered.filter(r => r.classificacao === classificacao);
+      filtered = filtered.filter((r) => r.classificacao === classificacao);
     }
-
     return filtered;
-  }, [respostasNPS, periodo, tipoNPS, classificacao, dataReferencia]);
+  }, [respostasSemAtendimento, periodo, tipoNPS, classificacao, dataReferencia]);
 
-  // Calcular KPIs - Média das notas (0-10)
+  // KPIs
   const kpis = useMemo(() => {
     const calcMedia = (respostas: RespostaNPS[]) => {
       if (respostas.length === 0) return 0;
-      const soma = respostas.reduce((acc, r) => acc + (typeof r.nota === 'number' ? r.nota : 0), 0);
-      return Number((soma / respostas.length).toFixed(1));
+      return Number((respostas.reduce((acc, r) => acc + r.nota, 0) / respostas.length).toFixed(1));
     };
+
+    const respondidas = filteredRespostas.length;
+    // Taxa de resposta: respondidas (com nota) vs total de pesquisas enviadas
+    const totalPesquisas = respostasSemAtendimento.length;
+    const taxaResposta = totalPesquisas > 0 ? Math.round((respondidas / totalPesquisas) * 100) : 0;
 
     return {
       geral: calcMedia(filteredRespostas),
-      contrato: calcMedia(filteredRespostas.filter(r => r.tipo_nps === "contrato")),
-      os: calcMedia(filteredRespostas.filter(r => r.tipo_nps === "os")),
-      atendimento: calcMedia(filteredRespostas.filter(r => r.tipo_nps === "atendimento")),
+      contrato: calcMedia(filteredRespostas.filter((r) => r.tipo_nps === "contrato")),
+      os: calcMedia(filteredRespostas.filter((r) => r.tipo_nps === "os")),
+      taxaResposta,
+      totalRespostas: respondidas,
     };
-  }, [filteredRespostas]);
+  }, [filteredRespostas, respostasSemAtendimento]);
 
-  const handleLogout = async () => {
-    await signOut();
-    navigate("/auth");
-  };
+  // Empty state
+  if (!isLoading && respostasNPS.length === 0) {
+    return (
+      <div className="min-h-screen bg-background">
+        <header className="border-b border-border/50 bg-card/80 backdrop-blur-sm shadow-sm">
+          <div className="container mx-auto px-6 py-5">
+            <div className="flex items-center justify-between">
+              <div>
+                <h1 className="text-2xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+                  Monitor de NPS
+                </h1>
+                <p className="text-muted-foreground text-sm mt-0.5">{ispNome}</p>
+              </div>
+              <IspActions />
+            </div>
+          </div>
+        </header>
+        <main className="container mx-auto px-6 py-16">
+          <div className="max-w-2xl mx-auto text-center space-y-8">
+            <div className="h-20 w-20 rounded-full bg-primary/10 flex items-center justify-center mx-auto">
+              <MessageSquarePlus className="h-10 w-10 text-primary" />
+            </div>
+            <div className="space-y-3">
+              <h2 className="text-2xl font-bold">Nenhum dado NPS disponível</h2>
+              <p className="text-muted-foreground">
+                Para acompanhar a satisfação dos seus clientes, você pode ativar o agente
+                <span className="font-semibold text-primary"> NPS Check Uniforce</span> ou importar seus dados manualmente.
+              </p>
+            </div>
 
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* NPS Check CTA */}
+              <Card className="border-primary/30 bg-primary/5 hover:bg-primary/10 transition-colors cursor-pointer">
+                <CardContent className="p-6 text-center space-y-3">
+                  <Sparkles className="h-8 w-8 text-primary mx-auto" />
+                  <h3 className="font-semibold">NPS Check Uniforce</h3>
+                  <p className="text-xs text-muted-foreground">
+                    Automação inteligente de pesquisas NPS integrada ao seu provedor.
+                    Coleta automática via WhatsApp com análise em tempo real.
+                  </p>
+                  <Button size="sm" className="w-full">
+                    <TrendingUp className="h-4 w-4 mr-2" />
+                    Saiba Mais
+                  </Button>
+                </CardContent>
+              </Card>
+
+              {/* Import CSV CTA */}
+              <Card className="hover:bg-muted/50 transition-colors cursor-pointer" onClick={() => setImportOpen(true)}>
+                <CardContent className="p-6 text-center space-y-3">
+                  <Upload className="h-8 w-8 text-muted-foreground mx-auto" />
+                  <h3 className="font-semibold">Importar Manualmente</h3>
+                  <p className="text-xs text-muted-foreground">
+                    Faça upload de dados via arquivo CSV. Baixe o template,
+                    preencha com seus dados e importe para o dashboard.
+                  </p>
+                  <Button size="sm" variant="outline" className="w-full">
+                    <Upload className="h-4 w-4 mr-2" />
+                    Importar CSV
+                  </Button>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+          <NPSImportDialog open={importOpen} onOpenChange={setImportOpen} onSuccess={fetchNPSData} />
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
       <header className="border-b border-border/50 bg-card/80 backdrop-blur-sm shadow-sm">
         <div className="container mx-auto px-6 py-5">
           <div className="flex items-center justify-between">
@@ -193,6 +240,10 @@ const NPS = () => {
               <p className="text-muted-foreground text-sm mt-0.5">{ispNome} - Satisfação do Cliente</p>
             </div>
             <div className="flex items-center gap-4">
+              <Button variant="outline" size="sm" onClick={() => setImportOpen(true)}>
+                <Upload className="h-4 w-4 mr-2" />
+                Importar
+              </Button>
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <ThumbsUp className="h-5 w-5" />
                 <span>{filteredRespostas.length} respostas</span>
@@ -206,75 +257,63 @@ const NPS = () => {
       <main className="container mx-auto px-6 py-8 space-y-8">
         {isLoading ? (
           <LoadingScreen />
-        ) : respostasNPS.length === 0 ? (
-          <div className="flex items-center justify-center py-12">
-            <div className="text-center space-y-4">
-              <AlertCircle className="h-12 w-12 text-muted-foreground mx-auto" />
-              <div>
-                <h3 className="text-lg font-semibold">Nenhuma resposta NPS encontrada</h3>
-                <p className="text-muted-foreground">Aguardando dados da tabela nps-check...</p>
-              </div>
-            </div>
-          </div>
         ) : (
           <>
-        {/* Filtros */}
-        <NPSFilters
-          periodo={periodo}
-          tipoNPS={tipoNPS}
-          classificacao={classificacao}
-          onPeriodoChange={setPeriodo}
-          onTipoNPSChange={setTipoNPS}
-          onClassificacaoChange={setClassificacao}
-        />
+            <NPSFilters
+              periodo={periodo}
+              tipoNPS={tipoNPS}
+              classificacao={classificacao}
+              onPeriodoChange={setPeriodo}
+              onTipoNPSChange={setTipoNPS}
+              onClassificacaoChange={setClassificacao}
+            />
 
-        {/* KPIs */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <NPSKPICard
-            title="NPS Geral"
-            value={kpis.geral}
-            icon={Gauge}
-            count={filteredRespostas.length}
-          />
-          <NPSKPICard
-            title="NPS Contrato"
-            value={kpis.contrato}
-            icon={ThumbsUp}
-            count={filteredRespostas.filter(r => r.tipo_nps === "contrato").length}
-          />
-          <NPSKPICard
-            title="NPS Pós-O.S"
-            value={kpis.os}
-            icon={Wrench}
-            count={filteredRespostas.filter(r => r.tipo_nps === "os").length}
-          />
-          <NPSKPICard
-            title="NPS Atendimento"
-            value={kpis.atendimento}
-            icon={Headphones}
-            count={filteredRespostas.filter(r => r.tipo_nps === "atendimento").length}
-          />
-        </div>
+            {/* KPIs - sem atendimento, com taxa de resposta */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <NPSKPICard
+                title="NPS Geral"
+                value={kpis.geral}
+                icon={Gauge}
+                count={filteredRespostas.length}
+              />
+              <NPSKPICard
+                title="NPS Contrato"
+                value={kpis.contrato}
+                icon={ThumbsUp}
+                count={filteredRespostas.filter((r) => r.tipo_nps === "contrato").length}
+              />
+              <NPSKPICard
+                title="NPS Pós-O.S"
+                value={kpis.os}
+                icon={Wrench}
+                count={filteredRespostas.filter((r) => r.tipo_nps === "os").length}
+              />
+              <NPSKPICard
+                title="Taxa de Resposta"
+                value={kpis.taxaResposta}
+                icon={Percent}
+                count={kpis.totalRespostas}
+                isPercentage
+              />
+            </div>
 
-        {/* Gráficos */}
-        <div>
-          <h2 className="text-2xl font-bold mb-4">📊 Performance e Tendências</h2>
-          <NPSCharts respostas={filteredRespostas} />
-        </div>
+            {/* Charts */}
+            <div>
+              <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                <BarChart3 className="h-5 w-5 text-primary" />
+                Performance e Tendências
+              </h2>
+              <NPSCharts respostas={filteredRespostas} />
+            </div>
 
-        {/* Insights */}
-        <div>
-          <h2 className="text-2xl font-bold mb-4">💡 Insights Automáticos</h2>
-          <NPSInsightsPanel respostas={filteredRespostas} />
-        </div>
+            {/* Insights */}
+            <NPSInsightsPanel respostas={filteredRespostas} />
 
-        {/* Tabela */}
-        <div>
-          <h2 className="text-2xl font-bold mb-4">📋 Respostas NPS</h2>
-          <NPSTable respostas={filteredRespostas} />
-        </div>
+            {/* Table */}
+            <NPSTable respostas={filteredRespostas} />
           </>
         )}
+        <NPSImportDialog open={importOpen} onOpenChange={setImportOpen} onSuccess={fetchNPSData} />
       </main>
     </div>
   );

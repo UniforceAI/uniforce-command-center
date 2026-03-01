@@ -58,7 +58,7 @@ interface ActionMenuProps {
   clientName?: string;
   clientPhone?: string;
   clientEmail?: string;
-  variant?: "cobranca" | "risco" | "suporte" | "cancelamento";
+  variant?: "cobranca" | "risco" | "suporte" | "cancelamento" | "nps";
   onActionLogged?: (action: ActionType) => void;
   onSendToTreatment?: () => void;
 }
@@ -165,6 +165,8 @@ export function ActionMenu({
             msg = encodeURIComponent(`Olá ${name}, tudo bem?\nPercebemos que estamos tendo muitos problemas. Mas fique tranquilo, estou aqui para resolvê-los de uma vez por todas. Gostaria encarecidamente de saber se o seu problema foi resolvido?`);
           } else if (variant === "cancelamento") {
             msg = encodeURIComponent(`Olá ${name}, tudo bem?\nSentimos a sua falta!\n\nQuer voltar a navegar em alta velocidade, maratonar séries, estudar ou trabalhar sem nenhuma interrupção?\n\nTemos uma proposta especial para você!`);
+          } else if (variant === "nps") {
+            msg = encodeURIComponent(`Olá ${name}.\nEntendemos que sua experiência não está como deveria.\n\nGostaria de entender melhor o seu problema com nossos serviços para que possamos corrigi-lo e entregar para você o serviço que você merece.`);
           } else {
             msg = encodeURIComponent(`Olá ${name}, tudo bem? Segue seu link para pagamento via PIX. Qualquer dúvida estou à disposição!`);
           }
@@ -220,6 +222,8 @@ export function ActionMenu({
         return ["call", "whatsapp", "os_opened", "task_created", "manual_note"];
       case "cancelamento":
         return ["whatsapp", "send_treatment", "manual_note"];
+      case "nps":
+        return ["call", "whatsapp", "os_opened", "send_treatment", "manual_note"];
       default:
         return ["call", "whatsapp", "manual_note"];
     }

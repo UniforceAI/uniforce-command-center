@@ -58,7 +58,6 @@ export function NPSFilters({
               <SelectItem value="todos">Todos</SelectItem>
               <SelectItem value="contrato">Contrato</SelectItem>
               <SelectItem value="os">Pós-O.S</SelectItem>
-              <SelectItem value="atendimento">Atendimento</SelectItem>
             </SelectContent>
           </Select>
         </div>
