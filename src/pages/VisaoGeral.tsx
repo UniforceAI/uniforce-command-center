@@ -1075,7 +1075,6 @@ const VisaoGeral = () => {
                   <h2 className="text-xs font-semibold text-destructive uppercase tracking-wider flex items-center gap-2">
                     <AlertTriangle className="h-3.5 w-3.5" />
                     Principais Fatores de Risco
-                    <span className="text-[10px] font-normal normal-case text-muted-foreground">({fatoresMode === "risco" ? "Em Risco" : `${fatoresRisco.totalBase} cancelados`})</span>
                   </h2>
                   <div className="flex gap-1">
                     <button
