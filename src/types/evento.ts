@@ -60,6 +60,7 @@ export interface Evento {
   metodo_cobranca?: string;
   dias_atraso: number;
   vencido: boolean;
+  data_cancelamento?: string;
   linha_digitavel?: string;
   pix_codigo?: string;
   pix_qrcode_img?: string;

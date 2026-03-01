@@ -13,7 +13,7 @@ const ESSENTIAL_COLUMNS = [
   "servico_status", "status_contrato", "data_instalacao",
   "cobranca_status", "data_vencimento", "data_pagamento",
   "valor_cobranca", "valor_pago", "metodo_cobranca",
-  "dias_atraso", "vencido",
+  "dias_atraso", "vencido", "data_cancelamento",
   "ultimo_atendimento",
   "nps_score", "nps_comment",
   "churn_risk_score", "churn_risk_bucket",
