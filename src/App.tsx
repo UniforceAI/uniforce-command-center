@@ -22,6 +22,7 @@ import SelecionarCliente from "./pages/SelecionarCliente";
 import ConfiguracaoChurnScore from "./pages/ConfiguracaoChurnScore";
 import PerfilISP from "./pages/PerfilISP";
 import ContasAcesso from "./pages/ContasAcesso";
+import SetupChamados from "./pages/SetupChamados";
 
 const queryClient = new QueryClient();
 
@@ -142,6 +143,16 @@ const App = () => (
                 <ProtectedRoute>
                   <MainLayout>
                     <ContasAcesso />
+                  </MainLayout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/configuracoes/chamados"
+              element={
+                <ProtectedRoute>
+                  <MainLayout>
+                    <SetupChamados />
                   </MainLayout>
                 </ProtectedRoute>
               }
