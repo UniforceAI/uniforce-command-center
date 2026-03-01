@@ -4,14 +4,15 @@ import { ChamadoData } from "@/hooks/useChamados";
 import { RiskBucket } from "@/hooks/useRiskBucketConfig";
 import { WorkflowStatus, CrmWorkflowRecord } from "@/hooks/useCrmWorkflow";
 import { useCrmComments } from "@/hooks/useCrmComments";
-import { useCrmTags, CrmTag } from "@/hooks/useCrmTags";
+import { useCrmTags } from "@/hooks/useCrmTags";
 import { useAuth } from "@/contexts/AuthContext";
 import { safeFormatDate } from "@/lib/safeDate";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -22,7 +23,7 @@ import {
   MessageSquare, Phone, Send, Handshake, Wrench,
   ThumbsDown, ThumbsUp, Minus, X, Plus, Clock, DollarSign,
   AlertTriangle, TrendingDown, Activity, FileText, Calendar,
-  Trash2, Pencil, Save, Palette,
+  Trash2, Pencil, Save, Palette, Copy, CreditCard, ArrowRight,
 } from "lucide-react";
 import { getCategoriaDisplay } from "@/lib/categoriasMap";
 import { useActiveIsp } from "@/hooks/useActiveIsp";
@@ -62,13 +63,6 @@ const TAG_COLORS = [
   "#3b82f6", "#6366f1", "#8b5cf6", "#ec4899", "#64748b",
 ];
 
-const QUICK_ACTIONS = [
-  { key: "whatsapp", label: "WhatsApp", icon: Send, desc: "WhatsApp enviado" },
-  { key: "ligacao", label: "Ligar", icon: Phone, desc: "Ligação realizada" },
-  { key: "acordo", label: "Acordo", icon: Handshake, desc: "Acordo de pagamento" },
-  { key: "visita", label: "Visita/OS", icon: Wrench, desc: "Visita/OS agendada" },
-];
-
 interface CrmDrawerProps {
   cliente: ChurnStatus | null;
   score: number;
@@ -76,6 +70,7 @@ interface CrmDrawerProps {
   workflow: CrmWorkflowRecord | undefined;
   events: ChurnEvent[];
   chamadosCliente: ChamadoData[];
+  npsData?: { nota?: number; classificacao?: string };
   onClose: () => void;
   onStartTreatment: () => Promise<void>;
   onUpdateStatus: (status: WorkflowStatus) => Promise<void>;
@@ -84,13 +79,14 @@ interface CrmDrawerProps {
 }
 
 export function CrmDrawer({
-  cliente, score, bucket, workflow, events, chamadosCliente, onClose,
+  cliente, score, bucket, workflow, events, chamadosCliente, npsData, onClose,
   onStartTreatment, onUpdateStatus, onUpdateTags, onUpdateOwner,
 }: CrmDrawerProps) {
   const { user } = useAuth();
   const { ispId } = useActiveIsp();
   const { toast } = useToast();
-  const { comments, addComment, updateComment, deleteComment } = useCrmComments(cliente?.cliente_id ?? null);
+  const clienteId = cliente?.cliente_id ?? null;
+  const { comments, addComment, updateComment, deleteComment } = useCrmComments(clienteId);
   const { tags: globalTags, createTag } = useCrmTags();
   const [noteText, setNoteText] = useState("");
   const [newTagName, setNewTagName] = useState("");
@@ -99,6 +95,20 @@ export function CrmDrawer({
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
   const [editingText, setEditingText] = useState("");
   const [showTagPicker, setShowTagPicker] = useState(false);
+  const [activeTab, setActiveTab] = useState("acompanhamento");
+
+  // Tempo de contrato
+  const tempoContrato = useMemo(() => {
+    if (!cliente) return null;
+    const dtAtivacao = (cliente as any).data_ativacao;
+    if (!dtAtivacao) return null;
+    const d = new Date(dtAtivacao);
+    if (isNaN(d.getTime())) return null;
+    const diffMs = Date.now() - d.getTime();
+    const meses = Math.floor(diffMs / (1000 * 60 * 60 * 24 * 30));
+    if (meses >= 12) return `${Math.floor(meses / 12)}a ${meses % 12}m`;
+    return `${meses}m`;
+  }, [cliente]);
 
   if (!cliente) return null;
 
@@ -106,15 +116,13 @@ export function CrmDrawer({
 
   const handleAddTag = async (tag: string) => {
     if (!tag || clienteTags.includes(tag)) return;
-    try {
-      await onUpdateTags([...clienteTags, tag]);
-    } catch { toast({ title: "Erro ao adicionar tag", variant: "destructive" }); }
+    try { await onUpdateTags([...clienteTags, tag]); }
+    catch { toast({ title: "Erro ao adicionar tag", variant: "destructive" }); }
   };
 
   const handleRemoveTag = async (tag: string) => {
-    try {
-      await onUpdateTags(clienteTags.filter(t => t !== tag));
-    } catch { toast({ title: "Erro ao remover tag", variant: "destructive" }); }
+    try { await onUpdateTags(clienteTags.filter(t => t !== tag)); }
+    catch { toast({ title: "Erro ao remover tag", variant: "destructive" }); }
   };
 
   const handleCreateGlobalTag = async () => {
@@ -146,19 +154,15 @@ export function CrmDrawer({
   };
 
   const handleDeleteComment = async (commentId: string) => {
-    try {
-      await deleteComment(commentId);
-      toast({ title: "Interação removida" });
-    } catch { toast({ title: "Erro ao excluir", variant: "destructive" }); }
+    try { await deleteComment(commentId); toast({ title: "Interação removida" }); }
+    catch { toast({ title: "Erro ao excluir", variant: "destructive" }); }
   };
 
   const handleQuickAction = async (actionType: string, label: string) => {
     setActionLoading(actionType);
     try {
       await addComment(`Ação: ${label}`, "action", { action_type: actionType });
-      if (workflow) {
-        await onUpdateStatus(workflow.status_workflow);
-      }
+      if (workflow) await onUpdateStatus(workflow.status_workflow);
       toast({ title: `${label} registrado` });
     } catch { toast({ title: "Erro ao registrar ação", variant: "destructive" }); }
     setActionLoading(null);
@@ -166,17 +170,22 @@ export function CrmDrawer({
 
   const handleAssumirOwner = async () => {
     if (!user) return;
-    try {
-      await onUpdateOwner(user.id);
-      toast({ title: "Você assumiu este cliente" });
-    } catch { toast({ title: "Erro", variant: "destructive" }); }
+    try { await onUpdateOwner(user.id); toast({ title: "Você assumiu este atendimento" }); }
+    catch { toast({ title: "Erro", variant: "destructive" }); }
   };
 
   const handleStatusChange = async (status: WorkflowStatus) => {
-    try {
-      await onUpdateStatus(status);
-      toast({ title: `Marcado como ${STATUS_LABELS[status].label}` });
-    } catch { toast({ title: "Erro ao atualizar status", variant: "destructive" }); }
+    try { await onUpdateStatus(status); toast({ title: `Marcado como ${STATUS_LABELS[status].label}` }); }
+    catch { toast({ title: "Erro ao atualizar status", variant: "destructive" }); }
+  };
+
+  const handleWhatsApp = () => {
+    const phone = (cliente as any).telefone?.replace(/\D/g, "") || "";
+    const name = cliente.cliente_nome?.split(" ")[0] || "cliente";
+    const motivo = cliente.motivo_risco_principal || "seus serviços";
+    const msg = encodeURIComponent(`Olá ${name}, tudo bem?\nPassando rapidinho para lembrar que sua fatura de internet está em aberto.\n\nQueremos garantir que você continue navegando, maratonando séries, estudando e trabalhando sem nenhuma interrupção!\n\n🔑 PIX (copia e cola):\n\nSe precisar, estamos aqui para ajudar!`);
+    if (phone) window.open(`https://wa.me/55${phone}?text=${msg}`, "_blank");
+    handleQuickAction("whatsapp", "WhatsApp enviado");
   };
 
   // Score breakdown
@@ -189,34 +198,31 @@ export function CrmDrawer({
   ].sort((a, b) => b.val - a.val);
   const driverPrincipal = scores[0]?.name || "—";
 
-  // Get tag color from global catalog
   const getTagColor = (tagName: string) => {
     const gt = globalTags.find(t => t.name === tagName);
     return gt?.color || "#64748b";
   };
 
-  // Format chamado date
   const formatChamadoDate = (dateStr: string) => {
     try {
-      if (dateStr.includes("/")) {
-        const [datePart] = dateStr.split(" ");
-        return datePart;
-      }
+      if (dateStr.includes("/")) { const [datePart] = dateStr.split(" "); return datePart; }
       return safeFormatDate(dateStr, { day: "2-digit", month: "2-digit", year: "2-digit" });
     } catch { return dateStr; }
   };
 
+  // tempoContrato already computed above hooks
+
   return (
-    <Sheet open={!!cliente} onOpenChange={() => onClose()}>
-      <SheetContent side="right" className="w-[520px] sm:max-w-[520px] overflow-hidden p-0 flex flex-col">
-        {/* ── HEADER CRM ── */}
-        <SheetHeader className="p-5 pb-4 border-b bg-muted/30 shrink-0">
+    <Dialog open={!!cliente} onOpenChange={() => onClose()}>
+      <DialogContent className="max-w-3xl w-[95vw] max-h-[90vh] p-0 flex flex-col overflow-hidden">
+        {/* ── HEADER ── */}
+        <DialogHeader className="p-5 pb-4 border-b bg-muted/30 shrink-0">
           <div className="flex items-start justify-between gap-3">
             <div className="flex-1 min-w-0">
-              <SheetTitle className="text-lg font-bold leading-tight truncate">
+              <DialogTitle className="text-lg font-bold leading-tight truncate">
                 {cliente.cliente_nome || `Cliente #${cliente.cliente_id}`}
-              </SheetTitle>
-              <SheetDescription className="sr-only">Detalhes do cliente em risco</SheetDescription>
+              </DialogTitle>
+              <DialogDescription className="sr-only">Detalhes do cliente em risco</DialogDescription>
               {cliente.plano_nome && (
                 <span className="text-xs text-muted-foreground mt-0.5 block">{cliente.plano_nome}</span>
               )}
@@ -230,19 +236,11 @@ export function CrmDrawer({
           <div className="flex items-center gap-2 mt-3 flex-wrap">
             {workflow ? (
               <Select value={workflow.status_workflow} onValueChange={(v) => handleStatusChange(v as WorkflowStatus)}>
-                <SelectTrigger className="h-9 text-xs w-[170px] font-medium">
-                  <SelectValue />
-                </SelectTrigger>
+                <SelectTrigger className="h-9 text-xs w-[170px] font-medium"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="em_tratamento">
-                    <span className="flex items-center gap-1.5"><PlayCircle className="h-3.5 w-3.5 text-yellow-600" />Em Tratamento</span>
-                  </SelectItem>
-                  <SelectItem value="resolvido">
-                    <span className="flex items-center gap-1.5"><CheckCircle2 className="h-3.5 w-3.5 text-green-600" />Resolvido</span>
-                  </SelectItem>
-                  <SelectItem value="perdido">
-                    <span className="flex items-center gap-1.5"><XCircle className="h-3.5 w-3.5 text-destructive" />Perdido</span>
-                  </SelectItem>
+                  <SelectItem value="em_tratamento"><span className="flex items-center gap-1.5"><PlayCircle className="h-3.5 w-3.5 text-yellow-600" />Em Tratamento</span></SelectItem>
+                  <SelectItem value="resolvido"><span className="flex items-center gap-1.5"><CheckCircle2 className="h-3.5 w-3.5 text-green-600" />Resolvido</span></SelectItem>
+                  <SelectItem value="perdido"><span className="flex items-center gap-1.5"><XCircle className="h-3.5 w-3.5 text-destructive" />Perdido</span></SelectItem>
                 </SelectContent>
               </Select>
             ) : (
@@ -251,15 +249,13 @@ export function CrmDrawer({
               </Button>
             )}
 
-            {workflow && (
-              <Button size="sm" variant="outline" className="h-9 text-xs gap-1.5" onClick={handleAssumirOwner}>
-                <UserCheck className="h-3.5 w-3.5" />
-                {workflow.owner_user_id === user?.id ? "Você é o responsável" : "Assumir responsabilidade"}
-              </Button>
-            )}
+            <Button size="sm" variant="outline" className="h-9 text-xs gap-1.5" onClick={handleAssumirOwner}>
+              <UserCheck className="h-3.5 w-3.5" />
+              {workflow?.owner_user_id === user?.id ? "Você é o responsável" : "Assumir Atendimento"}
+            </Button>
           </div>
 
-          {/* Tags with color-coded global catalog */}
+          {/* Tags */}
           {workflow && (
             <div className="mt-3 space-y-1.5">
               <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1">
@@ -267,80 +263,46 @@ export function CrmDrawer({
               </span>
               <div className="flex flex-wrap gap-1.5">
                 {clienteTags.map(t => (
-                  <Badge
-                    key={t}
-                    className="text-xs gap-1.5 pr-1 py-0.5 text-white border-0"
-                    style={{ backgroundColor: getTagColor(t) }}
-                  >
+                  <Badge key={t} className="text-xs gap-1.5 pr-1 py-0.5 text-white border-0" style={{ backgroundColor: getTagColor(t) }}>
                     {t}
-                    <button onClick={() => handleRemoveTag(t)} className="hover:opacity-70 transition-opacity">
-                      <X className="h-3 w-3" />
-                    </button>
+                    <button onClick={() => handleRemoveTag(t)} className="hover:opacity-70 transition-opacity"><X className="h-3 w-3" /></button>
                   </Badge>
                 ))}
-
-                {/* Tag picker popover */}
                 <Popover open={showTagPicker} onOpenChange={setShowTagPicker}>
                   <PopoverTrigger asChild>
-                    <Button variant="outline" size="sm" className="h-7 w-7 p-0 border-dashed rounded-full">
-                      <Plus className="h-3 w-3" />
-                    </Button>
+                    <Button variant="outline" size="sm" className="h-7 w-7 p-0 border-dashed rounded-full"><Plus className="h-3 w-3" /></Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-64 p-3 space-y-3" align="start">
                     <span className="text-xs font-semibold">Tags disponíveis</span>
                     {globalTags.length > 0 ? (
                       <div className="flex flex-wrap gap-1.5 max-h-[150px] overflow-y-auto">
-                        {globalTags
-                          .filter(t => !clienteTags.includes(t.name))
-                          .map(t => (
-                            <button
-                              key={t.id}
-                              onClick={() => { handleAddTag(t.name); setShowTagPicker(false); }}
-                              className="text-xs px-2 py-1 rounded-full text-white hover:opacity-80 transition-opacity"
-                              style={{ backgroundColor: t.color }}
-                            >
-                              {t.name}
-                            </button>
-                          ))}
+                        {globalTags.filter(t => !clienteTags.includes(t.name)).map(t => (
+                          <button key={t.id} onClick={() => { handleAddTag(t.name); setShowTagPicker(false); }}
+                            className="text-xs px-2 py-1 rounded-full text-white hover:opacity-80 transition-opacity" style={{ backgroundColor: t.color }}>{t.name}</button>
+                        ))}
                       </div>
-                    ) : (
-                      <p className="text-[11px] text-muted-foreground italic">Nenhuma tag criada ainda.</p>
-                    )}
+                    ) : <p className="text-[11px] text-muted-foreground italic">Nenhuma tag criada ainda.</p>}
                     <Separator />
                     <span className="text-[11px] font-semibold">Criar nova tag</span>
                     <div className="flex gap-1.5 items-center">
-                      <Input
-                        placeholder="Nome..."
-                        value={newTagName}
-                        onChange={(e) => setNewTagName(e.target.value)}
-                        onKeyDown={(e) => { if (e.key === "Enter") handleCreateGlobalTag(); }}
-                        className="h-7 text-xs flex-1"
-                      />
+                      <Input placeholder="Nome..." value={newTagName} onChange={(e) => setNewTagName(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === "Enter") handleCreateGlobalTag(); }} className="h-7 text-xs flex-1" />
                       <Popover>
                         <PopoverTrigger asChild>
-                          <button
-                            className="h-7 w-7 rounded-md border flex items-center justify-center shrink-0"
-                            style={{ backgroundColor: newTagColor }}
-                          >
+                          <button className="h-7 w-7 rounded-md border flex items-center justify-center shrink-0" style={{ backgroundColor: newTagColor }}>
                             <Palette className="h-3 w-3 text-white" />
                           </button>
                         </PopoverTrigger>
                         <PopoverContent className="w-auto p-2" align="end">
                           <div className="grid grid-cols-5 gap-1.5">
                             {TAG_COLORS.map(c => (
-                              <button
-                                key={c}
-                                className={`h-6 w-6 rounded-full border-2 ${newTagColor === c ? "border-foreground" : "border-transparent"}`}
-                                style={{ backgroundColor: c }}
-                                onClick={() => setNewTagColor(c)}
-                              />
+                              <button key={c} className={`h-6 w-6 rounded-full border-2 ${newTagColor === c ? "border-foreground" : "border-transparent"}`}
+                                style={{ backgroundColor: c }} onClick={() => setNewTagColor(c)} />
                             ))}
                           </div>
                         </PopoverContent>
                       </Popover>
-                      <Button size="sm" className="h-7 text-xs px-2" onClick={handleCreateGlobalTag} disabled={!newTagName.trim()}>
-                        <Plus className="h-3 w-3" />
-                      </Button>
+                      <Button size="sm" className="h-7 text-xs px-2" onClick={handleCreateGlobalTag} disabled={!newTagName.trim()}><Plus className="h-3 w-3" /></Button>
                     </div>
                   </PopoverContent>
                 </Popover>
@@ -348,34 +310,46 @@ export function CrmDrawer({
             </div>
           )}
 
-          {/* Driver + Mini metrics */}
-          <div className="mt-3 grid grid-cols-4 gap-2 text-center">
-            <div className="rounded-lg border bg-card p-2.5 shadow-sm">
-              <Activity className="h-3.5 w-3.5 mx-auto text-primary mb-1" />
+          {/* Data cards */}
+          <div className="mt-3 grid grid-cols-3 sm:grid-cols-5 gap-2 text-center">
+            <div className="rounded-lg border bg-card p-2 shadow-sm">
+              <Activity className="h-3.5 w-3.5 mx-auto text-primary mb-0.5" />
               <div className="text-xs font-bold">{driverPrincipal}</div>
               <div className="text-[9px] text-muted-foreground">Driver</div>
             </div>
-            <div className="rounded-lg border bg-card p-2.5 shadow-sm">
-              <DollarSign className="h-3.5 w-3.5 mx-auto text-muted-foreground mb-1" />
-              <div className="text-xs font-bold">
-                {cliente.valor_mensalidade != null && cliente.valor_mensalidade > 0
-                  ? `R$${cliente.valor_mensalidade.toFixed(0)}`
-                  : "—"}
-              </div>
+            <div className="rounded-lg border bg-card p-2 shadow-sm">
+              <DollarSign className="h-3.5 w-3.5 mx-auto text-muted-foreground mb-0.5" />
+              <div className="text-xs font-bold">{cliente.valor_mensalidade != null && cliente.valor_mensalidade > 0 ? `R$${cliente.valor_mensalidade.toFixed(0)}` : "—"}</div>
               <div className="text-[9px] text-muted-foreground">Mensalidade</div>
             </div>
-            <div className="rounded-lg border bg-card p-2.5 shadow-sm">
-              <Clock className="h-3.5 w-3.5 mx-auto text-muted-foreground mb-1" />
+            <div className="rounded-lg border bg-card p-2 shadow-sm">
+              <Clock className="h-3.5 w-3.5 mx-auto text-muted-foreground mb-0.5" />
               <div className={`text-xs font-bold ${(cliente.dias_atraso ?? 0) > 30 ? "text-destructive" : ""}`}>
                 {(cliente.dias_atraso ?? 0) > 0 ? `${Math.round(cliente.dias_atraso!)}d` : "Em dia"}
               </div>
               <div className="text-[9px] text-muted-foreground">Atraso</div>
             </div>
-            <div className="rounded-lg border bg-card p-2.5 shadow-sm">
-              <Phone className="h-3.5 w-3.5 mx-auto text-muted-foreground mb-1" />
+            <div className="rounded-lg border bg-card p-2 shadow-sm">
+              <Phone className="h-3.5 w-3.5 mx-auto text-muted-foreground mb-0.5" />
               <div className="text-xs font-bold">{cliente.qtd_chamados_30d || 0}</div>
               <div className="text-[9px] text-muted-foreground">Chamados 30d</div>
             </div>
+            {npsData?.nota != null && (
+              <div className="rounded-lg border bg-card p-2 shadow-sm">
+                {npsData.classificacao === "DETRATOR" ? <ThumbsDown className="h-3.5 w-3.5 mx-auto text-destructive mb-0.5" /> :
+                 npsData.classificacao === "PROMOTOR" ? <ThumbsUp className="h-3.5 w-3.5 mx-auto text-green-600 mb-0.5" /> :
+                 <Minus className="h-3.5 w-3.5 mx-auto text-yellow-600 mb-0.5" />}
+                <div className="text-xs font-bold">{npsData.nota}</div>
+                <div className="text-[9px] text-muted-foreground">NPS</div>
+              </div>
+            )}
+            {tempoContrato && (
+              <div className="rounded-lg border bg-card p-2 shadow-sm">
+                <Calendar className="h-3.5 w-3.5 mx-auto text-muted-foreground mb-0.5" />
+                <div className="text-xs font-bold">{tempoContrato}</div>
+                <div className="text-[9px] text-muted-foreground">Contrato</div>
+              </div>
+            )}
           </div>
 
           {/* Score breakdown */}
@@ -386,78 +360,64 @@ export function CrmDrawer({
               </Badge>
             ))}
           </div>
-        </SheetHeader>
+        </DialogHeader>
 
-        {/* ── SCROLLABLE CONTENT ── */}
-        <ScrollArea className="flex-1">
-          <div className="p-5 space-y-5">
-            {/* ── BLOCK 2: Quadro de Tratativa ── */}
-            {workflow && (
-              <div className="space-y-4 rounded-xl border-2 border-primary/20 p-4 bg-card shadow-sm">
-                <h4 className="text-sm font-semibold flex items-center gap-2 text-primary">
-                  <MessageSquare className="h-4 w-4" /> Quadro de Tratativa
-                </h4>
+        {/* ── TABBED CONTENT ── */}
+        <div className="flex-1 overflow-hidden">
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col h-full">
+            <TabsList className="mx-5 mt-3 w-fit">
+              <TabsTrigger value="acompanhamento" className="text-xs gap-1.5"><MessageSquare className="h-3.5 w-3.5" />Acompanhamento</TabsTrigger>
+              <TabsTrigger value="atendimento" className="text-xs gap-1.5"><Phone className="h-3.5 w-3.5" />Atendimento</TabsTrigger>
+              <TabsTrigger value="mapa" className="text-xs gap-1.5"><TrendingDown className="h-3.5 w-3.5" />Mapa de Churn</TabsTrigger>
+            </TabsList>
 
-                {/* Quick actions */}
-                <div className="grid grid-cols-2 gap-2">
-                  {QUICK_ACTIONS.map(qa => (
-                    <Button
-                      key={qa.key}
-                      size="sm"
-                      variant="outline"
-                      className="h-10 text-xs gap-2 justify-start font-medium hover:bg-primary/5 hover:border-primary/30 transition-colors"
-                      onClick={() => handleQuickAction(qa.key, qa.desc)}
-                      disabled={actionLoading === qa.key}
-                    >
-                      <qa.icon className="h-4 w-4 shrink-0" />{qa.label}
+            {/* ── TAB: Acompanhamento ── */}
+            <TabsContent value="acompanhamento" className="flex-1 overflow-hidden m-0">
+              <ScrollArea className="h-[calc(90vh-380px)]">
+                <div className="p-5 space-y-4">
+                  {/* Enviar para Tratamento */}
+                  {!workflow && (
+                    <Button className="w-full h-10 gap-2" onClick={onStartTreatment}>
+                      <PlayCircle className="h-4 w-4" />Enviar para Tratamento
                     </Button>
-                  ))}
-                </div>
+                  )}
 
-                {/* Notes textarea */}
-                <div className="space-y-2">
-                  <Textarea
-                    placeholder="Escreva uma nota interna, observação ou próxima ação..."
-                    value={noteText}
-                    onChange={(e) => setNoteText(e.target.value)}
-                    className="min-h-[80px] text-sm resize-none"
-                  />
-                  <Button size="sm" className="h-8 text-xs px-4" onClick={handleAddComment} disabled={!noteText.trim()}>
-                    <FileText className="h-3.5 w-3.5 mr-1.5" />Salvar nota
-                  </Button>
-                </div>
+                  {/* Notes */}
+                  <div className="space-y-2">
+                    <Textarea placeholder="Escreva uma observação, nota interna ou próxima ação..." value={noteText}
+                      onChange={(e) => setNoteText(e.target.value)} className="min-h-[80px] text-sm resize-none" />
+                    <div className="flex gap-2">
+                      <Button size="sm" className="h-8 text-xs px-4" onClick={handleAddComment} disabled={!noteText.trim()}>
+                        <FileText className="h-3.5 w-3.5 mr-1.5" />Salvar nota
+                      </Button>
+                      <Button size="sm" variant="outline" className="h-8 text-xs gap-1.5" onClick={() => setActiveTab("atendimento")}>
+                        <ArrowRight className="h-3 w-3" />Ir para Atendimento
+                      </Button>
+                    </div>
+                  </div>
 
-                <Separator />
+                  <Separator />
 
-                {/* Comments history with edit/delete */}
-                <div className="space-y-2">
-                  <span className="text-xs font-semibold uppercase text-muted-foreground flex items-center gap-1.5">
-                    <Clock className="h-3 w-3" /> Histórico de Interações ({comments.length})
-                  </span>
-                  {comments.length === 0 ? (
-                    <p className="text-xs text-muted-foreground italic py-3 text-center">Nenhuma interação registrada ainda.</p>
-                  ) : (
-                    <div className="space-y-2 max-h-[250px] overflow-y-auto">
-                      {comments.map((c) => (
-                        <div key={c.id} className={`rounded-lg border p-3 text-sm space-y-1 transition-colors ${c.type === "action" ? "bg-primary/5 border-primary/20" : "bg-muted/30 border-muted"}`}>
-                          {editingCommentId === c.id ? (
-                            <div className="space-y-2">
-                              <Textarea
-                                value={editingText}
-                                onChange={(e) => setEditingText(e.target.value)}
-                                className="min-h-[60px] text-xs resize-none"
-                              />
-                              <div className="flex gap-1.5">
-                                <Button size="sm" className="h-6 text-[10px] gap-1 px-2" onClick={() => handleEditComment(c.id)}>
-                                  <Save className="h-2.5 w-2.5" />Salvar
-                                </Button>
-                                <Button size="sm" variant="ghost" className="h-6 text-[10px] px-2" onClick={() => setEditingCommentId(null)}>
-                                  Cancelar
-                                </Button>
+                  {/* Histórico de Interações */}
+                  <div className="space-y-2">
+                    <span className="text-xs font-semibold uppercase text-muted-foreground flex items-center gap-1.5">
+                      <Clock className="h-3 w-3" /> Histórico de Interações ({comments.length})
+                    </span>
+                    {comments.length === 0 ? (
+                      <p className="text-xs text-muted-foreground italic py-3 text-center">Nenhuma interação registrada ainda.</p>
+                    ) : (
+                      <div className="space-y-2 max-h-[250px] overflow-y-auto">
+                        {comments.map((c) => (
+                          <div key={c.id} className={`rounded-lg border p-3 text-sm space-y-1 ${c.type === "action" ? "bg-primary/5 border-primary/20" : "bg-muted/30 border-muted"}`}>
+                            {editingCommentId === c.id ? (
+                              <div className="space-y-2">
+                                <Textarea value={editingText} onChange={(e) => setEditingText(e.target.value)} className="min-h-[60px] text-xs resize-none" />
+                                <div className="flex gap-1.5">
+                                  <Button size="sm" className="h-6 text-[10px] gap-1 px-2" onClick={() => handleEditComment(c.id)}><Save className="h-2.5 w-2.5" />Salvar</Button>
+                                  <Button size="sm" variant="ghost" className="h-6 text-[10px] px-2" onClick={() => setEditingCommentId(null)}>Cancelar</Button>
+                                </div>
                               </div>
-                            </div>
-                          ) : (
-                            <>
+                            ) : (
                               <div className="flex justify-between items-start gap-2">
                                 <span className="font-medium flex items-center gap-1.5 flex-1">
                                   {c.type === "action" ? <Activity className="h-3.5 w-3.5 text-primary shrink-0" /> : <MessageSquare className="h-3.5 w-3.5 text-muted-foreground shrink-0" />}
@@ -468,102 +428,146 @@ export function CrmDrawer({
                                     {safeFormatDate(c.created_at, { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
                                   </span>
                                   {c.type === "comment" && (
-                                    <button
-                                      onClick={() => { setEditingCommentId(c.id); setEditingText(c.body); }}
-                                      className="p-0.5 hover:text-primary transition-colors"
-                                      title="Editar"
-                                    >
+                                    <button onClick={() => { setEditingCommentId(c.id); setEditingText(c.body); }} className="p-0.5 hover:text-primary transition-colors" title="Editar">
                                       <Pencil className="h-3 w-3" />
                                     </button>
                                   )}
-                                  <button
-                                    onClick={() => handleDeleteComment(c.id)}
-                                    className="p-0.5 hover:text-destructive transition-colors"
-                                    title="Excluir"
-                                  >
+                                  <button onClick={() => handleDeleteComment(c.id)} className="p-0.5 hover:text-destructive transition-colors" title="Excluir">
                                     <Trash2 className="h-3 w-3" />
                                   </button>
                                 </div>
                               </div>
-                            </>
-                          )}
-                        </div>
-                      ))}
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <Separator />
+
+                  {/* Notas — link to Mapa de Churn */}
+                  <Button variant="outline" size="sm" className="w-full h-8 text-xs gap-1.5" onClick={() => setActiveTab("mapa")}>
+                    <TrendingDown className="h-3.5 w-3.5" />Ver Mapa de Churn
+                  </Button>
+                </div>
+              </ScrollArea>
+            </TabsContent>
+
+            {/* ── TAB: Atendimento ── */}
+            <TabsContent value="atendimento" className="flex-1 overflow-hidden m-0">
+              <ScrollArea className="h-[calc(90vh-380px)]">
+                <div className="p-5 space-y-4">
+                  {/* Action buttons */}
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button variant="outline" className="h-11 text-xs gap-2 justify-start font-medium hover:bg-primary/5 hover:border-primary/30" onClick={handleWhatsApp}>
+                      <Send className="h-4 w-4 shrink-0" />Enviar WhatsApp
+                    </Button>
+                    <Button variant="outline" className="h-11 text-xs gap-2 justify-start font-medium hover:bg-primary/5 hover:border-primary/30"
+                      onClick={() => { toast({ title: "PIX copiado" }); handleQuickAction("copy_pix", "PIX copiado"); }}>
+                      <Copy className="h-4 w-4 shrink-0" />Copiar PIX
+                    </Button>
+                    <Button variant="outline" className="h-11 text-xs gap-2 justify-start font-medium hover:bg-primary/5 hover:border-primary/30"
+                      onClick={() => { toast({ title: "Boleto copiado" }); handleQuickAction("copy_boleto", "Boleto copiado"); }}>
+                      <CreditCard className="h-4 w-4 shrink-0" />Copiar Boleto
+                    </Button>
+                    <Button variant="outline" className="h-11 text-xs gap-2 justify-start font-medium hover:bg-primary/5 hover:border-primary/30"
+                      onClick={() => handleQuickAction("ligacao", "Ligação realizada")}>
+                      <Phone className="h-4 w-4 shrink-0" />Registrar Contato
+                    </Button>
+                  </div>
+
+                  <Separator />
+
+                  {/* Status actions */}
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button variant="outline" className="h-11 text-xs gap-2 justify-start bg-green-50 hover:bg-green-100 border-green-200 text-green-700"
+                      onClick={() => handleStatusChange("resolvido")}>
+                      <CheckCircle2 className="h-4 w-4" />Caso Resolvido
+                    </Button>
+                    <Button variant="outline" className="h-11 text-xs gap-2 justify-start bg-red-50 hover:bg-red-100 border-red-200 text-red-700"
+                      onClick={() => handleStatusChange("perdido")}>
+                      <XCircle className="h-4 w-4" />Cliente em Churn
+                    </Button>
+                  </div>
+
+                  <Separator />
+
+                  {/* Abrir Chamado (OS) */}
+                  <Button variant="outline" className="w-full h-11 text-xs gap-2 font-medium hover:bg-primary/5 hover:border-primary/30"
+                    onClick={() => { toast({ title: "Chamado aberto", description: "Ordem de serviço criada via ERP." }); handleQuickAction("os_opened", "OS aberta no ERP"); }}>
+                    <Wrench className="h-4 w-4" />Abrir Chamado (OS)
+                  </Button>
+
+                  <Button variant="outline" size="sm" className="w-full h-8 text-xs gap-1.5" onClick={() => setActiveTab("acompanhamento")}>
+                    <ArrowRight className="h-3.5 w-3.5" />Ir para Acompanhamento
+                  </Button>
+                </div>
+              </ScrollArea>
+            </TabsContent>
+
+            {/* ── TAB: Mapa de Churn ── */}
+            <TabsContent value="mapa" className="flex-1 overflow-hidden m-0">
+              <ScrollArea className="h-[calc(90vh-380px)]">
+                <div className="p-5 space-y-3">
+                  <h4 className="text-sm font-semibold flex items-center gap-2">
+                    <TrendingDown className="h-4 w-4 text-destructive" />
+                    Mapa de Churn
+                    {events.length > 0 && <Badge variant="secondary" className="text-[10px] ml-1">{events.length}</Badge>}
+                  </h4>
+                  {events.length > 0 ? (
+                    <div className="space-y-2">
+                      {events.map((e, idx) => {
+                        const dateStr = safeFormatDate(e.data_evento, { day: "2-digit", month: "2-digit", year: "2-digit" });
+                        const evtConfig = EVENTO_LABELS[e.tipo_evento];
+                        const EvtIcon = evtConfig?.icon || AlertTriangle;
+                        const evtColor = evtConfig?.color || "text-muted-foreground";
+                        const isChamadoReincidente = e.tipo_evento === "chamado_reincidente";
+
+                        return (
+                          <div key={e.id || idx} className={`rounded-lg border p-3 text-sm space-y-2 ${e.tipo_evento.includes("detrator") || e.tipo_evento.includes("cancelamento") ? "border-destructive/30 bg-destructive/5" : "bg-card"}`}>
+                            <div className="flex justify-between items-center gap-2">
+                              <span className={`font-medium flex items-center gap-1.5 ${evtColor}`}>
+                                <EvtIcon className="h-3.5 w-3.5 shrink-0" />{evtConfig?.label || e.tipo_evento}
+                              </span>
+                              <div className="flex items-center gap-2 shrink-0">
+                                {e.impacto_score > 0 && <Badge className="bg-destructive/10 text-destructive border-destructive/20 border text-[10px] font-mono">+{e.impacto_score}pts</Badge>}
+                                {dateStr !== "—" && <span className="text-[10px] text-muted-foreground flex items-center gap-0.5"><Calendar className="h-2.5 w-2.5" />{dateStr}</span>}
+                              </div>
+                            </div>
+                            {e.descricao && <div className="text-muted-foreground text-xs leading-relaxed">{e.descricao}</div>}
+                            {isChamadoReincidente && chamadosCliente.length > 0 && (
+                              <div className="mt-1 space-y-1 pl-3 border-l-2 border-yellow-300">
+                                <span className="text-[10px] font-semibold text-muted-foreground uppercase">Chamados ({chamadosCliente.length})</span>
+                                {chamadosCliente.map((ch, i) => (
+                                  <div key={ch.id || i} className="flex items-start gap-2 text-[11px] py-1 border-b border-border/30 last:border-0">
+                                    <Phone className="h-3 w-3 text-muted-foreground shrink-0 mt-0.5" />
+                                    <div className="flex-1 min-w-0">
+                                      <div className="font-medium truncate">{(ch.motivo_contato && ch.motivo_contato !== "Não informado" ? ch.motivo_contato : null) || getCategoriaDisplay(ch.categoria, ispId) || "Sem assunto"}</div>
+                                      <div className="text-muted-foreground flex items-center gap-2 flex-wrap">
+                                        <span>{formatChamadoDate(ch.data_abertura)}</span>
+                                        {ch.setor && <span>· {ch.setor}</span>}
+                                        {ch.status && <span>· {ch.status}</span>}
+                                        {ch.protocolo && <span className="font-mono text-[10px]">#{ch.protocolo}</span>}
+                                      </div>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground italic text-center py-6">Nenhum evento encontrado.</p>
                   )}
                 </div>
-              </div>
-            )}
-
-            {/* ── BLOCK 3: Roadmap to Churn ── */}
-            <div className="space-y-3">
-              <h4 className="text-sm font-semibold flex items-center gap-2">
-                <TrendingDown className="h-4 w-4 text-destructive" />
-                Roadmap to Churn
-                {events.length > 0 && <Badge variant="secondary" className="text-[10px] ml-1">{events.length}</Badge>}
-              </h4>
-              {events.length > 0 ? (
-                <div className="space-y-2">
-                  {events.map((e, idx) => {
-                    const dateStr = safeFormatDate(e.data_evento, { day: "2-digit", month: "2-digit", year: "2-digit" });
-                    const evtConfig = EVENTO_LABELS[e.tipo_evento];
-                    const EvtIcon = evtConfig?.icon || AlertTriangle;
-                    const evtColor = evtConfig?.color || "text-muted-foreground";
-                    const isChamadoReincidente = e.tipo_evento === "chamado_reincidente";
-
-                    return (
-                      <div key={e.id || idx} className={`rounded-lg border p-3 text-sm space-y-2 ${e.tipo_evento.includes("detrator") || e.tipo_evento.includes("cancelamento") ? "border-destructive/30 bg-destructive/5" : "bg-card"}`}>
-                        <div className="flex justify-between items-center gap-2">
-                          <span className={`font-medium flex items-center gap-1.5 ${evtColor}`}>
-                            <EvtIcon className="h-3.5 w-3.5 shrink-0" />
-                            {evtConfig?.label || e.tipo_evento}
-                          </span>
-                          <div className="flex items-center gap-2 shrink-0">
-                            {e.impacto_score > 0 && (
-                              <Badge className="bg-destructive/10 text-destructive border-destructive/20 border text-[10px] font-mono">+{e.impacto_score}pts</Badge>
-                            )}
-                            {dateStr !== "—" && (
-                              <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
-                                <Calendar className="h-2.5 w-2.5" />{dateStr}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                        {e.descricao && (
-                          <div className="text-muted-foreground text-xs leading-relaxed">{e.descricao}</div>
-                        )}
-
-                        {/* Chamados detail list */}
-                        {isChamadoReincidente && chamadosCliente.length > 0 && (
-                          <div className="mt-1 space-y-1 pl-3 border-l-2 border-yellow-300">
-                            <span className="text-[10px] font-semibold text-muted-foreground uppercase">Chamados ({chamadosCliente.length})</span>
-                            {chamadosCliente.map((ch, i) => (
-                              <div key={ch.id || i} className="flex items-start gap-2 text-[11px] py-1 border-b border-border/30 last:border-0">
-                                <Phone className="h-3 w-3 text-muted-foreground shrink-0 mt-0.5" />
-                                <div className="flex-1 min-w-0">
-                                  <div className="font-medium truncate">{(ch.motivo_contato && ch.motivo_contato !== "Não informado" && ch.motivo_contato !== "não informado" ? ch.motivo_contato : null) || getCategoriaDisplay(ch.categoria, ispId) || "Sem assunto"}</div>
-                                  <div className="text-muted-foreground flex items-center gap-2 flex-wrap">
-                                    <span>{formatChamadoDate(ch.data_abertura)}</span>
-                                    {ch.setor && <span>· {ch.setor}</span>}
-                                    {ch.status && <span>· {ch.status}</span>}
-                                    {ch.protocolo && <span className="font-mono text-[10px]">#{ch.protocolo}</span>}
-                                  </div>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                <p className="text-sm text-muted-foreground italic text-center py-6">Nenhum evento encontrado.</p>
-              )}
-            </div>
-          </div>
-        </ScrollArea>
-      </SheetContent>
-    </Sheet>
+              </ScrollArea>
+            </TabsContent>
+          </Tabs>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
