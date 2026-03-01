@@ -1,4 +1,4 @@
-import { memo, useState, useMemo } from "react";
+import { memo, useState, useMemo, useCallback } from "react";
 import {
   useReactTable,
   getCoreRowModel,
@@ -10,13 +10,17 @@ import {
   SortingState,
 } from "@tanstack/react-table";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Card } from "@/components/ui/card";
+import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { ChevronLeft, ChevronRight, Search, ArrowUpDown } from "lucide-react";
+import {
+  ChevronLeft, ChevronRight, Search, ArrowUpDown, ChevronUp, ChevronDown,
+  FileText,
+} from "lucide-react";
 import { RespostaNPS } from "@/types/nps";
-import { generateInsight, generateAcaoSugerida } from "@/lib/mockDataNPS";
+import { ActionMenu } from "@/components/shared/ActionMenu";
+import { useCrmWorkflow } from "@/hooks/useCrmWorkflow";
 import { cn } from "@/lib/utils";
 
 interface NPSTableProps {
@@ -26,54 +30,44 @@ interface NPSTableProps {
 const tipoNPSLabels: Record<string, string> = {
   contrato: "Contrato",
   os: "Pós-O.S",
-  atendimento: "Atendimento",
 };
 
 export const NPSTable = memo(({ respostas }: NPSTableProps) => {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [globalFilter, setGlobalFilter] = useState("");
+  const { addToWorkflow } = useCrmWorkflow();
 
-  const dataWithInsights = useMemo(() => 
-    respostas.map(r => ({
-      ...r,
-      insight: generateInsight(r),
-      acao_sugerida: generateAcaoSugerida(r),
-    })),
-    [respostas]
-  );
+  const SortHeader = useCallback(({ column, label }: { column: any; label: string }) => {
+    const sorted = column.getIsSorted();
+    return (
+      <Button variant="ghost" onClick={() => column.toggleSorting(sorted === "asc")} className="h-8 p-0 text-xs">
+        {label}
+        {sorted === "asc" ? <ChevronUp className="ml-1 h-3 w-3" /> :
+         sorted === "desc" ? <ChevronDown className="ml-1 h-3 w-3" /> :
+         <ArrowUpDown className="ml-1 h-3 w-3 opacity-30" />}
+      </Button>
+    );
+  }, []);
 
-  const columns: ColumnDef<RespostaNPS & { insight: string; acao_sugerida: string }>[] = [
-    {
-      accessorKey: "cliente_id",
-      header: "ID Cliente",
-      size: 90,
-    },
+  const columns: ColumnDef<RespostaNPS>[] = useMemo(() => [
     {
       accessorKey: "cliente_nome",
-      header: ({ column }) => (
-        <Button variant="ghost" onClick={() => column.toggleSorting(column.getIsSorted() === "asc")} className="h-8 p-0">
-          Nome <ArrowUpDown className="ml-1 h-3 w-3" />
-        </Button>
-      ),
+      header: ({ column }) => <SortHeader column={column} label="Nome" />,
       size: 150,
     },
     {
       accessorKey: "tipo_nps",
-      header: "Tipo NPS",
+      header: ({ column }) => <SortHeader column={column} label="Tipo NPS" />,
       cell: ({ row }) => (
         <Badge variant="outline" className="text-xs">
-          {tipoNPSLabels[row.original.tipo_nps]}
+          {tipoNPSLabels[row.original.tipo_nps] || row.original.tipo_nps}
         </Badge>
       ),
-      size: 120,
+      size: 100,
     },
     {
       accessorKey: "nota",
-      header: ({ column }) => (
-        <Button variant="ghost" onClick={() => column.toggleSorting(column.getIsSorted() === "asc")} className="h-8 p-0">
-          Nota <ArrowUpDown className="ml-1 h-3 w-3" />
-        </Button>
-      ),
+      header: ({ column }) => <SortHeader column={column} label="Nota" />,
       cell: ({ row }) => (
         <span className={cn(
           "font-bold",
@@ -84,11 +78,11 @@ export const NPSTable = memo(({ respostas }: NPSTableProps) => {
           {row.original.nota}
         </span>
       ),
-      size: 70,
+      size: 60,
     },
     {
       accessorKey: "classificacao",
-      header: "Classificação",
+      header: ({ column }) => <SortHeader column={column} label="Classificação" />,
       cell: ({ row }) => (
         <Badge className={cn(
           "text-xs",
@@ -103,39 +97,44 @@ export const NPSTable = memo(({ respostas }: NPSTableProps) => {
     },
     {
       accessorKey: "comentario",
-      header: "Comentário",
+      header: ({ column }) => <SortHeader column={column} label="Comentário" />,
+      cell: ({ row }) => (
+        <span className="text-xs text-muted-foreground max-w-[180px] truncate block">
+          {row.original.comentario || "—"}
+        </span>
+      ),
       size: 180,
     },
     {
       accessorKey: "data_resposta",
-      header: ({ column }) => (
-        <Button variant="ghost" onClick={() => column.toggleSorting(column.getIsSorted() === "asc")} className="h-8 p-0">
-          Data <ArrowUpDown className="ml-1 h-3 w-3" />
-        </Button>
+      header: ({ column }) => <SortHeader column={column} label="Data" />,
+      cell: ({ row }) => (
+        <span className="text-xs">
+          {new Date(row.original.data_resposta).toLocaleDateString("pt-BR")}
+        </span>
       ),
-      cell: ({ row }) => new Date(row.original.data_resposta).toLocaleDateString("pt-BR"),
-      size: 100,
+      size: 90,
     },
     {
-      accessorKey: "insight",
-      header: "Insight",
+      id: "acoes",
+      header: "Ações",
       cell: ({ row }) => (
-        <span className="text-xs text-muted-foreground">{row.original.insight}</span>
+        <div onClick={(e) => e.stopPropagation()}>
+          <ActionMenu
+            clientId={row.original.cliente_id}
+            clientName={row.original.cliente_nome}
+            clientPhone={(row.original as any).celular}
+            variant="nps"
+            onSendToTreatment={() => addToWorkflow(row.original.cliente_id)}
+          />
+        </div>
       ),
-      size: 180,
+      size: 80,
     },
-    {
-      accessorKey: "acao_sugerida",
-      header: "Ação Sugerida",
-      cell: ({ row }) => (
-        <span className="text-xs font-medium text-primary">{row.original.acao_sugerida}</span>
-      ),
-      size: 160,
-    },
-  ];
+  ], [SortHeader, addToWorkflow]);
 
   const table = useReactTable({
-    data: dataWithInsights,
+    data: respostas,
     columns,
     state: { sorting, globalFilter },
     onSortingChange: setSorting,
@@ -148,9 +147,17 @@ export const NPSTable = memo(({ respostas }: NPSTableProps) => {
   });
 
   return (
-    <Card className="p-4">
-      <div className="flex items-center gap-4 mb-4">
-        <div className="relative flex-1 max-w-sm">
+    <Card>
+      <CardHeader className="pb-2">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+            <FileText className="h-4 w-4" />
+            Respostas NPS — {table.getFilteredRowModel().rows.length} registros
+          </CardTitle>
+        </div>
+      </CardHeader>
+      <div className="px-4 pb-2">
+        <div className="relative max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             placeholder="Buscar por nome ou comentário..."
@@ -159,14 +166,11 @@ export const NPSTable = memo(({ respostas }: NPSTableProps) => {
             className="pl-9"
           />
         </div>
-        <span className="text-sm text-muted-foreground">
-          {table.getFilteredRowModel().rows.length} respostas
-        </span>
       </div>
 
-      <div className="rounded-md border overflow-auto">
+      <div className="overflow-auto max-h-[480px]">
         <Table>
-          <TableHeader>
+          <TableHeader className="sticky top-0 bg-card z-10">
             {table.getHeaderGroups().map((headerGroup) => (
               <TableRow key={headerGroup.id}>
                 {headerGroup.headers.map((header) => (
@@ -181,6 +185,7 @@ export const NPSTable = memo(({ respostas }: NPSTableProps) => {
             {table.getRowModel().rows.length ? (
               table.getRowModel().rows.map((row) => (
                 <TableRow key={row.id} className={cn(
+                  "hover:bg-muted/50 transition-colors",
                   row.original.classificacao === "Detrator" && "bg-destructive/5",
                   row.original.classificacao === "Promotor" && "bg-success/5"
                 )}>
@@ -202,25 +207,15 @@ export const NPSTable = memo(({ respostas }: NPSTableProps) => {
         </Table>
       </div>
 
-      <div className="flex items-center justify-between mt-4">
+      <div className="flex items-center justify-between p-4">
         <div className="text-sm text-muted-foreground">
           Página {table.getState().pagination.pageIndex + 1} de {table.getPageCount()}
         </div>
         <div className="flex gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => table.previousPage()}
-            disabled={!table.getCanPreviousPage()}
-          >
+          <Button variant="outline" size="sm" onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()}>
             <ChevronLeft className="h-4 w-4" />
           </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => table.nextPage()}
-            disabled={!table.getCanNextPage()}
-          >
+          <Button variant="outline" size="sm" onClick={() => table.nextPage()} disabled={!table.getCanNextPage()}>
             <ChevronRight className="h-4 w-4" />
           </Button>
         </div>
