@@ -25,7 +25,7 @@ const NPS = () => {
   const [isLoading, setIsLoading] = useState(true);
 
   // Filtros
-  const [periodo, setPeriodo] = useState("todos");
+  const [periodo, setPeriodo] = useState("7");
   const [tipoNPS, setTipoNPS] = useState("todos");
   const [classificacao, setClassificacao] = useState("todos");
 

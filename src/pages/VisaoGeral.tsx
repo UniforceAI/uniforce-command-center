@@ -139,7 +139,7 @@ const VisaoGeral = () => {
   }, [isLoading, showInitialScreen]);
 
   // Filtros
-  const [periodo, setPeriodo] = useState("30");
+  const [periodo, setPeriodo] = useState("7");
   const [uf, setUf] = useState("todos");
   const [cidade, setCidade] = useState("todos");
   const [bairro, setBairro] = useState("todos");
@@ -208,6 +208,31 @@ const VisaoGeral = () => {
     });
     return maxDate.getTime() > 0 ? maxDate : null;
   }, [eventos]);
+
+  // Compute data age span (in days) for smart period filter
+  const dataSpanDays = useMemo(() => {
+    if (eventos.length === 0) return 0;
+    let minDate = new Date();
+    let maxDate = new Date(0);
+    eventos.forEach(e => {
+      const d = new Date(e.event_datetime || e.created_at);
+      if (!isNaN(d.getTime())) {
+        if (d < minDate) minDate = d;
+        if (d > maxDate) maxDate = d;
+      }
+    });
+    // Also consider churn data
+    churnStatus.forEach(cs => {
+      if (cs.data_cancelamento) {
+        const d = new Date(cs.data_cancelamento);
+        if (!isNaN(d.getTime())) {
+          if (d < minDate) minDate = d;
+          if (d > maxDate) maxDate = d;
+        }
+      }
+    });
+    return Math.max(0, Math.ceil((maxDate.getTime() - minDate.getTime()) / (1000 * 60 * 60 * 24)));
+  }, [eventos, churnStatus]);
 
   // Max dates for relative period calculation
   const maxCancelamentoDate = useMemo(() => {
@@ -844,8 +869,6 @@ const VisaoGeral = () => {
             </h1>
             <div className="flex items-center gap-2 text-[10px] text-muted-foreground mt-0.5">
               <span className="font-semibold text-primary">{periodoLabel}</span>
-              <span className="text-muted-foreground/40">·</span>
-              <span>{saudeAtual.clientesAtivos.toLocaleString()} clientes ativos</span>
               {snapshotDate && (
                 <span className="bg-muted px-1.5 py-0.5 rounded border">
                   Snapshot: {snapshotDate.toLocaleDateString("pt-BR")}
@@ -855,12 +878,18 @@ const VisaoGeral = () => {
           </div>
           <div className="flex items-center gap-2">
             <div className="flex gap-1 bg-muted rounded-lg p-0.5">
-              {["7", "30", "90"].map(p => (
-                <button key={p} onClick={() => setPeriodo(p)}
-                  className={`px-3 py-1 text-xs rounded-md font-medium transition-colors ${periodo === p ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:bg-background"}`}>
-                  {p}d
-                </button>
-              ))}
+              {["7", "30", "90"].map(p => {
+                const dias = parseInt(p);
+                const unavailable = dataSpanDays < dias;
+                return (
+                  <button key={p} onClick={() => !unavailable && setPeriodo(p)}
+                    disabled={unavailable}
+                    title={unavailable ? `Sem dados anteriores a ${dias} dias` : `Últimos ${dias} dias`}
+                    className={`px-3 py-1 text-xs rounded-md font-medium transition-colors ${periodo === p ? "bg-primary text-primary-foreground shadow-sm" : unavailable ? "text-muted-foreground/30 cursor-not-allowed" : "text-muted-foreground hover:bg-background"}`}>
+                    {p}d
+                  </button>
+                );
+              })}
             </div>
             <IspActions />
           </div>
@@ -930,7 +959,7 @@ const VisaoGeral = () => {
                           {saudeAtual.canceladosPeriodo} cancelamentos
                         </p>
                         <p className="text-[10px] text-muted-foreground mt-0.5">
-                          de {saudeAtual.totalClientes.toLocaleString()} clientes · {periodoLabel}
+                          {periodoLabel}
                         </p>
                       </div>
                       <div className="p-2.5 rounded-xl bg-destructive/10">
@@ -966,7 +995,7 @@ const VisaoGeral = () => {
                         <p className="text-xs text-muted-foreground font-medium">Clientes em Alto Risco</p>
                         <p className="text-3xl font-bold mt-1">{saudeAtual.clientesAltoRisco}</p>
                         <p className="text-sm text-muted-foreground mt-1">
-                          {saudeAtual.pctAltoRisco.toFixed(1)}% da base ativa
+                          {saudeAtual.pctAltoRisco.toFixed(1)}% da base
                         </p>
                         <p className="text-[10px] text-muted-foreground mt-0.5">
                           MRR em risco: {formatCurrency(saudeAtual.mrrEmRisco)}
@@ -990,7 +1019,7 @@ const VisaoGeral = () => {
                           {formatCurrency(saudeAtual.totalVencido)} em aberto
                         </p>
                         <p className="text-[10px] text-muted-foreground mt-0.5">
-                          {saudeAtual.vencidosCount} clientes vencidos de {saudeAtual.totalClientes.toLocaleString()}
+                          {saudeAtual.vencidosCount} clientes vencidos
                         </p>
                       </div>
                       <div className="p-2.5 rounded-xl bg-warning/10">
@@ -1011,7 +1040,7 @@ const VisaoGeral = () => {
                   <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-2">
                     <AlertTriangle className="h-3.5 w-3.5" />
                     Principais Fatores de Risco
-                    <span className="text-[10px] font-normal normal-case">({fatoresRisco.totalBase} {fatoresMode === "risco" ? "clientes ativos" : "cancelados no período"})</span>
+                    <span className="text-[10px] font-normal normal-case">({fatoresRisco.totalBase} {fatoresMode === "risco" ? "clientes na base" : "cancelados no período"})</span>
                   </h2>
                   <div className="flex gap-1">
                     <button
@@ -1086,7 +1115,7 @@ const VisaoGeral = () => {
                     <div className="flex items-center justify-between gap-2">
                       {/* Metric selector (clickable title) */}
                       <div className="flex flex-wrap gap-1">
-                        {(["churn", "financeiro", "nps", "ltv"] as GeoMetric[]).map(m => (
+                        {(["financeiro", "churn", "ltv", "nps"] as GeoMetric[]).map(m => (
                           <button
                             key={m}
                             onClick={() => setGeoMetric(m)}
@@ -1154,6 +1183,18 @@ const VisaoGeral = () => {
                           </Bar>
                         </BarChart>
                       </ResponsiveContainer>
+                    ) : geoMetric === "nps" ? (
+                      <div className="flex flex-col items-center justify-center py-10 px-4 text-center">
+                        <ThumbsDown className="h-8 w-8 text-muted-foreground/40 mb-3" />
+                        <p className="text-sm font-medium text-muted-foreground mb-1">Dados de NPS indisponíveis</p>
+                        <p className="text-xs text-muted-foreground/70 mb-3 max-w-[260px]">
+                          Importe seus dados de NPS ou contrate o Agente NPS Check da Uniforce para pesquisas automatizadas.
+                        </p>
+                        <Button variant="outline" size="sm" className="text-xs h-7" onClick={() => navigate("/nps")}>
+                          Configurar NPS
+                          <ArrowRight className="h-3 w-3 ml-1" />
+                        </Button>
+                      </div>
                     ) : (
                       <p className="text-center text-muted-foreground py-12 text-sm">Sem dados para "{GEO_METRIC_LABELS[geoMetric]}"</p>
                     )}

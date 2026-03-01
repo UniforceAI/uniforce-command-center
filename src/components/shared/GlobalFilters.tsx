@@ -18,6 +18,7 @@ import { cn } from "@/lib/utils";
 interface FilterOption {
   value: string;
   label: string;
+  unavailable?: boolean; // Grayed out, not selectable
 }
 
 interface FilterConfig {
@@ -90,8 +91,14 @@ export function GlobalFilters({ filters }: GlobalFiltersProps) {
                 </SelectTrigger>
                 <SelectContent>
                   {filter.options.map((option) => (
-                    <SelectItem key={option.value} value={option.value} className="text-xs">
+                    <SelectItem 
+                      key={option.value} 
+                      value={option.value} 
+                      className={cn("text-xs", option.unavailable && "opacity-40 pointer-events-none")}
+                      disabled={option.unavailable}
+                    >
                       {option.label}
+                      {option.unavailable && " (sem dados)"}
                     </SelectItem>
                   ))}
                 </SelectContent>

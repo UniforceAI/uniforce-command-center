@@ -75,7 +75,7 @@ const ClientesEmRisco = () => {
   const [plano, setPlano] = useState("todos");
   const [cidade, setCidade] = useState("todos");
   const [bairro, setBairro] = useState("todos");
-  const [periodo, setPeriodo] = useState("todos");
+  const [periodo, setPeriodo] = useState("7");
   const [selectedCliente, setSelectedCliente] = useState<ChurnStatus | null>(null);
   const [viewMode, setViewMode] = useState<"lista" | "kanban">("kanban");
 
