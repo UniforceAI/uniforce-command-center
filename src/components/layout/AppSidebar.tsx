@@ -1,4 +1,4 @@
-import { AlertTriangle, ThumbsUp, LayoutDashboard, DollarSign, UserX, XCircle, PanelLeftClose, PanelLeft, Settings, SlidersHorizontal, Building2, Users } from "lucide-react";
+import { AlertTriangle, ThumbsUp, LayoutDashboard, DollarSign, UserX, XCircle, PanelLeftClose, PanelLeft, Settings, SlidersHorizontal, Building2, Users, Headphones } from "lucide-react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import {
   Sidebar,
@@ -34,6 +34,7 @@ const configSubItems = [
   { title: "Perfil do Provedor", url: "/configuracoes/perfil", icon: Building2 },
   { title: "Contas de Acesso", url: "/configuracoes/contas", icon: Users },
   { title: "Setup de Churn", url: "/configuracoes/churn-score", icon: SlidersHorizontal },
+  { title: "Setup de Chamados", url: "/configuracoes/chamados", icon: Headphones },
 ];
 
 export function AppSidebar() {

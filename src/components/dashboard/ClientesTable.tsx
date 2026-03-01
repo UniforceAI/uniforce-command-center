@@ -129,6 +129,10 @@ export const ClientesTable = memo(({ chamados, onClienteClick, churnMap }: Clien
   const [sorting, setSorting] = useState<SortingState>([{ id: 'Data de Abertura', desc: true }]);
   const [currentPage, setCurrentPage] = useState(1);
   const [nomeFilter, setNomeFilter] = useState("");
+  const [churnScoreFilter, setChurnScoreFilter] = useState("todos");
+  const [classificacaoFilter, setClassificacaoFilter] = useState("todos");
+  const [statusFilter, setStatusFilter] = useState("todos");
+  const [diasUltimoFilter, setDiasUltimoFilter] = useState("todos");
   const [motivoFilter, setMotivoFilter] = useState("todos");
   const ITEMS_PER_PAGE = 100;
 
@@ -136,6 +140,18 @@ export const ClientesTable = memo(({ chamados, onClienteClick, churnMap }: Clien
     const motivos = new Set<string>();
     chamados.forEach(c => { if (c["Motivo do Contato"]) motivos.add(c["Motivo do Contato"]); });
     return Array.from(motivos).sort();
+  }, [chamados]);
+
+  const classificacoesUnicas = useMemo(() => {
+    const set = new Set<string>();
+    chamados.forEach(c => { if (c.Classificação) set.add(c.Classificação); });
+    return Array.from(set).sort();
+  }, [chamados]);
+
+  const statusUnicos = useMemo(() => {
+    const set = new Set<string>();
+    chamados.forEach(c => { if (c.Status) set.add(c.Status); });
+    return Array.from(set).sort();
   }, [chamados]);
 
   const filteredChamados = useMemo(() => {
@@ -147,11 +163,39 @@ export const ClientesTable = memo(({ chamados, onClienteClick, churnMap }: Clien
         String(c["ID Cliente"]).includes(searchLower)
       );
     }
+    if (churnScoreFilter !== "todos" && churnMap) {
+      filtered = filtered.filter(c => {
+        const cid = typeof c["ID Cliente"] === 'string' ? parseInt(c["ID Cliente"], 10) : c["ID Cliente"];
+        const info = churnMap.get(cid);
+        if (!info) return churnScoreFilter === "sem-score";
+        if (churnScoreFilter === "critico") return info.bucket === "CRÍTICO";
+        if (churnScoreFilter === "alerta") return info.bucket === "ALERTA";
+        if (churnScoreFilter === "ok") return info.bucket !== "CRÍTICO" && info.bucket !== "ALERTA";
+        return true;
+      });
+    }
+    if (classificacaoFilter !== "todos") {
+      filtered = filtered.filter(c => c.Classificação === classificacaoFilter);
+    }
+    if (statusFilter !== "todos") {
+      filtered = filtered.filter(c => c.Status === statusFilter);
+    }
+    if (diasUltimoFilter !== "todos") {
+      filtered = filtered.filter(c => {
+        const dias = c["Dias ultimo chamado"];
+        if (dias == null) return diasUltimoFilter === "sem-info";
+        if (diasUltimoFilter === "0-2") return dias <= 2;
+        if (diasUltimoFilter === "3-5") return dias >= 3 && dias <= 5;
+        if (diasUltimoFilter === "6-10") return dias >= 6 && dias <= 10;
+        if (diasUltimoFilter === "10+") return dias > 10;
+        return true;
+      });
+    }
     if (motivoFilter !== "todos") {
       filtered = filtered.filter(c => c["Motivo do Contato"] === motivoFilter);
     }
     return filtered;
-  }, [chamados, nomeFilter, motivoFilter]);
+  }, [chamados, nomeFilter, churnScoreFilter, classificacaoFilter, statusFilter, diasUltimoFilter, motivoFilter, churnMap]);
 
   const SortIcon = ({ column }: { column: any }) => {
     if (!column.getIsSorted()) return <ArrowUpDown className="h-3 w-3 ml-1 opacity-40" />;
@@ -183,7 +227,8 @@ export const ClientesTable = memo(({ chamados, onClienteClick, churnMap }: Clien
     XLSX.writeFile(wb, `clientes-risco-chamados.${ext}`, { bookType: format === "ods" ? "ods" : format as any });
   }, [filteredChamados]);
 
-  useEffect(() => { setCurrentPage(1); }, [nomeFilter, motivoFilter]);
+  const hasAnyFilter = nomeFilter || churnScoreFilter !== "todos" || classificacaoFilter !== "todos" || statusFilter !== "todos" || diasUltimoFilter !== "todos" || motivoFilter !== "todos";
+  useEffect(() => { setCurrentPage(1); }, [nomeFilter, churnScoreFilter, classificacaoFilter, statusFilter, diasUltimoFilter, motivoFilter]);
 
   const toggleRow = (id: string) => {
     const newExpanded = new Set(expandedRows);
@@ -374,49 +419,99 @@ export const ClientesTable = memo(({ chamados, onClienteClick, churnMap }: Clien
   return (
     <div className="rounded-md border bg-card">
       {/* Filters */}
-      <div className="p-4 border-b bg-muted/30 flex flex-wrap gap-4 items-end">
-        <div className="flex-1 min-w-[200px] max-w-[300px]">
-          <label className="text-sm font-medium mb-1 block">Buscar Cliente</label>
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input placeholder="Nome ou ID..." value={nomeFilter} onChange={(e) => setNomeFilter(e.target.value)} className="pl-9 pr-8" />
-            {nomeFilter && (
-              <Button variant="ghost" size="sm" className="absolute right-1 top-1/2 -translate-y-1/2 h-6 w-6 p-0" onClick={() => setNomeFilter("")}>
-                <X className="h-3 w-3" />
-              </Button>
-            )}
+      <div className="p-4 border-b bg-muted/30 space-y-3">
+        <div className="flex flex-wrap gap-3 items-end">
+          <div className="flex-1 min-w-[200px] max-w-[280px]">
+            <label className="text-xs font-medium mb-1 block text-muted-foreground">Buscar Cliente</label>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input placeholder="Nome ou ID..." value={nomeFilter} onChange={(e) => setNomeFilter(e.target.value)} className="pl-9 pr-8 h-9" />
+              {nomeFilter && (
+                <Button variant="ghost" size="sm" className="absolute right-1 top-1/2 -translate-y-1/2 h-6 w-6 p-0" onClick={() => setNomeFilter("")}>
+                  <X className="h-3 w-3" />
+                </Button>
+              )}
+            </div>
+          </div>
+          <div className="min-w-[140px]">
+            <label className="text-xs font-medium mb-1 block text-muted-foreground">Churn Score</label>
+            <Select value={churnScoreFilter} onValueChange={setChurnScoreFilter}>
+              <SelectTrigger className="h-9"><SelectValue placeholder="Todos" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todos">Todos</SelectItem>
+                <SelectItem value="critico">Crítico</SelectItem>
+                <SelectItem value="alerta">Alerta</SelectItem>
+                <SelectItem value="ok">OK</SelectItem>
+                <SelectItem value="sem-score">Sem score</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="min-w-[140px]">
+            <label className="text-xs font-medium mb-1 block text-muted-foreground">Classificação</label>
+            <Select value={classificacaoFilter} onValueChange={setClassificacaoFilter}>
+              <SelectTrigger className="h-9"><SelectValue placeholder="Todos" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todos">Todas</SelectItem>
+                {classificacoesUnicas.map(c => (<SelectItem key={c} value={c}>{c}</SelectItem>))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="min-w-[130px]">
+            <label className="text-xs font-medium mb-1 block text-muted-foreground">Status</label>
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="h-9"><SelectValue placeholder="Todos" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todos">Todos</SelectItem>
+                {statusUnicos.map(s => (<SelectItem key={s} value={s}>{s}</SelectItem>))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="min-w-[140px]">
+            <label className="text-xs font-medium mb-1 block text-muted-foreground">Dias Último</label>
+            <Select value={diasUltimoFilter} onValueChange={setDiasUltimoFilter}>
+              <SelectTrigger className="h-9"><SelectValue placeholder="Todos" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todos">Todos</SelectItem>
+                <SelectItem value="0-2">0–2 dias (urgente)</SelectItem>
+                <SelectItem value="3-5">3–5 dias</SelectItem>
+                <SelectItem value="6-10">6–10 dias</SelectItem>
+                <SelectItem value="10+">10+ dias</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="min-w-[160px]">
+            <label className="text-xs font-medium mb-1 block text-muted-foreground">Motivo</label>
+            <Select value={motivoFilter} onValueChange={setMotivoFilter}>
+              <SelectTrigger className="h-9"><SelectValue placeholder="Todos" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todos">Todos os motivos</SelectItem>
+                {motivosUnicos.map(motivo => (<SelectItem key={motivo} value={motivo}>{motivo}</SelectItem>))}
+              </SelectContent>
+            </Select>
           </div>
         </div>
-        <div className="min-w-[200px]">
-          <label className="text-sm font-medium mb-1 block">Filtrar por Motivo</label>
-          <Select value={motivoFilter} onValueChange={setMotivoFilter}>
-            <SelectTrigger><SelectValue placeholder="Todos" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="todos">Todos os motivos</SelectItem>
-              {motivosUnicos.map(motivo => (<SelectItem key={motivo} value={motivo}>{motivo}</SelectItem>))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="text-sm text-muted-foreground">{filteredChamados.length} de {chamados.length} clientes</div>
-        <div className="flex items-center gap-2 ml-auto">
-          {(nomeFilter || motivoFilter !== "todos") && (
-            <Button variant="outline" size="sm" onClick={() => { setNomeFilter(""); setMotivoFilter("todos"); }}>
-              Limpar filtros
-            </Button>
-          )}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm" className="gap-1">
-                <Download className="h-3.5 w-3.5" />
-                Exportar
+        <div className="flex items-center justify-between">
+          <div className="text-xs text-muted-foreground">{filteredChamados.length} de {chamados.length} clientes</div>
+          <div className="flex items-center gap-2">
+            {hasAnyFilter && (
+              <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => { setNomeFilter(""); setChurnScoreFilter("todos"); setClassificacaoFilter("todos"); setStatusFilter("todos"); setDiasUltimoFilter("todos"); setMotivoFilter("todos"); }}>
+                Limpar filtros
               </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => downloadTable("csv")}>CSV</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => downloadTable("xlsx")}>Excel (.xlsx)</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => downloadTable("ods")}>OpenDocument (.ods)</DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+            )}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className="gap-1 h-7 text-xs">
+                  <Download className="h-3.5 w-3.5" />
+                  Exportar
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => downloadTable("csv")}>CSV</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => downloadTable("xlsx")}>Excel (.xlsx)</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => downloadTable("ods")}>OpenDocument (.ods)</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         </div>
       </div>
 
