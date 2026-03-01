@@ -58,7 +58,7 @@ interface ActionMenuProps {
   clientName?: string;
   clientPhone?: string;
   clientEmail?: string;
-  variant?: "cobranca" | "risco" | "suporte";
+  variant?: "cobranca" | "risco" | "suporte" | "cancelamento";
   onActionLogged?: (action: ActionType) => void;
   onSendToTreatment?: () => void;
 }
@@ -160,9 +160,14 @@ export function ActionMenu({
         if (clientPhone) {
           const phone = clientPhone.replace(/\D/g, "");
           const name = clientName?.split(" ")[0] || "cliente";
-          const msg = variant === "suporte"
-            ? encodeURIComponent(`Olá ${name}, tudo bem?\nPercebemos que estamos tendo muitos problemas. Mas fique tranquilo, estou aqui para resolvê-los de uma vez por todas. Gostaria encarecidamente de saber se o seu problema foi resolvido?`)
-            : encodeURIComponent(`Olá ${name}, tudo bem? Segue seu link para pagamento via PIX. Qualquer dúvida estou à disposição!`);
+          let msg: string;
+          if (variant === "suporte") {
+            msg = encodeURIComponent(`Olá ${name}, tudo bem?\nPercebemos que estamos tendo muitos problemas. Mas fique tranquilo, estou aqui para resolvê-los de uma vez por todas. Gostaria encarecidamente de saber se o seu problema foi resolvido?`);
+          } else if (variant === "cancelamento") {
+            msg = encodeURIComponent(`Olá ${name}, tudo bem?\nSentimos a sua falta!\n\nQuer voltar a navegar em alta velocidade, maratonar séries, estudar ou trabalhar sem nenhuma interrupção?\n\nTemos uma proposta especial para você!`);
+          } else {
+            msg = encodeURIComponent(`Olá ${name}, tudo bem? Segue seu link para pagamento via PIX. Qualquer dúvida estou à disposição!`);
+          }
           window.open(`https://wa.me/55${phone}?text=${msg}`, "_blank");
         }
         await logAction(actionType);
@@ -213,6 +218,8 @@ export function ActionMenu({
         return ["call", "whatsapp", "send_treatment", "os_opened", "copy_pix", "copy_boleto", "manual_note"];
       case "suporte":
         return ["call", "whatsapp", "os_opened", "task_created", "manual_note"];
+      case "cancelamento":
+        return ["whatsapp", "send_treatment", "manual_note"];
       default:
         return ["call", "whatsapp", "manual_note"];
     }
