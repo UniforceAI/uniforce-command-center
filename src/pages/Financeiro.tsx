@@ -30,11 +30,16 @@ import {
   Clock,
   Users,
   ArrowUpDown,
+  ChevronUp,
+  ChevronDown,
   AlertTriangle,
   Download,
   QrCode,
   Barcode,
   Copy,
+  BarChart3,
+  CreditCard,
+  ClipboardList,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -219,16 +224,16 @@ const Financeiro = () => {
       .sort((a, b) => ordemPlanoDecrescente ? b.valor - a.valor : a.valor - b.valor);
   }, [vencidoPorPlanoBase, ordemPlanoDecrescente]);
 
-  // Por método
+  // Por método — agrupar por clientes únicos
   const porMetodo = useMemo(() => {
-    const metodos: Record<string, { quantidade: number; valor: number }> = {};
+    const metodos: Record<string, { clienteIds: Set<number>; valor: number }> = {};
     filteredEventos.forEach(e => {
       const m = e.metodo_cobranca || "Não informado";
-      if (!metodos[m]) metodos[m] = { quantidade: 0, valor: 0 };
-      metodos[m].quantidade++;
+      if (!metodos[m]) metodos[m] = { clienteIds: new Set(), valor: 0 };
+      metodos[m].clienteIds.add(e.cliente_id);
       metodos[m].valor += e.valor_cobranca || e.valor_mensalidade || 0;
     });
-    return Object.entries(metodos).map(([metodo, data]) => ({ metodo, ...data })).sort((a, b) => b.quantidade - a.quantidade);
+    return Object.entries(metodos).map(([metodo, data]) => ({ metodo, clientes: data.clienteIds.size, valor: data.valor })).sort((a, b) => b.clientes - a.clientes);
   }, [filteredEventos]);
 
   // Dias reais de atraso
@@ -385,12 +390,13 @@ const Financeiro = () => {
     },
   ];
 
-  // Sort arrow helper
-  const SortArrow = ({ col }: { col: SortColumn }) => (
-    <span className="text-primary ml-0.5">
-      {sortColuna === col ? (sortDir === "desc" ? "↓" : "↑") : "↕"}
-    </span>
-  );
+  // Sort arrow helper — Lucide icons
+  const SortArrow = ({ col }: { col: SortColumn }) => {
+    if (sortColuna !== col) return <ArrowUpDown className="h-3 w-3 ml-0.5 text-muted-foreground/50" />;
+    return sortDir === "desc"
+      ? <ChevronDown className="h-3 w-3 ml-0.5 text-primary" />
+      : <ChevronUp className="h-3 w-3 ml-0.5 text-primary" />;
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -492,7 +498,7 @@ const Financeiro = () => {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               {/* Aging */}
               <Card>
-                <CardHeader><CardTitle>📊 Aging (Dias de Atraso)</CardTitle></CardHeader>
+                <CardHeader><CardTitle className="flex items-center gap-2"><BarChart3 className="h-4 w-4 text-primary" />Aging (Dias de Atraso)</CardTitle></CardHeader>
                 <CardContent>
                   {agingData.length > 0 ? (
                     <ResponsiveContainer width="100%" height={250}>
@@ -513,7 +519,7 @@ const Financeiro = () => {
               {/* Vencido por Plano */}
               <Card className="flex flex-col">
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 flex-shrink-0">
-                  <CardTitle className="text-base font-medium">📊 Vencido por Plano</CardTitle>
+                  <CardTitle className="text-base font-medium flex items-center gap-2"><BarChart3 className="h-4 w-4 text-primary" />Vencido por Plano</CardTitle>
                   <Button 
                     variant="outline" size="sm"
                     onClick={() => setOrdemPlanoDecrescente(!ordemPlanoDecrescente)}
@@ -549,7 +555,7 @@ const Financeiro = () => {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               {/* Por Método */}
               <Card>
-                <CardHeader><CardTitle>💳 Por Método de Cobrança</CardTitle></CardHeader>
+                <CardHeader><CardTitle className="flex items-center gap-2"><CreditCard className="h-4 w-4 text-primary" />Por Método de Cobrança</CardTitle></CardHeader>
                 <CardContent>
                   {porMetodo.length > 0 ? (
                     <div className="space-y-3">
@@ -557,7 +563,7 @@ const Financeiro = () => {
                         <div key={i} className="flex items-center justify-between p-3 bg-muted rounded-lg">
                           <div>
                             <span className="font-medium">{m.metodo}</span>
-                            <span className="text-muted-foreground ml-2">({m.quantidade} cobranças)</span>
+                            <span className="text-muted-foreground ml-2">({m.clientes} clientes)</span>
                           </div>
                           <span className="font-semibold">R$ {m.valor.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span>
                         </div>
@@ -571,7 +577,7 @@ const Financeiro = () => {
 
               {/* Resumo por Status — reordenado */}
               <Card>
-                <CardHeader><CardTitle>📋 Resumo por Status</CardTitle></CardHeader>
+                <CardHeader><CardTitle className="flex items-center gap-2"><ClipboardList className="h-4 w-4 text-primary" />Resumo por Status</CardTitle></CardHeader>
                 <CardContent>
                   <div className="grid grid-cols-2 gap-4">
                     {/* Row 1: A Vencer | Vencidos */}
@@ -663,9 +669,6 @@ const Financeiro = () => {
                       ) : (
                         clientesVencidosList.map((e, idx) => {
                           const diasAtraso = (e as any).diasAtrasoReal ?? Math.round(e.dias_atraso || 0);
-                          const faixaColor = diasAtraso > 60 ? "text-destructive font-bold" :
-                                            diasAtraso > 30 ? "text-orange-600 font-semibold" :
-                                            diasAtraso > 15 ? "text-yellow-600 font-medium" : "text-muted-foreground";
                           const vencimentoStr = e.data_vencimento
                             ? new Date(e.data_vencimento).toLocaleDateString("pt-BR")
                             : "—";
@@ -680,7 +683,14 @@ const Financeiro = () => {
                                 {e.plano_nome || "—"}
                               </TableCell>
                               <TableCell className="text-xs text-center">{vencimentoStr}</TableCell>
-                              <TableCell className={`text-xs text-center ${faixaColor}`}>{diasAtraso}d</TableCell>
+                              <TableCell className="text-center">
+                                <Badge className={`border text-[10px] ${
+                                  diasAtraso > 60 ? "bg-red-100 text-red-800 border-red-300" :
+                                  diasAtraso > 30 ? "bg-orange-100 text-orange-800 border-orange-300" :
+                                  diasAtraso > 15 ? "bg-yellow-100 text-yellow-800 border-yellow-300" :
+                                  "bg-muted text-muted-foreground border-border"
+                                }`}>{diasAtraso}d</Badge>
+                              </TableCell>
                               <TableCell className="text-xs text-right font-medium">
                                 {valor > 0 ? `R$ ${valor.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}` : "—"}
                               </TableCell>
