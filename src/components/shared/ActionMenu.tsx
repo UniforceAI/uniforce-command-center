@@ -160,9 +160,9 @@ export function ActionMenu({
         if (clientPhone) {
           const phone = clientPhone.replace(/\D/g, "");
           const name = clientName?.split(" ")[0] || "cliente";
-          const msg = encodeURIComponent(
-            `Olá ${name}, tudo bem? Segue seu link para pagamento via PIX. Qualquer dúvida estou à disposição!`
-          );
+          const msg = variant === "suporte"
+            ? encodeURIComponent(`Olá ${name}, tudo bem?\nPercebemos que estamos tendo muitos problemas. Mas fique tranquilo, estou aqui para resolvê-los de uma vez por todas. Gostaria encarecidamente de saber se o seu problema foi resolvido?`)
+            : encodeURIComponent(`Olá ${name}, tudo bem? Segue seu link para pagamento via PIX. Qualquer dúvida estou à disposição!`);
           window.open(`https://wa.me/55${phone}?text=${msg}`, "_blank");
         }
         await logAction(actionType);
