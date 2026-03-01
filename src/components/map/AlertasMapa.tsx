@@ -1,5 +1,5 @@
 import { useEffect, useMemo } from "react";
-import { MapContainer, TileLayer, CircleMarker, Popup, Rectangle, useMap } from "react-leaflet";
+import { MapContainer, TileLayer, CircleMarker, Popup, Rectangle, useMap, Tooltip as LeafletTooltip } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 
 interface MapPoint {
@@ -24,7 +24,7 @@ interface AlertasMapaProps {
   height?: string;
 }
 
-// Smart zoom: focus on densest cluster of points
+// Smart zoom: focus on densest cluster
 function SmartFitBounds({ points }: { points: { lat: number; lng: number }[] }) {
   const map = useMap();
 
@@ -39,13 +39,10 @@ function SmartFitBounds({ points }: { points: { lat: number; lng: number }[] }) 
     }
 
     const gridSize = 0.5;
-    const cells = new Map<string, { lat: number; lng: number; count: number; points: typeof points }>();
-
+    const cells = new Map<string, { count: number; points: typeof points }>();
     points.forEach(p => {
       const key = `${Math.floor(p.lat / gridSize)},${Math.floor(p.lng / gridSize)}`;
-      const cell = cells.get(key) || { lat: 0, lng: 0, count: 0, points: [] };
-      cell.lat += p.lat;
-      cell.lng += p.lng;
+      const cell = cells.get(key) || { count: 0, points: [] };
       cell.count++;
       cell.points.push(p);
       cells.set(key, cell);
@@ -53,177 +50,174 @@ function SmartFitBounds({ points }: { points: { lat: number; lng: number }[] }) 
 
     let densest = { count: 0, points: points };
     cells.forEach(cell => {
-      if (cell.count > densest.count) {
-        densest = { count: cell.count, points: cell.points };
-      }
+      if (cell.count > densest.count) densest = cell;
     });
 
-    if (densest.count > points.length * 0.6 && densest.points.length > 0) {
-      const clusterBounds = densest.points.reduce(
-        (acc, p) => ({
-          minLat: Math.min(acc.minLat, p.lat),
-          maxLat: Math.max(acc.maxLat, p.lat),
-          minLng: Math.min(acc.minLng, p.lng),
-          maxLng: Math.max(acc.maxLng, p.lng),
-        }),
-        { minLat: 90, maxLat: -90, minLng: 180, maxLng: -180 }
-      );
-      map.fitBounds(
-        [[clusterBounds.minLat, clusterBounds.minLng], [clusterBounds.maxLat, clusterBounds.maxLng]],
-        { padding: [40, 40], maxZoom: 14 }
-      );
-    } else {
-      const bounds = points.reduce(
-        (acc, p) => ({
-          minLat: Math.min(acc.minLat, p.lat),
-          maxLat: Math.max(acc.maxLat, p.lat),
-          minLng: Math.min(acc.minLng, p.lng),
-          maxLng: Math.max(acc.maxLng, p.lng),
-        }),
-        { minLat: 90, maxLat: -90, minLng: 180, maxLng: -180 }
-      );
-      map.fitBounds(
-        [[bounds.minLat, bounds.minLng], [bounds.maxLat, bounds.maxLng]],
-        { padding: [30, 30] }
-      );
-    }
+    const target = densest.count > points.length * 0.6 ? densest.points : points;
+    const b = target.reduce(
+      (acc, p) => ({
+        minLat: Math.min(acc.minLat, p.lat), maxLat: Math.max(acc.maxLat, p.lat),
+        minLng: Math.min(acc.minLng, p.lng), maxLng: Math.max(acc.maxLng, p.lng),
+      }),
+      { minLat: 90, maxLat: -90, minLng: 180, maxLng: -180 }
+    );
+    map.fitBounds(
+      [[b.minLat, b.minLng], [b.maxLat, b.maxLng]],
+      { padding: [40, 40], maxZoom: 14 }
+    );
   }, [points, map]);
 
   return null;
 }
 
+// ── Color helpers ──
+
+// Grid: 6-level semi-transparent scale (city map visible underneath)
+const GRID_COLORS: { bg: string; text: string; border: string; label: string }[] = [
+  { bg: "rgba(100, 116, 139, 0.20)", text: "#94a3b8", border: "rgba(100,116,139,0.3)", label: "Vazio" },
+  { bg: "rgba(34, 197, 94, 0.45)",   text: "#166534", border: "rgba(34,197,94,0.6)",   label: "Baixo" },
+  { bg: "rgba(132, 204, 22, 0.50)",  text: "#3f6212", border: "rgba(132,204,22,0.6)",  label: "Moderado" },
+  { bg: "rgba(234, 179, 8, 0.55)",   text: "#713f12", border: "rgba(234,179,8,0.65)",  label: "Médio" },
+  { bg: "rgba(249, 115, 22, 0.60)",  text: "#7c2d12", border: "rgba(249,115,22,0.7)",  label: "Alto" },
+  { bg: "rgba(239, 68, 68, 0.65)",   text: "#7f1d1d", border: "rgba(239,68,68,0.75)",  label: "Crítico" },
+];
+
+const getGridLevel = (intensity: number): number => {
+  if (intensity <= 0) return 0;
+  if (intensity < 0.15) return 1;
+  if (intensity < 0.3) return 2;
+  if (intensity < 0.5) return 3;
+  if (intensity < 0.75) return 4;
+  return 5;
+};
+
+// Marker colors
 const getColorByRisk = (point: MapPoint, filter: string): string => {
   if (filter === "vencido") {
-    const dias = point.dias_atraso ?? 0;
-    if (dias >= 25) return "#ef4444";
-    if (dias >= 15) return "#f97316";
-    if (dias >= 8) return "#eab308";
+    const d = point.dias_atraso ?? 0;
+    if (d >= 25) return "#ef4444";
+    if (d >= 15) return "#f97316";
+    if (d >= 8) return "#eab308";
     return "#22c55e";
   }
   if (filter === "chamados") {
-    const qtd = point.qtd_chamados ?? 0;
-    if (qtd >= 5) return "#ef4444";
-    if (qtd >= 2) return "#f97316";
+    const q = point.qtd_chamados ?? 0;
+    if (q >= 5) return "#ef4444";
+    if (q >= 2) return "#f97316";
     return "#22c55e";
   }
-  if (filter === "churn") {
-    const score = point.churn_risk_score ?? 0;
-    if (score >= 75) return "#ef4444";
-    if (score >= 50) return "#f97316";
-    if (score >= 25) return "#eab308";
-    return "#3b82f6";
-  }
-  return "#22c55e";
+  const s = point.churn_risk_score ?? 0;
+  if (s >= 75) return "#ef4444";
+  if (s >= 50) return "#f97316";
+  if (s >= 25) return "#eab308";
+  return "#3b82f6";
 };
 
 const getRadiusByRisk = (point: MapPoint, filter: string): number => {
   if (filter === "vencido") {
-    const dias = point.dias_atraso ?? 0;
-    if (dias >= 25) return 10;
-    if (dias >= 15) return 8;
-    return dias >= 8 ? 7 : 6;
+    const d = point.dias_atraso ?? 0;
+    return d >= 25 ? 10 : d >= 15 ? 8 : d >= 8 ? 7 : 6;
   }
   if (filter === "chamados") {
-    const qtd = point.qtd_chamados ?? 0;
-    if (qtd >= 5) return 10;
-    if (qtd >= 3) return 8;
-    return qtd >= 2 ? 7 : 6;
+    const q = point.qtd_chamados ?? 0;
+    return q >= 5 ? 10 : q >= 3 ? 8 : q >= 2 ? 7 : 6;
   }
-  if (filter === "churn") {
-    const score = point.churn_risk_score ?? 0;
-    if (score >= 75) return 10;
-    if (score >= 50) return 8;
-    return score >= 25 ? 6 : 5;
-  }
-  return 5;
+  const s = point.churn_risk_score ?? 0;
+  return s >= 75 ? 10 : s >= 50 ? 8 : s >= 25 ? 6 : 5;
 };
 
-// 6-color scale for grid intensity
-const GRID_COLORS = [
-  "#1e3a5f", // 0: empty/very low — dark blue (visible on dark map)
-  "#22c55e", // 1: low — green
-  "#84cc16", // 2: moderate — lime
-  "#eab308", // 3: medium — yellow
-  "#f97316", // 4: high — orange
-  "#ef4444", // 5: critical — red
-];
-
-const getGridColor6 = (intensity: number): string => {
-  if (intensity <= 0) return GRID_COLORS[0];
-  if (intensity < 0.15) return GRID_COLORS[1];
-  if (intensity < 0.3) return GRID_COLORS[2];
-  if (intensity < 0.5) return GRID_COLORS[3];
-  if (intensity < 0.75) return GRID_COLORS[4];
-  return GRID_COLORS[5];
+// Format number: 1234 → "1.2k"
+const fmtNum = (n: number): string => {
+  if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
+  return String(n);
 };
 
-// Grid square heatmap component — more squares, event counts, fill empty
+// ── Grid Squares with inline numbers (Toronto-style) ──
+
 function GridSquares({ points, filter, bounds }: { points: MapPoint[]; filter: string; bounds: { minLat: number; maxLat: number; minLng: number; maxLng: number } }) {
   const gridData = useMemo(() => {
     if (points.length === 0) return [];
 
     const latRange = bounds.maxLat - bounds.minLat;
     const lngRange = bounds.maxLng - bounds.minLng;
-    
-    // More squares: target ~25-35 cells per axis for small-city ISPs
-    const gridCount = 30;
+    const gridCount = 25;
     const cellLat = Math.max(0.001, latRange / gridCount);
     const cellLng = Math.max(0.001, lngRange / gridCount);
 
     // Build occupied cells
-    const cells = new Map<string, { lat: number; lng: number; count: number; severity: number; points: MapPoint[] }>();
-
+    const cells = new Map<string, { row: number; col: number; count: number; metricSum: number; points: MapPoint[] }>();
     points.forEach(p => {
       const row = Math.floor((p.geo_lat! - bounds.minLat) / cellLat);
       const col = Math.floor((p.geo_lng! - bounds.minLng) / cellLng);
       const key = `${row},${col}`;
-      const cellLatStart = bounds.minLat + row * cellLat;
-      const cellLngStart = bounds.minLng + col * cellLng;
-      const cell = cells.get(key) || { lat: cellLatStart, lng: cellLngStart, count: 0, severity: 0, points: [] };
+      const cell = cells.get(key) || { row, col, count: 0, metricSum: 0, points: [] };
       cell.count++;
       cell.points.push(p);
-
-      if (filter === "vencido") cell.severity += (p.dias_atraso ?? 0);
-      else if (filter === "chamados") cell.severity += (p.qtd_chamados ?? 0);
-      else if (filter === "churn") cell.severity += (p.churn_risk_score ?? 0);
-
+      if (filter === "vencido") cell.metricSum += (p.dias_atraso ?? 0);
+      else if (filter === "chamados") cell.metricSum += (p.qtd_chamados ?? 0);
+      else cell.metricSum += (p.churn_risk_score ?? 0);
       cells.set(key, cell);
     });
 
     const maxCount = Math.max(1, ...Array.from(cells.values()).map(c => c.count));
-
-    // Fill ALL grid cells (including empty ones)
     const totalRows = Math.ceil(latRange / cellLat) + 1;
     const totalCols = Math.ceil(lngRange / cellLng) + 1;
-    const allCells: { lat: number; lng: number; cellLat: number; cellLng: number; count: number; severity: number; intensity: number; points: MapPoint[] }[] = [];
 
-    for (let r = 0; r < totalRows; r++) {
-      for (let c = 0; c < totalCols; c++) {
+    // Only emit cells that are within the convex "shape" of data —
+    // we check row occupancy to avoid filling oceans/empty zones
+    const occupiedRows = new Set<number>();
+    const occupiedCols = new Set<number>();
+    cells.forEach(c => { occupiedRows.add(c.row); occupiedCols.add(c.col); });
+
+    // Expand occupied range by 1 cell padding
+    const minRow = Math.max(0, Math.min(...occupiedRows) - 1);
+    const maxRow = Math.min(totalRows - 1, Math.max(...occupiedRows) + 1);
+    const minCol = Math.max(0, Math.min(...occupiedCols) - 1);
+    const maxCol = Math.min(totalCols - 1, Math.max(...occupiedCols) + 1);
+
+    const result: { lat: number; lng: number; cellLat: number; cellLng: number; count: number; metricSum: number; intensity: number; points: MapPoint[] }[] = [];
+
+    for (let r = minRow; r <= maxRow; r++) {
+      for (let c = minCol; c <= maxCol; c++) {
         const key = `${r},${c}`;
-        const cellLatStart = bounds.minLat + r * cellLat;
-        const cellLngStart = bounds.minLng + c * cellLng;
         const existing = cells.get(key);
-        allCells.push({
-          lat: cellLatStart,
-          lng: cellLngStart,
+        result.push({
+          lat: bounds.minLat + r * cellLat,
+          lng: bounds.minLng + c * cellLng,
           cellLat,
           cellLng,
           count: existing?.count ?? 0,
-          severity: existing?.severity ?? 0,
+          metricSum: existing?.metricSum ?? 0,
           intensity: existing ? existing.count / maxCount : 0,
           points: existing?.points ?? [],
         });
       }
     }
-
-    return allCells;
+    return result;
   }, [points, filter, bounds]);
+
+  // Get the display number for a cell
+  const getCellDisplayNumber = (cell: typeof gridData[0]): string => {
+    if (cell.count === 0) return "";
+    if (filter === "chamados") {
+      const total = cell.points.reduce((s, p) => s + (p.qtd_chamados ?? 0), 0);
+      return fmtNum(total);
+    }
+    if (filter === "vencido") {
+      return fmtNum(cell.count);
+    }
+    // churn: show count of clients
+    return fmtNum(cell.count);
+  };
 
   return (
     <>
       {gridData.map((cell, idx) => {
-        const color = getGridColor6(cell.intensity);
-        const isEmpty = cell.count === 0;
+        const level = getGridLevel(cell.intensity);
+        const style = GRID_COLORS[level];
+        const displayNum = getCellDisplayNumber(cell);
+        const hasData = cell.count > 0;
+
         return (
           <Rectangle
             key={idx}
@@ -232,16 +226,32 @@ function GridSquares({ points, filter, bounds }: { points: MapPoint[]; filter: s
               [cell.lat + cell.cellLat, cell.lng + cell.cellLng],
             ]}
             pathOptions={{
-              color: isEmpty ? color : color,
-              fillColor: color,
-              fillOpacity: isEmpty ? 0.15 : 0.25 + cell.intensity * 0.5,
-              weight: isEmpty ? 0.5 : 1,
-              opacity: isEmpty ? 0.3 : 0.7,
+              color: style.border,
+              fillColor: style.bg,
+              fillOpacity: 1, // opacity is baked into rgba
+              weight: 1,
+              opacity: 1,
             }}
           >
-            {cell.count > 0 && (
+            {/* Show number inside each square */}
+            {hasData && (
+              <LeafletTooltip
+                permanent
+                direction="center"
+                className="grid-cell-label"
+              >
+                <span style={{
+                  color: level >= 3 ? "#fff" : style.text,
+                  fontWeight: 700,
+                  fontSize: cell.count >= 100 ? "9px" : "11px",
+                  textShadow: level >= 3 ? "0 1px 2px rgba(0,0,0,0.5)" : "none",
+                }}>{displayNum}</span>
+              </LeafletTooltip>
+            )}
+
+            {hasData && (
               <Popup>
-                <div className="text-xs">
+                <div className="text-xs space-y-0.5">
                   <p className="font-semibold">{cell.count} cliente{cell.count > 1 ? "s" : ""}</p>
                   {filter === "chamados" && (
                     <p>Total chamados: {cell.points.reduce((s, p) => s + (p.qtd_chamados ?? 0), 0)}</p>
@@ -262,15 +272,15 @@ function GridSquares({ points, filter, bounds }: { points: MapPoint[]; filter: s
   );
 }
 
+// ── Main Component ──
+
 export function AlertasMapa({ data, activeFilter, viewMode = "grid", height }: AlertasMapaProps) {
   const validPoints = useMemo(() => {
     return data.filter((p) => {
       if (p.geo_lat === undefined || p.geo_lng === undefined || isNaN(p.geo_lat) || isNaN(p.geo_lng) || p.geo_lat === 0 || p.geo_lng === 0) return false;
       if (p.geo_lat < -34 || p.geo_lat > 6 || p.geo_lng < -74 || p.geo_lng > -28) return false;
-
       if (activeFilter === "vencido") return (p.dias_atraso !== undefined && p.dias_atraso !== null && p.dias_atraso > 0);
       if (activeFilter === "chamados") return p.qtd_chamados !== undefined && p.qtd_chamados > 0;
-      if (activeFilter === "churn") return true;
       return true;
     });
   }, [data, activeFilter]);
@@ -279,16 +289,13 @@ export function AlertasMapa({ data, activeFilter, viewMode = "grid", height }: A
 
   const centerPoint = useMemo((): [number, number] => {
     if (validPoints.length === 0) return defaultCenter;
-    const avgLat = validPoints.reduce((sum, p) => sum + (p.geo_lat || 0), 0) / validPoints.length;
-    const avgLng = validPoints.reduce((sum, p) => sum + (p.geo_lng || 0), 0) / validPoints.length;
+    const avgLat = validPoints.reduce((s, p) => s + (p.geo_lat || 0), 0) / validPoints.length;
+    const avgLng = validPoints.reduce((s, p) => s + (p.geo_lng || 0), 0) / validPoints.length;
     return [avgLat, avgLng];
   }, [validPoints]);
 
-  const boundsPoints = useMemo(() => {
-    return validPoints.map((p) => ({ lat: p.geo_lat!, lng: p.geo_lng! }));
-  }, [validPoints]);
+  const boundsPoints = useMemo(() => validPoints.map(p => ({ lat: p.geo_lat!, lng: p.geo_lng! })), [validPoints]);
 
-  // Compute bounding box for grid (with padding)
   const gridBounds = useMemo(() => {
     if (validPoints.length === 0) return { minLat: -34, maxLat: 6, minLng: -74, maxLng: -28 };
     let minLat = 90, maxLat = -90, minLng = 180, maxLng = -180;
@@ -298,7 +305,6 @@ export function AlertasMapa({ data, activeFilter, viewMode = "grid", height }: A
       minLng = Math.min(minLng, p.geo_lng!);
       maxLng = Math.max(maxLng, p.geo_lng!);
     });
-    // Add 10% padding
     const latPad = (maxLat - minLat) * 0.1 || 0.01;
     const lngPad = (maxLng - minLng) * 0.1 || 0.01;
     return { minLat: minLat - latPad, maxLat: maxLat + latPad, minLng: minLng - lngPad, maxLng: maxLng + lngPad };
@@ -317,6 +323,21 @@ export function AlertasMapa({ data, activeFilter, viewMode = "grid", height }: A
 
   return (
     <div className="relative overflow-hidden rounded-b-lg" style={{ height: height || "520px" }}>
+      {/* Custom CSS for grid cell labels */}
+      <style>{`
+        .grid-cell-label {
+          background: transparent !important;
+          border: none !important;
+          box-shadow: none !important;
+          padding: 0 !important;
+          margin: 0 !important;
+          font-family: system-ui, -apple-system, sans-serif;
+        }
+        .grid-cell-label::before {
+          display: none !important;
+        }
+      `}</style>
+
       <MapContainer
         center={centerPoint}
         zoom={5}
@@ -325,7 +346,7 @@ export function AlertasMapa({ data, activeFilter, viewMode = "grid", height }: A
       >
         <TileLayer
           attribution='&copy; <a href="https://carto.com/">CARTO</a>'
-          url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+          url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
         />
         <SmartFitBounds points={boundsPoints} />
 
@@ -353,9 +374,6 @@ export function AlertasMapa({ data, activeFilter, viewMode = "grid", height }: A
                   {activeFilter === "vencido" && point.dias_atraso !== undefined && point.dias_atraso > 0 && (
                     <p>Dias em Atraso: <span className="font-medium">{point.dias_atraso}</span></p>
                   )}
-                  {activeFilter === "churn" && point.alerta_tipo && (
-                    <p>Alerta: <span className="font-medium">{point.alerta_tipo}</span></p>
-                  )}
                   {activeFilter === "chamados" && point.qtd_chamados !== undefined && (
                     <p>Chamados: <span className="font-medium">{point.qtd_chamados}</span></p>
                   )}
@@ -366,17 +384,15 @@ export function AlertasMapa({ data, activeFilter, viewMode = "grid", height }: A
         )}
       </MapContainer>
 
-      {/* Contextual Legend — 6 colors */}
-      <div className="absolute bottom-3 left-3 flex gap-2 text-[10px] bg-background/80 backdrop-blur-sm px-2.5 py-1.5 rounded z-[1000]">
+      {/* Legend */}
+      <div className="absolute bottom-3 left-3 flex gap-2 text-[10px] bg-white/90 backdrop-blur-sm px-2.5 py-1.5 rounded shadow-sm z-[1000]">
         {viewMode === "grid" ? (
-          <>
-            <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm" style={{background: GRID_COLORS[0]}}></span> Vazio</span>
-            <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm" style={{background: GRID_COLORS[1]}}></span> Baixo</span>
-            <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm" style={{background: GRID_COLORS[2]}}></span> Moderado</span>
-            <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm" style={{background: GRID_COLORS[3]}}></span> Médio</span>
-            <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm" style={{background: GRID_COLORS[4]}}></span> Alto</span>
-            <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm" style={{background: GRID_COLORS[5]}}></span> Crítico</span>
-          </>
+          GRID_COLORS.map((c, i) => (
+            <span key={i} className="flex items-center gap-1">
+              <span className="w-2.5 h-2.5 rounded-sm border" style={{ background: c.bg, borderColor: c.border }}></span>
+              <span className="text-gray-700">{c.label}</span>
+            </span>
+          ))
         ) : (
           <>
             {activeFilter === "vencido" && (
