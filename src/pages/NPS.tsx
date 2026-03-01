@@ -50,19 +50,26 @@ const NPS = () => {
   const fetchNPSData = useCallback(async () => {
     try {
       setIsLoading(true);
+      // Total de pesquisas enviadas (inclui sem resposta) para taxa de resposta
+      const { count: totalPesquisas } = await externalSupabase
+        .from("nps_check")
+        .select("*", { count: "exact", head: true })
+        .eq("isp_id", ispId);
+
+      // Apenas registros com resposta (data_resposta não nula)
       const { data, error } = await externalSupabase
         .from("nps_check")
         .select("*")
         .eq("isp_id", ispId)
+        .not("data_resposta", "is", null)
         .order("data_resposta", { ascending: false })
         .limit(5000);
 
       if (error) throw error;
 
-      const totalRecords = data?.length || 0;
+      const totalRecords = totalPesquisas || data?.length || 0;
 
       const respostasTransformadas: RespostaNPS[] = (data || [])
-        .filter((item: any) => item.data_resposta != null)
         .map((item: any) => {
           const rawNota = item.nota_numerica != null ? Number(item.nota_numerica) : Number(item.nota);
           const nota = (!isNaN(rawNota) && rawNota >= 0 && rawNota <= 10) ? rawNota : 0;
