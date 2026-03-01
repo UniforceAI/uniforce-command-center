@@ -8,6 +8,7 @@ import { useRiskBucketConfig, RiskBucket } from "@/hooks/useRiskBucketConfig";
 import { useCrmWorkflow, WorkflowStatus } from "@/hooks/useCrmWorkflow";
 import { useChurnScore } from "@/hooks/useChurnScore";
 import { IspActions } from "@/components/shared/IspActions";
+import { ActionMenu } from "@/components/shared/ActionMenu";
 import { LoadingScreen } from "@/components/shared/LoadingScreen";
 import { KanbanBoard } from "@/components/crm/KanbanBoard";
 import { CrmDrawer } from "@/components/crm/CrmDrawer";
@@ -80,7 +81,7 @@ const ClientesEmRisco = () => {
   const [viewMode, setViewMode] = useState<"lista" | "kanban">("kanban");
 
   // Sort state for lista view
-  type SortField = "score" | "cliente_nome" | "dias_atraso" | "chamados_90d" | "valor_mensalidade" | "dias_em_risco";
+  type SortField = "score" | "cliente_nome" | "dias_atraso" | "chamados_90d" | "nps" | "internet" | "valor_mensalidade" | "motivo" | "crm";
   type SortDir = "asc" | "desc";
   const [sortField, setSortField] = useState<SortField>("score");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
@@ -166,6 +167,20 @@ const ClientesEmRisco = () => {
 
     // Apply sort
     const dir = sortDir === "desc" ? -1 : 1;
+    const getNpsOrder = (c: ChurnStatus) => {
+      const n = npsMap.get(c.cliente_id);
+      if (!n?.classificacao) return 99;
+      if (n.classificacao === "DETRATOR") return 0;
+      if (n.classificacao === "NEUTRO") return 1;
+      return 2;
+    };
+    const getWfOrder = (c: ChurnStatus) => {
+      const wf = workflowMap.get(c.cliente_id);
+      if (!wf) return 0; // não tratado = primeiro
+      if (wf.status_workflow === "em_tratamento") return 1;
+      if (wf.status_workflow === "resolvido") return 2;
+      return 3;
+    };
     f.sort((a, b) => {
       let va: number, vb: number;
       switch (sortField) {
@@ -176,7 +191,11 @@ const ClientesEmRisco = () => {
           va = chamadosPorClienteMap.d90.get(a.cliente_id)?.chamados_periodo ?? a.qtd_chamados_90d ?? 0;
           vb = chamadosPorClienteMap.d90.get(b.cliente_id)?.chamados_periodo ?? b.qtd_chamados_90d ?? 0;
           break;
+        case "nps": va = getNpsOrder(a); vb = getNpsOrder(b); break;
+        case "internet": return dir * (a.status_internet || "").localeCompare(b.status_internet || "");
         case "valor_mensalidade": va = a.valor_mensalidade ?? 0; vb = b.valor_mensalidade ?? 0; break;
+        case "motivo": return dir * (a.motivo_risco_principal || "").localeCompare(b.motivo_risco_principal || "");
+        case "crm": va = getWfOrder(a); vb = getWfOrder(b); break;
         default: va = getScoreTotalReal(a); vb = getScoreTotalReal(b);
       }
       return dir * (va - vb) || (getScoreTotalReal(b) - getScoreTotalReal(a));
@@ -511,15 +530,23 @@ const ClientesEmRisco = () => {
                         <span className="flex items-center justify-center">Dias Atraso<SortIcon field="dias_atraso" /></span>
                       </TableHead>
                       <TableHead className="text-xs whitespace-nowrap text-center cursor-pointer select-none" onClick={() => toggleSort("chamados_90d")}>
-                        <span className="flex items-center justify-center">Chamados 90d<SortIcon field="chamados_90d" /></span>
+                        <span className="flex items-center justify-center">Chamados<SortIcon field="chamados_90d" /></span>
                       </TableHead>
-                      <TableHead className="text-xs whitespace-nowrap text-center">NPS</TableHead>
-                      <TableHead className="text-xs whitespace-nowrap">Internet</TableHead>
+                      <TableHead className="text-xs whitespace-nowrap text-center cursor-pointer select-none" onClick={() => toggleSort("nps")}>
+                        <span className="flex items-center justify-center">NPS<SortIcon field="nps" /></span>
+                      </TableHead>
+                      <TableHead className="text-xs whitespace-nowrap cursor-pointer select-none" onClick={() => toggleSort("internet")}>
+                        <span className="flex items-center">Internet<SortIcon field="internet" /></span>
+                      </TableHead>
                       <TableHead className="text-xs whitespace-nowrap text-right cursor-pointer select-none" onClick={() => toggleSort("valor_mensalidade")}>
                         <span className="flex items-center justify-end">Mensalidade<SortIcon field="valor_mensalidade" /></span>
                       </TableHead>
-                      <TableHead className="text-xs whitespace-nowrap">Motivo</TableHead>
-                      <TableHead className="text-xs whitespace-nowrap">CRM</TableHead>
+                      <TableHead className="text-xs whitespace-nowrap cursor-pointer select-none" onClick={() => toggleSort("motivo")}>
+                        <span className="flex items-center">Motivo<SortIcon field="motivo" /></span>
+                      </TableHead>
+                      <TableHead className="text-xs whitespace-nowrap cursor-pointer select-none" onClick={() => toggleSort("crm")}>
+                        <span className="flex items-center">Ação<SortIcon field="crm" /></span>
+                      </TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -534,31 +561,51 @@ const ClientesEmRisco = () => {
                         const derivedBucket = getBucket(getScoreTotalReal(c));
                         const npsCliente = npsMap.get(c.cliente_id);
                         const wf = workflowMap.get(c.cliente_id);
+                        const ch90 = chamadosPorClienteMap.d90.get(c.cliente_id)?.chamados_periodo ?? c.qtd_chamados_90d ?? 0;
+                        const diasAtraso = c.dias_atraso ?? 0;
                         return (
                           <TableRow key={c.id || c.cliente_id} className="cursor-pointer hover:bg-muted/50" onClick={() => setSelectedCliente(c)}>
                             <TableCell className="text-xs font-medium max-w-[140px] truncate">{c.cliente_nome}</TableCell>
                             <TableCell className="text-center"><ScoreBadge score={getScoreTotalReal(c)} bucket={derivedBucket} /></TableCell>
-                            <TableCell className="text-center text-xs">
-                              {c.dias_atraso != null && c.dias_atraso > 0 ? (
-                                <span className={c.dias_atraso > 30 ? "text-destructive font-medium" : "text-yellow-600"}>{Math.round(c.dias_atraso)}d</span>
-                              ) : "—"}
+                            <TableCell className="text-center">
+                              {diasAtraso > 0 ? (
+                                <Badge className={`border text-[10px] ${
+                                  diasAtraso >= 30 ? "bg-red-100 text-red-800 border-red-300" :
+                                  diasAtraso >= 15 ? "bg-orange-100 text-orange-800 border-orange-300" :
+                                  diasAtraso >= 8 ? "bg-yellow-100 text-yellow-800 border-yellow-300" :
+                                  "bg-muted text-muted-foreground"
+                                }`}>{Math.round(diasAtraso)}d</Badge>
+                              ) : <span className="text-xs text-muted-foreground">—</span>}
                             </TableCell>
-                            <TableCell className="text-center text-xs">
-                              {(() => {
-                                const ch90 = chamadosPorClienteMap.d90.get(c.cliente_id)?.chamados_periodo ?? c.qtd_chamados_90d ?? 0;
-                                return ch90 > 0 ? <span className={ch90 >= 5 ? "text-destructive font-medium" : ch90 >= 3 ? "text-yellow-600" : ""}>{ch90}</span> : "—";
-                              })()}
+                            <TableCell className="text-center">
+                              {ch90 > 0 ? (
+                                <Badge className={`border text-[10px] ${
+                                  ch90 >= 5 ? "bg-red-100 text-red-800 border-red-300" :
+                                  ch90 >= 3 ? "bg-orange-100 text-orange-800 border-orange-300" :
+                                  "bg-muted text-muted-foreground"
+                                }`}>{ch90}</Badge>
+                              ) : <span className="text-xs text-muted-foreground">—</span>}
                             </TableCell>
                             <TableCell className="text-center"><NPSBadge classificacao={npsCliente?.classificacao} nota={npsCliente?.nota} /></TableCell>
                             <TableCell className="text-xs">{STATUS_INTERNET[c.status_internet || ""] || c.status_internet || "—"}</TableCell>
                             <TableCell className="text-right text-xs">{c.valor_mensalidade ? `R$ ${c.valor_mensalidade.toFixed(2)}` : "—"}</TableCell>
                             <TableCell className="text-xs max-w-[150px] truncate text-muted-foreground">{c.motivo_risco_principal || "—"}</TableCell>
-                            <TableCell>
-                              {wf ? (
-                                <Badge variant="outline" className={`text-[10px] ${wf.status_workflow === "em_tratamento" ? "text-yellow-600" : wf.status_workflow === "resolvido" ? "text-green-600" : "text-destructive"}`}>
-                                  {wf.status_workflow === "em_tratamento" ? "Tratando" : wf.status_workflow === "resolvido" ? "Resolvido" : "Perdido"}
-                                </Badge>
-                              ) : <span className="text-[10px] text-muted-foreground">—</span>}
+                            <TableCell onClick={(e) => e.stopPropagation()}>
+                              <div className="flex items-center gap-1">
+                                {wf ? (
+                                  <Badge variant="outline" className={`text-[10px] ${wf.status_workflow === "em_tratamento" ? "text-yellow-600 border-yellow-300" : wf.status_workflow === "resolvido" ? "text-green-600 border-green-300" : "text-destructive border-red-300"}`}>
+                                    {wf.status_workflow === "em_tratamento" ? "Tratando" : wf.status_workflow === "resolvido" ? "Resolvido" : "Perdido"}
+                                  </Badge>
+                                ) : (
+                                  <Badge className="bg-red-100 text-red-800 border-red-300 border text-[10px]">Tratar</Badge>
+                                )}
+                                <ActionMenu
+                                  clientId={c.cliente_id}
+                                  clientName={c.cliente_nome || `Cliente ${c.cliente_id}`}
+                                  variant="risco"
+                                  onSendToTreatment={() => handleStartTreatment(c)}
+                                />
+                              </div>
                             </TableCell>
                           </TableRow>
                         );
@@ -581,6 +628,7 @@ const ClientesEmRisco = () => {
           workflow={workflowMap.get(selectedCliente.cliente_id)}
           events={clienteEvents}
           chamadosCliente={selectedClienteChamados}
+          npsData={npsMap.get(selectedCliente.cliente_id)}
           onClose={() => setSelectedCliente(null)}
           onStartTreatment={async () => {
             await handleStartTreatment(selectedCliente);

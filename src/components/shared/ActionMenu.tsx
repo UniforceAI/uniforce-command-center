@@ -163,6 +163,8 @@ export function ActionMenu({
           let msg: string;
           if (variant === "suporte") {
             msg = encodeURIComponent(`Olá ${name}, tudo bem?\nPercebemos que estamos tendo muitos problemas. Mas fique tranquilo, estou aqui para resolvê-los de uma vez por todas. Gostaria encarecidamente de saber se o seu problema foi resolvido?`);
+          } else if (variant === "risco") {
+            msg = encodeURIComponent(`Olá ${name}, tudo bem?\nPercebemos que estamos tendo muitos problemas. Mas fique tranquilo, estou aqui para resolvê-los de uma vez por todas. Então gostaria encarecidamente de saber se o seu problema foi resolvido?`);
           } else if (variant === "cancelamento") {
             msg = encodeURIComponent(`Olá ${name}, tudo bem?\nSentimos a sua falta!\n\nQuer voltar a navegar em alta velocidade, maratonar séries, estudar ou trabalhar sem nenhuma interrupção?\n\nTemos uma proposta especial para você!`);
           } else if (variant === "nps") {

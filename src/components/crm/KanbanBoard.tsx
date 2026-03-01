@@ -20,7 +20,7 @@ import {
 import { useDroppable, useDraggable } from "@dnd-kit/core";
 import {
   AlertTriangle, DollarSign, PlayCircle, CheckCircle2, XCircle,
-  Phone, ThumbsDown, ThumbsUp, Minus, Clock,
+  Phone, ThumbsDown, ThumbsUp, Minus, Clock, ChevronDown,
 } from "lucide-react";
 
 /* ── Types ── */
@@ -48,6 +48,8 @@ const BUCKET_COLORS: Record<RiskBucket, string> = {
   ALERTA: "bg-yellow-100 text-yellow-800 border-yellow-200",
   "CRÍTICO": "bg-red-100 text-red-800 border-red-200",
 };
+
+const ITEMS_PER_PAGE = 30;
 
 function getDriver(c: ChurnStatus): string {
   const scores = [
@@ -78,15 +80,15 @@ function DroppableColumn({ id, children, title, icon, color, count }: {
   return (
     <div
       ref={setNodeRef}
-      className={`flex-1 min-w-[280px] rounded-lg border border-t-4 ${color} ${isOver ? "bg-primary/5 ring-2 ring-primary/30" : "bg-muted/20"} transition-colors`}
+      className={`flex-1 min-w-[240px] max-w-full rounded-lg border border-t-4 ${color} ${isOver ? "bg-primary/5 ring-2 ring-primary/30" : "bg-muted/20"} transition-colors`}
     >
-      <div className="p-3 border-b flex items-center gap-2">
+      <div className="p-2 lg:p-3 border-b flex items-center gap-2">
         {icon}
         <span className="text-xs font-semibold">{title}</span>
         <Badge variant="secondary" className="text-[10px] ml-auto">{count}</Badge>
       </div>
       <ScrollArea className="h-[calc(100vh-320px)]">
-        <div className="p-2 space-y-2 flex flex-col items-center">
+        <div className="p-1.5 lg:p-2 space-y-1.5 lg:space-y-2 flex flex-col items-center">
           {children}
         </div>
       </ScrollArea>
@@ -112,7 +114,7 @@ function DraggableCard({ item, onSelect, onStart, onUpdate }: {
   );
 }
 
-/* ── Card Visual ── */
+/* ── Card Visual — responsive for small screens ── */
 function KanbanCardVisual({ item, onSelect, onStart, onUpdate, isDragging }: {
   item: KanbanItem; onSelect: () => void; onStart: () => void;
   onUpdate: (status: WorkflowStatus) => void; isDragging?: boolean;
@@ -120,37 +122,37 @@ function KanbanCardVisual({ item, onSelect, onStart, onUpdate, isDragging }: {
   const { cliente, score, bucket, workflow, driver } = item;
   return (
     <Card
-      className={`p-4 cursor-grab active:cursor-grabbing hover:shadow-md transition-shadow space-y-3 min-h-[130px] w-full max-w-[300px] ${isDragging ? "opacity-40 shadow-lg ring-2 ring-primary" : ""}`}
+      className={`p-2.5 lg:p-4 cursor-grab active:cursor-grabbing hover:shadow-md transition-shadow space-y-2 lg:space-y-3 w-full max-w-[300px] ${isDragging ? "opacity-40 shadow-lg ring-2 ring-primary" : ""}`}
       onClick={onSelect}
     >
       {/* Row 1: Name + Score Badge */}
-      <div className="flex items-start justify-between gap-2">
-        <span className="text-sm font-semibold truncate flex-1 leading-tight">
+      <div className="flex items-start justify-between gap-1.5">
+        <span className="text-xs lg:text-sm font-semibold truncate flex-1 leading-tight">
           {cliente.cliente_nome || `#${cliente.cliente_id}`}
         </span>
-        <Badge className={`${BUCKET_COLORS[bucket]} border text-[11px] font-mono shrink-0 px-2`}>
-          {score} · {bucket}
+        <Badge className={`${BUCKET_COLORS[bucket]} border text-[10px] lg:text-[11px] font-mono shrink-0 px-1.5 lg:px-2`}>
+          {score}
         </Badge>
       </div>
 
       {/* Row 2: Driver + Mini metrics */}
-      <div className="flex items-center gap-2 flex-wrap">
+      <div className="flex items-center gap-1.5 flex-wrap">
         {driver && (
-          <Badge variant="outline" className="text-[10px] py-0.5 px-1.5 font-medium">{driver}</Badge>
+          <Badge variant="outline" className="text-[9px] lg:text-[10px] py-0 px-1 font-medium">{driver}</Badge>
         )}
-        <span className="text-[11px] text-muted-foreground flex items-center gap-0.5">
+        <span className="text-[10px] lg:text-[11px] text-muted-foreground flex items-center gap-0.5">
           <DollarSign className="h-2.5 w-2.5" />
           {cliente.valor_mensalidade != null && cliente.valor_mensalidade > 0
             ? `R$${cliente.valor_mensalidade.toFixed(0)}`
             : "—"}
         </span>
-        <span className="text-[11px] text-muted-foreground flex items-center gap-0.5">
+        <span className="text-[10px] lg:text-[11px] text-muted-foreground flex items-center gap-0.5">
           <Clock className="h-2.5 w-2.5" />
           {(cliente.dias_atraso ?? 0) > 0
             ? <span className="text-destructive font-medium">{Math.round(cliente.dias_atraso!)}d</span>
             : "0d"}
         </span>
-        <span className="text-[11px] text-muted-foreground flex items-center gap-0.5">
+        <span className="text-[10px] lg:text-[11px] text-muted-foreground flex items-center gap-0.5">
           <Phone className="h-2.5 w-2.5" />
           {cliente.qtd_chamados_30d || 0}
         </span>
@@ -158,37 +160,37 @@ function KanbanCardVisual({ item, onSelect, onStart, onUpdate, isDragging }: {
       </div>
 
       {/* Contextual chips */}
-      <div className="flex flex-wrap gap-1">
+      <div className="flex flex-wrap gap-0.5 lg:gap-1">
         {(cliente.status_internet === "CA" || cliente.status_internet === "CM" || cliente.status_internet === "B") && (
-          <Badge variant="destructive" className="text-[9px] py-0 px-1.5">Bloqueado</Badge>
+          <Badge variant="destructive" className="text-[8px] lg:text-[9px] py-0 px-1 lg:px-1.5">Bloqueado</Badge>
         )}
         {cliente.nps_classificacao?.toUpperCase() === "DETRATOR" && (
-          <Badge className="bg-red-100 text-red-700 border-red-200 border text-[9px] py-0 px-1.5">Detrator</Badge>
+          <Badge className="bg-red-100 text-red-700 border-red-200 border text-[8px] lg:text-[9px] py-0 px-1 lg:px-1.5">Detrator</Badge>
         )}
         {cliente.qtd_chamados_30d >= 2 && (
-          <Badge variant="secondary" className="text-[9px] py-0 px-1.5">2+ Chamados</Badge>
+          <Badge variant="secondary" className="text-[8px] lg:text-[9px] py-0 px-1 lg:px-1.5">2+ Chamados</Badge>
         )}
         {(cliente.dias_atraso ?? 0) > 30 && (
-          <Badge className="bg-orange-100 text-orange-700 border-orange-200 border text-[9px] py-0 px-1.5">30+d atraso</Badge>
+          <Badge className="bg-orange-100 text-orange-700 border-orange-200 border text-[8px] lg:text-[9px] py-0 px-1 lg:px-1.5">30+d atraso</Badge>
         )}
-        {workflow?.tags?.slice(0, 3).map(t => (
-          <Badge key={t} variant="secondary" className="text-[9px] py-0 px-1.5">{t}</Badge>
+        {workflow?.tags?.slice(0, 2).map(t => (
+          <Badge key={t} variant="secondary" className="text-[8px] lg:text-[9px] py-0 px-1 lg:px-1.5">{t}</Badge>
         ))}
       </div>
 
       {/* Quick actions */}
-      <div className="flex gap-1.5 pt-1" onClick={e => e.stopPropagation()}>
+      <div className="flex gap-1 lg:gap-1.5 pt-0.5 lg:pt-1" onClick={e => e.stopPropagation()}>
         {!workflow && (
-          <Button size="sm" variant="outline" className="h-7 text-[11px] gap-1 flex-1" onClick={onStart}>
+          <Button size="sm" variant="outline" className="h-6 lg:h-7 text-[10px] lg:text-[11px] gap-1 flex-1" onClick={onStart}>
             <PlayCircle className="h-3 w-3" />Tratar
           </Button>
         )}
         {workflow?.status_workflow === "em_tratamento" && (
           <>
-            <Button size="sm" variant="outline" className="h-7 text-[11px] gap-1 flex-1" onClick={() => onUpdate("resolvido")}>
+            <Button size="sm" variant="outline" className="h-6 lg:h-7 text-[10px] lg:text-[11px] gap-1 flex-1" onClick={() => onUpdate("resolvido")}>
               <CheckCircle2 className="h-3 w-3" />Resolvido
             </Button>
-            <Button size="sm" variant="outline" className="h-7 text-[11px] gap-1 text-destructive" onClick={() => onUpdate("perdido")}>
+            <Button size="sm" variant="outline" className="h-6 lg:h-7 text-[10px] lg:text-[11px] gap-1 text-destructive" onClick={() => onUpdate("perdido")}>
               <XCircle className="h-3 w-3" />Perdido
             </Button>
           </>
@@ -220,6 +222,12 @@ export function KanbanBoard({
 }: KanbanBoardProps) {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [pendingDrag, setPendingDrag] = useState(false);
+  const [visibleCounts, setVisibleCounts] = useState<Record<string, number>>({
+    em_risco: ITEMS_PER_PAGE,
+    tratamento: ITEMS_PER_PAGE,
+    resolvido: ITEMS_PER_PAGE,
+    perdido: ITEMS_PER_PAGE,
+  });
   const { toast } = useToast();
 
   const sensors = useSensors(
@@ -238,7 +246,7 @@ export function KanbanBoard({
       else if (wf?.status_workflow === "perdido") columnId = "perdido";
       else if (wf?.status_workflow === "em_tratamento") columnId = "tratamento";
       else if (bucket === "CRÍTICO" || bucket === "ALERTA") columnId = "em_risco";
-      else return null; // OK bucket not shown
+      else return null;
 
       return { cliente: c, score, bucket, workflow: wf, driver, columnId };
     }).filter(Boolean) as KanbanItem[];
@@ -262,6 +270,13 @@ export function KanbanBoard({
     setActiveId(event.active.id as string);
   }
 
+  const handleLoadMore = useCallback((colId: string) => {
+    setVisibleCounts(prev => ({
+      ...prev,
+      [colId]: (prev[colId] || ITEMS_PER_PAGE) + ITEMS_PER_PAGE,
+    }));
+  }, []);
+
   const handleDragEnd = useCallback(async (event: DragEndEvent) => {
     setActiveId(null);
     const { active, over } = event;
@@ -275,7 +290,6 @@ export function KanbanBoard({
     if (currentColumn === targetColumnId) return;
 
     const targetStatus = COLUMN_TO_STATUS[targetColumnId];
-    // Can't drag back to em_risco
     if (targetStatus === null) return;
 
     const item = allItems.find(i => i.cliente.cliente_id === clienteId);
@@ -286,7 +300,6 @@ export function KanbanBoard({
       if (!item.workflow && targetStatus === "em_tratamento") {
         await onStartTreatment(item.cliente);
       } else if (!item.workflow) {
-        // Start treatment first, then update to target status
         await onStartTreatment(item.cliente);
         await onUpdateStatus(clienteId, targetStatus);
       } else {
@@ -294,11 +307,7 @@ export function KanbanBoard({
       }
     } catch (err) {
       console.error("❌ Drag error:", err);
-      toast({
-        title: "Falha ao mover card",
-        description: "Tente novamente.",
-        variant: "destructive",
-      });
+      toast({ title: "Falha ao mover card", description: "Tente novamente.", variant: "destructive" });
     } finally {
       setPendingDrag(false);
     }
@@ -311,9 +320,13 @@ export function KanbanBoard({
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
     >
-      <div className="flex gap-3 overflow-x-auto pb-2">
+      <div className="flex gap-2 lg:gap-3 overflow-x-auto pb-2">
         {COLUMNS_CONFIG.map(col => {
           const items = columnGroups[col.id] || [];
+          const visible = visibleCounts[col.id] || ITEMS_PER_PAGE;
+          const visibleItems = items.slice(0, visible);
+          const hasMore = items.length > visible;
+
           return (
             <DroppableColumn
               key={col.id}
@@ -326,7 +339,7 @@ export function KanbanBoard({
               {items.length === 0 ? (
                 <p className="text-[11px] text-muted-foreground text-center py-8">Nenhum cliente</p>
               ) : (
-                items.slice(0, 50).map(item => (
+                visibleItems.map(item => (
                   <DraggableCard
                     key={`${item.cliente.isp_id}-${item.cliente.cliente_id}`}
                     item={item}
@@ -348,10 +361,16 @@ export function KanbanBoard({
                   />
                 ))
               )}
-              {items.length > 50 && (
-                <p className="text-[11px] text-muted-foreground text-center py-2">
-                  +{items.length - 50} clientes
-                </p>
+              {hasMore && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 text-xs gap-1.5 text-muted-foreground hover:text-primary w-full max-w-[280px] mt-1"
+                  onClick={() => handleLoadMore(col.id)}
+                >
+                  <ChevronDown className="h-3.5 w-3.5" />
+                  Ver mais ({items.length - visible} restantes)
+                </Button>
               )}
             </DroppableColumn>
           );
@@ -360,7 +379,7 @@ export function KanbanBoard({
 
       <DragOverlay>
         {activeItem ? (
-          <div className="w-[280px]">
+          <div className="w-[260px] lg:w-[280px]">
             <KanbanCardVisual
               item={activeItem}
               onSelect={() => {}}
