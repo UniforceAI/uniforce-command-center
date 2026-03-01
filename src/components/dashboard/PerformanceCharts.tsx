@@ -128,12 +128,12 @@ export const PerformanceCharts = memo(({ chamados }: PerformanceChartsProps) => 
         </CardContent>
       </Card>
 
-      {/* Tempo de Atendimento por Atendente — color-coded */}
+      {/* Ranking de Atendimento por Atendente */}
       <Card className="flex flex-col">
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 flex-shrink-0">
           <CardTitle className="text-base font-medium flex items-center gap-2">
             <Clock className="h-4 w-4 text-primary" />
-            Tempo de Atendimento por Atendente
+            Ranking de Atendimento
           </CardTitle>
           <Button
             variant="outline"
@@ -146,38 +146,37 @@ export const PerformanceCharts = memo(({ chamados }: PerformanceChartsProps) => 
           </Button>
         </CardHeader>
         <CardContent className="flex-1 min-h-0 flex flex-col">
-          <div className="overflow-y-auto flex-1 max-h-[280px]">
-            <div style={{ height: Math.max(280, responsaveisData.length * 36) }}>
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={responsaveisData} layout="vertical" margin={{ right: 60, left: 10 }}>
-                  <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                  <XAxis
-                    type="number"
-                    fontSize={11}
-                    orientation="top"
-                    tickFormatter={(value) => value >= 24 ? `${(value / 24).toFixed(1)}d` : `${value.toFixed(1)}h`}
-                  />
-                  <YAxis
-                    dataKey="nome"
-                    type="category"
-                    width={80}
-                    tick={{ fontSize: 11 }}
-                    tickFormatter={(value) => value.length > 12 ? `${value.substring(0, 12)}...` : value}
-                  />
-                  <Tooltip
-                    formatter={(value: number) => {
-                      if (value >= 24) return [`${(value / 24).toFixed(1)} dias`, 'Tempo Médio'];
-                      if (value < 1) return [`${Math.round(value * 60)} min`, 'Tempo Médio'];
-                      return [`${value.toFixed(1)}h`, 'Tempo Médio'];
-                    }}
-                  />
-                  <Bar dataKey="media" radius={[0, 4, 4, 0]} name="Tempo Médio">
-                    {responsaveisData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={getTimeBarColor(entry.media)} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
+          <div className="overflow-y-auto flex-1 max-h-[340px]">
+            <div className="space-y-2">
+              {responsaveisData.map((entry, index) => {
+                const maxMedia = Math.max(...responsaveisData.map(e => e.media), 1);
+                const pct = Math.min((entry.media / maxMedia) * 100, 100);
+                const color = getTimeBarColor(entry.media);
+                const formattedTime = entry.media >= 24
+                  ? `${(entry.media / 24).toFixed(1)}d`
+                  : entry.media < 1
+                    ? `${Math.round(entry.media * 60)}min`
+                    : `${entry.media.toFixed(1)}h`;
+                return (
+                  <div key={entry.nome} className="flex items-center gap-3">
+                    <span className="text-xs text-muted-foreground w-5 text-right font-mono">{index + 1}.</span>
+                    <span className="text-xs font-medium w-[100px] truncate" title={entry.nome}>{entry.nome}</span>
+                    <div className="flex-1 h-6 bg-muted/50 rounded-md overflow-hidden relative">
+                      <div
+                        className="h-full rounded-md transition-all duration-500"
+                        style={{ width: `${pct}%`, backgroundColor: color }}
+                      />
+                      <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[11px] font-semibold" style={{ color }}>
+                        {formattedTime}
+                      </span>
+                    </div>
+                    <span className="text-[10px] text-muted-foreground w-[50px] text-right">{entry.count} ch.</span>
+                  </div>
+                );
+              })}
+              {responsaveisData.length === 0 && (
+                <p className="text-center text-muted-foreground py-8 text-sm">Dados insuficientes</p>
+              )}
             </div>
           </div>
         </CardContent>
