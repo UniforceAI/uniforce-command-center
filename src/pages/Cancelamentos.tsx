@@ -10,13 +10,15 @@ import { IspActions } from "@/components/shared/IspActions";
 import { LoadingScreen } from "@/components/shared/LoadingScreen";
 import { GlobalFilters } from "@/components/shared/GlobalFilters";
 import { CrmDrawer } from "@/components/crm/CrmDrawer";
+import { ActionMenu } from "@/components/shared/ActionMenu";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
 import {
   AlertCircle, Users, TrendingDown, DollarSign, CalendarX,
   PackageX, ShieldAlert, Info, ArrowUpDown, ChevronUp, ChevronDown,
-  BarChart3, Clock,
+  BarChart3, Clock, Lightbulb, CheckCircle, AlertTriangle, Sparkles, UserX,
 } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
@@ -37,7 +39,6 @@ const BUCKET_COLORS: Record<RiskBucket, string> = {
 };
 
 const COLORS = ["#ef4444", "#f97316", "#eab308", "#22c55e", "#3b82f6", "#8b5cf6", "#ec4899", "#14b8a6", "#f59e0b", "#6b7280"];
-const PIE_COLORS = ["#ef4444", "#f97316", "#eab308", "#22c55e", "#3b82f6"];
 
 const STATUS_MOTIVO: Record<string, string> = {
   D: "Desativação direta",
@@ -54,7 +55,7 @@ const COHORT_FAIXAS = [
   { label: "36+ meses", min: 37, max: 9999 },
 ];
 
-type SortField = "cliente_nome" | "data_cancelamento" | "churn_risk_score" | "valor_mensalidade" | "dias_atraso" | "tempo_cliente_meses" | "ltv_estimado";
+type SortField = "cliente_nome" | "data_cancelamento" | "churn_risk_score" | "valor_mensalidade" | "dias_atraso" | "qtd_chamados_90d" | "plano_nome" | "motivo";
 type SortDir = "asc" | "desc";
 
 const fmtBRL = (v: number) => `R$ ${v.toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
@@ -159,8 +160,9 @@ const Cancelamentos = () => {
         case "churn_risk_score": valA = a.churn_risk_score; valB = b.churn_risk_score; break;
         case "valor_mensalidade": valA = a.valor_mensalidade ?? 0; valB = b.valor_mensalidade ?? 0; break;
         case "dias_atraso": valA = a.dias_atraso ?? 0; valB = b.dias_atraso ?? 0; break;
-        case "tempo_cliente_meses": valA = a.tempo_cliente_meses ?? 0; valB = b.tempo_cliente_meses ?? 0; break;
-        case "ltv_estimado": valA = a.ltv_estimado ?? 0; valB = b.ltv_estimado ?? 0; break;
+        case "qtd_chamados_90d": valA = a.qtd_chamados_90d ?? 0; valB = b.qtd_chamados_90d ?? 0; break;
+        case "plano_nome": valA = a.plano_nome || ""; valB = b.plano_nome || ""; break;
+        case "motivo": valA = a.motivo_risco_principal || ""; valB = b.motivo_risco_principal || ""; break;
         default: valA = 0; valB = 0;
       }
       if (typeof valA === "string") {
@@ -346,10 +348,10 @@ const Cancelamentos = () => {
       .slice(0, 10);
   }, [filtered, churnEvents]);
 
-  // ─── Cancelamentos por mês (line chart) ───
+  // ─── Cancelamentos por mês (line chart) — uses filtered data ───
   const cancelPorMes = useMemo(() => {
     const map: Record<string, { qtd: number; mrr: number }> = {};
-    cancelados.forEach((c) => {
+    filtered.forEach((c) => {
       if (c.data_cancelamento) {
         const d = new Date(c.data_cancelamento + "T00:00:00");
         const key = `${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`;
@@ -365,7 +367,7 @@ const Cancelamentos = () => {
         const [mb, yb] = b.mes.split("/").map(Number);
         return ya !== yb ? ya - yb : ma - mb;
       });
-  }, [cancelados]);
+  }, [filtered]);
 
   // ─── Churn por Aging (Dias de Atraso) ───
   const agingChurnData = useMemo(() => {
@@ -702,39 +704,60 @@ const Cancelamentos = () => {
                 </Card>
               )}
 
-              {/* Distribuição por Bucket — 1/3 */}
+              {/* Eficiência do Setup de Churn — 1/3 */}
               <Card>
                 <CardHeader className="pb-2">
                   <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
                     <ShieldAlert className="h-4 w-4" />
-                    Bucket no Cancelamento
+                    Eficiência do Setup de Churn
                   </CardTitle>
+                  <p className="text-[10px] text-muted-foreground">% de cancelados que foram alertados (Crítico + Alerta) pelo Churn Score</p>
                 </CardHeader>
                 <CardContent>
-                  <div className="space-y-4">
-                    {bucketDistribuicao.map((b) => (
-                      <div key={b.bucket}>
-                        <div className="flex items-center justify-between mb-1.5">
-                          <Badge className={`${BUCKET_COLORS[b.bucket as RiskBucket]} border text-xs`}>
-                            {b.bucket}
+                  {(() => {
+                    const critico = bucketDistribuicao.find(b => b.bucket === "CRÍTICO");
+                    const alerta = bucketDistribuicao.find(b => b.bucket === "ALERTA");
+                    const total = filtered.length;
+                    const alertados = (critico?.qtd ?? 0) + (alerta?.qtd ?? 0);
+                    const eficiencia = total > 0 ? Math.round((alertados / total) * 100) : 0;
+                    const getLevel = (pct: number) => {
+                      if (pct >= 60) return { label: "Excelente", color: "hsl(142 71% 45%)", icon: Sparkles, tip: null };
+                      if (pct >= 40) return { label: "Muito Bom", color: "hsl(var(--primary))", icon: CheckCircle, tip: null };
+                      if (pct >= 20) return { label: "Bom", color: "hsl(38 92% 50%)", icon: CheckCircle, tip: "Ajuste os pesos dos pilares no Setup de Churn para capturar mais sinais de risco." };
+                      return { label: "Pode Melhorar", color: "hsl(var(--destructive))", icon: AlertTriangle, tip: "Recomendamos ativar os agentes NPS Check e/ou Smart Cobrança para clientes com deficiência acima de 50%." };
+                    };
+                    const level = getLevel(eficiencia);
+                    const LevelIcon = level.icon;
+                    return (
+                      <div className="space-y-4">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <LevelIcon className="h-5 w-5" style={{ color: level.color }} />
+                            <span className="text-2xl font-bold">{eficiencia}%</span>
+                          </div>
+                          <Badge className="border text-xs" style={{ borderColor: level.color, color: level.color, background: `${level.color}15` }}>
+                            {level.label}
                           </Badge>
-                          <span className="text-sm font-semibold tabular-nums">
-                            {b.qtd} <span className="text-muted-foreground font-normal">({b.pct}%)</span>
-                          </span>
                         </div>
-                        <div className="h-2.5 bg-muted rounded-full overflow-hidden">
-                          <div
-                            className="h-full rounded-full transition-all duration-500"
-                            style={{ width: `${Math.max(Number(b.pct), 2)}%`, backgroundColor: b.color }}
-                          />
+                        <Progress value={eficiencia} className="h-3" style={{ ["--progress-color" as any]: level.color }} />
+                        <div className="space-y-1.5 text-xs text-muted-foreground">
+                          <div className="flex justify-between"><span>Crítico</span><span className="font-semibold text-foreground">{critico?.qtd ?? 0} ({critico?.pct ?? 0}%)</span></div>
+                          <div className="flex justify-between"><span>Alerta</span><span className="font-semibold text-foreground">{alerta?.qtd ?? 0} ({alerta?.pct ?? 0}%)</span></div>
+                          <div className="flex justify-between"><span>OK (não alertados)</span><span className="font-semibold text-foreground">{total - alertados}</span></div>
                         </div>
+                        {level.tip && (
+                          <div className="flex items-start gap-2 p-2.5 rounded-lg bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800">
+                            <Lightbulb className="h-4 w-4 text-yellow-600 shrink-0 mt-0.5" />
+                            <p className="text-[11px] text-yellow-800 dark:text-yellow-200 leading-relaxed">{level.tip}</p>
+                          </div>
+                        )}
+                        <p className="text-[10px] text-muted-foreground flex items-center gap-1">
+                          <Info className="h-3 w-3" />
+                          {alertados} de {total} cancelados foram alertados
+                        </p>
                       </div>
-                    ))}
-                  </div>
-                  <p className="text-[10px] text-muted-foreground mt-4 flex items-center gap-1">
-                    <Info className="h-3 w-3" />
-                    Churn Score no momento do registro
-                  </p>
+                    );
+                  })()}
                 </CardContent>
               </Card>
             </div>
@@ -745,7 +768,7 @@ const Cancelamentos = () => {
                 <div className="flex items-center justify-between flex-wrap gap-2">
                   <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
                     <BarChart3 className="h-4 w-4" />
-                    Cohort Churn por {churnDimension === "plano" ? "Plano" : churnDimension === "cidade" ? "Cidade" : "Bairro"}
+                    Classificação de Churn por {churnDimension === "plano" ? "Plano" : churnDimension === "cidade" ? "Cidade" : "Bairro"}
                   </CardTitle>
                   <div className="flex items-center gap-1 bg-muted rounded-lg p-1">
                     {(["plano", "cidade", "bairro"] as const).map((dim) => (
@@ -970,7 +993,8 @@ const Cancelamentos = () => {
             {/* ── Tabela principal ── */}
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">
+                <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                  <UserX className="h-4 w-4" />
                   Clientes Cancelados — {filtered.length.toLocaleString()} registros
                 </CardTitle>
               </CardHeader>
@@ -979,60 +1003,57 @@ const Cancelamentos = () => {
                   <Table>
                     <TableHeader className="sticky top-0 bg-card z-10">
                       <TableRow>
-                        <TableHead className="text-xs whitespace-nowrap cursor-pointer select-none" onClick={() => toggleSort("cliente_nome")}>
-                          <span className="flex items-center">Cliente<SortIcon field="cliente_nome" /></span>
-                        </TableHead>
                         <TableHead className="text-xs whitespace-nowrap cursor-pointer select-none" onClick={() => toggleSort("data_cancelamento")}>
                           <span className="flex items-center">Data Canc.<SortIcon field="data_cancelamento" /></span>
+                        </TableHead>
+                        <TableHead className="text-xs whitespace-nowrap cursor-pointer select-none" onClick={() => toggleSort("cliente_nome")}>
+                          <span className="flex items-center">Cliente<SortIcon field="cliente_nome" /></span>
                         </TableHead>
                         <TableHead className="text-xs whitespace-nowrap text-center cursor-pointer select-none" onClick={() => toggleSort("churn_risk_score")}>
                           <span className="flex items-center justify-center">Churn Score<SortIcon field="churn_risk_score" /></span>
                         </TableHead>
-                        <TableHead className="text-xs whitespace-nowrap">Driver</TableHead>
-                        <TableHead className="text-xs whitespace-nowrap">Plano</TableHead>
+                        <TableHead className="text-xs whitespace-nowrap cursor-pointer select-none" onClick={() => toggleSort("motivo")}>
+                          <span className="flex items-center">Motivo<SortIcon field="motivo" /></span>
+                        </TableHead>
+                        <TableHead className="text-xs whitespace-nowrap cursor-pointer select-none" onClick={() => toggleSort("plano_nome")}>
+                          <span className="flex items-center">Plano<SortIcon field="plano_nome" /></span>
+                        </TableHead>
                         <TableHead className="text-xs whitespace-nowrap text-right cursor-pointer select-none" onClick={() => toggleSort("valor_mensalidade")}>
                           <span className="flex items-center justify-end">Mensalidade<SortIcon field="valor_mensalidade" /></span>
                         </TableHead>
                         <TableHead className="text-xs whitespace-nowrap text-center cursor-pointer select-none" onClick={() => toggleSort("dias_atraso")}>
                           <span className="flex items-center justify-center">Dias Atraso<SortIcon field="dias_atraso" /></span>
                         </TableHead>
-                        <TableHead className="text-xs whitespace-nowrap text-center">Chamados 90d</TableHead>
-                        <TableHead className="text-xs whitespace-nowrap text-center cursor-pointer select-none" onClick={() => toggleSort("tempo_cliente_meses")}>
-                          <span className="flex items-center justify-center">Meses<SortIcon field="tempo_cliente_meses" /></span>
+                        <TableHead className="text-xs whitespace-nowrap text-center cursor-pointer select-none" onClick={() => toggleSort("qtd_chamados_90d")}>
+                          <span className="flex items-center justify-center">Chamados<SortIcon field="qtd_chamados_90d" /></span>
                         </TableHead>
                         <TableHead className="text-xs whitespace-nowrap text-center">NPS</TableHead>
-                        <TableHead className="text-xs whitespace-nowrap text-center">CRM</TableHead>
-                        <TableHead className="text-xs whitespace-nowrap text-right cursor-pointer select-none" onClick={() => toggleSort("ltv_estimado")}>
-                          <span className="flex items-center justify-end">LTV<SortIcon field="ltv_estimado" /></span>
-                        </TableHead>
+                        <TableHead className="text-xs whitespace-nowrap text-center">Ações</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {filtered.length === 0 ? (
                         <TableRow>
-                          <TableCell colSpan={12} className="text-center text-muted-foreground py-10 text-sm">
+                          <TableCell colSpan={10} className="text-center text-muted-foreground py-10 text-sm">
                             Nenhum cancelamento com os filtros aplicados.
                           </TableCell>
                         </TableRow>
                       ) : (
                         filtered.map((c) => {
                           const b = getBucket(c.churn_risk_score);
-                          const wf = workflowMap.get(c.cliente_id);
-                          const ltvCalc = c.ltv_estimado != null && c.ltv_estimado > 0
-                            ? c.ltv_estimado
-                            : (c.valor_mensalidade && c.tempo_cliente_meses ? c.valor_mensalidade * c.tempo_cliente_meses : null);
+                          const ch90 = chamadosMap90d.get(c.cliente_id)?.chamados_periodo ?? 0;
                           return (
                             <TableRow
                               key={c.id || c.cliente_id}
                               className="hover:bg-muted/50 transition-colors cursor-pointer"
                               onClick={() => setSelectedCliente(c)}
                             >
-                              <TableCell className="text-xs font-medium max-w-[130px] truncate">{c.cliente_nome || "—"}</TableCell>
                               <TableCell className="text-xs font-medium text-destructive">
                                 {c.data_cancelamento
                                   ? new Date(c.data_cancelamento + "T00:00:00").toLocaleDateString("pt-BR")
                                   : "—"}
                               </TableCell>
+                              <TableCell className="text-xs font-medium max-w-[130px] truncate">{c.cliente_nome || "—"}</TableCell>
                               <TableCell className="text-center">
                                 <Badge className={`${BUCKET_COLORS[b]} border font-mono text-[10px]`}>
                                   {c.churn_risk_score} · {b}
@@ -1053,9 +1074,12 @@ const Cancelamentos = () => {
                                 ) : "—"}
                               </TableCell>
                               <TableCell className="text-center text-xs">
-                                {chamadosMap90d.get(c.cliente_id)?.chamados_periodo ?? 0}
+                                {ch90 > 0 ? (
+                                  <Badge variant="outline" className={`text-[10px] font-mono ${ch90 >= 5 ? "border-destructive text-destructive" : ch90 >= 3 ? "border-yellow-500 text-yellow-600" : ""}`}>
+                                    {ch90}
+                                  </Badge>
+                                ) : "—"}
                               </TableCell>
-                              <TableCell className="text-center text-xs">{c.tempo_cliente_meses ?? "—"}</TableCell>
                               <TableCell className="text-center text-xs">
                                 {c.nps_ultimo_score != null ? (
                                   <Badge variant="outline" className={`text-[10px] ${
@@ -1067,20 +1091,14 @@ const Cancelamentos = () => {
                                   </Badge>
                                 ) : <span className="text-muted-foreground">—</span>}
                               </TableCell>
-                              <TableCell className="text-center text-xs">
-                                {wf ? (
-                                  <Badge variant="outline" className={`text-[10px] ${
-                                    wf.status_workflow === "perdido" ? "border-destructive text-destructive" :
-                                    wf.status_workflow === "resolvido" ? "border-green-500 text-green-600" :
-                                    "border-yellow-500 text-yellow-600"
-                                  }`}>
-                                    {wf.status_workflow === "em_tratamento" ? "Tratando" :
-                                     wf.status_workflow === "resolvido" ? "Resolvido" : "Perdido"}
-                                  </Badge>
-                                ) : <span className="text-muted-foreground">—</span>}
-                              </TableCell>
-                              <TableCell className="text-right text-xs">
-                                {ltvCalc != null ? `R$ ${ltvCalc.toLocaleString("pt-BR", { minimumFractionDigits: 0 })}` : "—"}
+                              <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>
+                                <ActionMenu
+                                  clientId={c.cliente_id}
+                                  clientName={c.cliente_nome}
+                                  clientPhone={(c as any).cliente_telefone || (c as any).telefone}
+                                  variant="cancelamento"
+                                  onSendToTreatment={() => addToWorkflow(c.cliente_id)}
+                                />
                               </TableCell>
                             </TableRow>
                           );
