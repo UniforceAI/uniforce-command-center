@@ -48,6 +48,9 @@ import {
   Eye,
   Lightbulb,
   BarChart3,
+  Maximize2,
+  X,
+  Grid3X3,
 } from "lucide-react";
 import {
   Tooltip,
@@ -150,6 +153,8 @@ const VisaoGeral = () => {
   const [geoMetric, setGeoMetric] = useState<GeoMetric>("churn");
   const [fatoresMode, setFatoresMode] = useState<"risco" | "cancelados">("risco");
   const [selectedClienteRisco, setSelectedClienteRisco] = useState<ChurnStatus | null>(null);
+  const [mapLightboxOpen, setMapLightboxOpen] = useState(false);
+  const [mapViewMode, setMapViewMode] = useState<"markers" | "grid">("grid");
 
   // Mapeamento de IDs de cidade para nomes
   const cidadeIdMap: Record<string, string> = {
@@ -1035,12 +1040,12 @@ const VisaoGeral = () => {
             {/* BLOCO 2 — PRINCIPAIS FATORES DE RISCO */}
             {/* ============================================= */}
             {fatoresRisco.factors.length > 0 && (
-              <section>
+              <section className="rounded-xl bg-destructive/[0.03] border border-destructive/10 p-4">
                 <div className="flex items-center justify-between mb-3">
-                  <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-2">
+                  <h2 className="text-xs font-semibold text-destructive uppercase tracking-wider flex items-center gap-2">
                     <AlertTriangle className="h-3.5 w-3.5" />
                     Principais Fatores de Risco
-                    <span className="text-[10px] font-normal normal-case">({fatoresRisco.totalBase} {fatoresMode === "risco" ? "clientes na base" : "cancelados no período"})</span>
+                    <span className="text-[10px] font-normal normal-case text-muted-foreground">({fatoresRisco.totalBase} {fatoresMode === "risco" ? "clientes na base" : "cancelados no período"})</span>
                   </h2>
                   <div className="flex gap-1">
                     <button
@@ -1059,11 +1064,11 @@ const VisaoGeral = () => {
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   {fatoresRisco.factors.map((f) => (
-                    <Card key={f.id} className="hover:shadow-md transition-shadow cursor-pointer group" onClick={() => navigate(f.route)}>
+                    <Card key={f.id} className="hover:shadow-md transition-shadow cursor-pointer group border-destructive/20 bg-card" onClick={() => navigate(f.route)}>
                       <CardContent className="p-4">
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2.5">
-                            <div className="p-2 rounded-lg bg-muted group-hover:bg-primary/10 transition-colors">
+                            <div className="p-2 rounded-lg bg-destructive/10 group-hover:bg-destructive/20 transition-colors">
                               {f.icon}
                             </div>
                             <div>
@@ -1093,6 +1098,12 @@ const VisaoGeral = () => {
                             </div>
                           </div>
                         )}
+                        {/* Ver button */}
+                        <div className="mt-3 flex justify-end">
+                          <span className="inline-flex items-center gap-1 text-[11px] font-medium text-primary opacity-0 group-hover:opacity-100 transition-opacity">
+                            Ver <ArrowRight className="h-3 w-3" />
+                          </span>
+                        </div>
                       </CardContent>
                     </Card>
                   ))}
@@ -1214,18 +1225,87 @@ const VisaoGeral = () => {
                           {mapData.length} clientes geolocalizados
                         </p>
                       </div>
-                      <MapTabs activeTab={mapTab} onTabChange={setMapTab} availableTabs={["chamados", "vencido", "churn"]} />
+                      <div className="flex items-center gap-2">
+                        {/* Grid/Markers toggle */}
+                        <div className="flex gap-1 bg-muted rounded-md p-0.5">
+                          <button
+                            onClick={() => setMapViewMode("grid")}
+                            title="Mapa de quadrantes"
+                            className={`p-1 rounded text-xs transition-colors ${mapViewMode === "grid" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-background"}`}
+                          >
+                            <Grid3X3 className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            onClick={() => setMapViewMode("markers")}
+                            title="Marcadores individuais"
+                            className={`p-1 rounded text-xs transition-colors ${mapViewMode === "markers" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-background"}`}
+                          >
+                            <MapPin className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                        <MapTabs activeTab={mapTab} onTabChange={setMapTab} availableTabs={["chamados", "vencido", "churn"]} />
+                        <button
+                          onClick={() => setMapLightboxOpen(true)}
+                          className="p-1.5 rounded-md hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+                          title="Expandir mapa"
+                        >
+                          <Maximize2 className="h-4 w-4" />
+                        </button>
+                      </div>
                     </div>
                   </CardHeader>
                   <CardContent className="p-0">
                     <AlertasMapa
                       data={mapData}
                       activeFilter={mapTab as "churn" | "vencido" | "chamados"}
+                      viewMode={mapViewMode}
                     />
                   </CardContent>
                 </Card>
               </div>
             </section>
+
+            {/* Map Lightbox */}
+            {mapLightboxOpen && (
+              <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4" onClick={() => setMapLightboxOpen(false)}>
+                <div className="relative w-full max-w-[95vw] h-[85vh] bg-card rounded-xl overflow-hidden border shadow-2xl" onClick={(e) => e.stopPropagation()}>
+                  <div className="flex items-center justify-between px-4 py-3 border-b bg-card">
+                    <div className="flex items-center gap-3">
+                      <CardTitle className="text-sm flex items-center gap-2">
+                        <MapPin className="h-4 w-4" />
+                        Mapa de Alertas
+                      </CardTitle>
+                      <div className="flex gap-1 bg-muted rounded-md p-0.5">
+                        <button
+                          onClick={() => setMapViewMode("grid")}
+                          className={`p-1 rounded text-xs transition-colors ${mapViewMode === "grid" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-background"}`}
+                        >
+                          <Grid3X3 className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          onClick={() => setMapViewMode("markers")}
+                          className={`p-1 rounded text-xs transition-colors ${mapViewMode === "markers" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-background"}`}
+                        >
+                          <MapPin className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                      <MapTabs activeTab={mapTab} onTabChange={setMapTab} availableTabs={["chamados", "vencido", "churn"]} />
+                    </div>
+                    <button onClick={() => setMapLightboxOpen(false)} className="p-2 rounded-md hover:bg-muted transition-colors">
+                      <X className="h-5 w-5" />
+                    </button>
+                  </div>
+                  <div className="h-[calc(85vh-56px)]">
+                    <AlertasMapa
+                      data={mapData}
+                      activeFilter={mapTab as "churn" | "vencido" | "chamados"}
+                      viewMode={mapViewMode}
+                      height="100%"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* ============================================= */}
             {/* BLOCO 4 — IMPACTO FINANCEIRO */}
