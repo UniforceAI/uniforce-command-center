@@ -94,7 +94,7 @@ const Cancelamentos = () => {
   const [bairro, setBairro] = useState("todos");
   const [bucket, setBucket] = useState("todos");
   const [churnDimension, setChurnDimension] = useState<"plano" | "cidade" | "bairro">("plano");
-  const [periodo, setPeriodo] = useState("todos");
+  const [periodo, setPeriodo] = useState("7");
   const [cohortMetric, setCohortMetric] = useState<"qtd" | "mrr" | "ltv">("qtd");
   const [sortField, setSortField] = useState<SortField>("data_cancelamento");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
