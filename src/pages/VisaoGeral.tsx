@@ -242,14 +242,25 @@ const VisaoGeral = () => {
   // Max dates for relative period calculation
   const maxCancelamentoDate = useMemo(() => {
     let maxDate = new Date(0);
-    churnStatus.forEach(cs => {
-      if (cs.status_churn === "cancelado" && cs.data_cancelamento) {
-        const d = new Date(cs.data_cancelamento);
+    // Check eventos data_cancelamento first
+    filteredEventos.forEach(e => {
+      const dataCancelamento = (e as any).data_cancelamento;
+      if (dataCancelamento) {
+        const d = new Date(dataCancelamento);
         if (!isNaN(d.getTime()) && d > maxDate) maxDate = d;
       }
     });
+    // Fallback to churn_status
+    if (maxDate.getTime() === 0) {
+      churnStatus.forEach(cs => {
+        if (cs.status_churn === "cancelado" && cs.data_cancelamento) {
+          const d = new Date(cs.data_cancelamento);
+          if (!isNaN(d.getTime()) && d > maxDate) maxDate = d;
+        }
+      });
+    }
     return maxDate.getTime() > 0 ? maxDate : new Date();
-  }, [churnStatus]);
+  }, [filteredEventos, churnStatus]);
 
   const dataLimiteChurn = useMemo(() => {
     if (periodo === "todos") return null;
@@ -284,23 +295,42 @@ const VisaoGeral = () => {
       e.status_contrato !== "C" && e.servico_status !== "C"
     ).length;
 
-    // Churn no período (via churn_status - fonte de verdade)
+    // Churn no período — usa data_cancelamento da tabela eventos como fonte primária
     let canceladosPeriodo = 0;
     let receitaPerdida = 0;
     let ticketsPerdidos: number[] = [];
-    churnStatus.forEach(cs => {
-      if (cs.status_churn !== "cancelado") return;
-      if (cidade !== "todos" && String(cs.cliente_cidade) !== cidade && getCidadeNome(cs.cliente_cidade) !== cidade) return;
-      if (bairro !== "todos" && cs.cliente_bairro !== bairro) return;
-      if (plano !== "todos" && cs.plano_nome !== plano) return;
-      if (dataLimiteChurn && cs.data_cancelamento) {
-        const d = new Date(cs.data_cancelamento);
-        if (!isNaN(d.getTime()) && d < dataLimiteChurn) return;
-      }
+    
+    // Primeiro: contar via eventos.data_cancelamento (fonte primária)
+    const canceladosViaEventos = new Set<number>();
+    filteredEventos.forEach(e => {
+      const dataCancelamento = (e as any).data_cancelamento;
+      if (!dataCancelamento) return;
+      const d = new Date(dataCancelamento);
+      if (isNaN(d.getTime())) return;
+      if (dataLimiteChurn && d < dataLimiteChurn) return;
+      if (canceladosViaEventos.has(e.cliente_id)) return;
+      canceladosViaEventos.add(e.cliente_id);
       canceladosPeriodo++;
-      receitaPerdida += cs.valor_mensalidade || 0;
-      if (cs.valor_mensalidade) ticketsPerdidos.push(cs.valor_mensalidade);
+      receitaPerdida += e.valor_mensalidade || 0;
+      if (e.valor_mensalidade) ticketsPerdidos.push(e.valor_mensalidade);
     });
+    
+    // Fallback: se eventos não retornou cancelamentos, usar churn_status
+    if (canceladosPeriodo === 0) {
+      churnStatus.forEach(cs => {
+        if (cs.status_churn !== "cancelado") return;
+        if (cidade !== "todos" && String(cs.cliente_cidade) !== cidade && getCidadeNome(cs.cliente_cidade) !== cidade) return;
+        if (bairro !== "todos" && cs.cliente_bairro !== bairro) return;
+        if (plano !== "todos" && cs.plano_nome !== plano) return;
+        if (dataLimiteChurn && cs.data_cancelamento) {
+          const d = new Date(cs.data_cancelamento);
+          if (!isNaN(d.getTime()) && d < dataLimiteChurn) return;
+        }
+        canceladosPeriodo++;
+        receitaPerdida += cs.valor_mensalidade || 0;
+        if (cs.valor_mensalidade) ticketsPerdidos.push(cs.valor_mensalidade);
+      });
+    }
 
     const churnPct = totalClientes > 0 ? (canceladosPeriodo / totalClientes * 100) : 0;
     const ticketMedioPerdido = ticketsPerdidos.length > 0
@@ -1045,7 +1075,7 @@ const VisaoGeral = () => {
                   <h2 className="text-xs font-semibold text-destructive uppercase tracking-wider flex items-center gap-2">
                     <AlertTriangle className="h-3.5 w-3.5" />
                     Principais Fatores de Risco
-                    <span className="text-[10px] font-normal normal-case text-muted-foreground">({fatoresRisco.totalBase} {fatoresMode === "risco" ? "clientes na base" : "cancelados no período"})</span>
+                    <span className="text-[10px] font-normal normal-case text-muted-foreground">({fatoresMode === "risco" ? "Em Risco" : `${fatoresRisco.totalBase} cancelados`})</span>
                   </h2>
                   <div className="flex gap-1">
                     <button
@@ -1255,11 +1285,19 @@ const VisaoGeral = () => {
                     </div>
                   </CardHeader>
                   <CardContent className="p-0">
-                    <AlertasMapa
-                      data={mapData}
-                      activeFilter={mapTab as "churn" | "vencido" | "chamados"}
-                      viewMode={mapViewMode}
-                    />
+                    {!mapLightboxOpen && (
+                      <AlertasMapa
+                        data={mapData}
+                        activeFilter={mapTab as "churn" | "vencido" | "chamados"}
+                        viewMode={mapViewMode}
+                        height="520px"
+                      />
+                    )}
+                    {mapLightboxOpen && (
+                      <div className="flex items-center justify-center bg-muted/20" style={{ height: "520px" }}>
+                        <p className="text-xs text-muted-foreground">Mapa expandido em tela cheia</p>
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
               </div>

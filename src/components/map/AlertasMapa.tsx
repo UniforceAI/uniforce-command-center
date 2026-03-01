@@ -38,8 +38,7 @@ function SmartFitBounds({ points }: { points: { lat: number; lng: number }[] }) 
       return;
     }
 
-    // Find densest cluster using grid-based approach
-    const gridSize = 0.5; // ~50km cells
+    const gridSize = 0.5;
     const cells = new Map<string, { lat: number; lng: number; count: number; points: typeof points }>();
 
     points.forEach(p => {
@@ -52,7 +51,6 @@ function SmartFitBounds({ points }: { points: { lat: number; lng: number }[] }) 
       cells.set(key, cell);
     });
 
-    // Find densest cell
     let densest = { count: 0, points: points };
     cells.forEach(cell => {
       if (cell.count > densest.count) {
@@ -60,7 +58,6 @@ function SmartFitBounds({ points }: { points: { lat: number; lng: number }[] }) 
       }
     });
 
-    // If densest cluster has >60% of points, zoom to it
     if (densest.count > points.length * 0.6 && densest.points.length > 0) {
       const clusterBounds = densest.points.reduce(
         (acc, p) => ({
@@ -76,7 +73,6 @@ function SmartFitBounds({ points }: { points: { lat: number; lng: number }[] }) 
         { padding: [40, 40], maxZoom: 14 }
       );
     } else {
-      // Fallback: fit all
       const bounds = points.reduce(
         (acc, p) => ({
           minLat: Math.min(acc.minLat, p.lat),
@@ -142,29 +138,51 @@ const getRadiusByRisk = (point: MapPoint, filter: string): number => {
   return 5;
 };
 
-// Grid square heatmap component
-function GridSquares({ points, filter }: { points: MapPoint[]; filter: string }) {
+// 6-color scale for grid intensity
+const GRID_COLORS = [
+  "#1e3a5f", // 0: empty/very low — dark blue (visible on dark map)
+  "#22c55e", // 1: low — green
+  "#84cc16", // 2: moderate — lime
+  "#eab308", // 3: medium — yellow
+  "#f97316", // 4: high — orange
+  "#ef4444", // 5: critical — red
+];
+
+const getGridColor6 = (intensity: number): string => {
+  if (intensity <= 0) return GRID_COLORS[0];
+  if (intensity < 0.15) return GRID_COLORS[1];
+  if (intensity < 0.3) return GRID_COLORS[2];
+  if (intensity < 0.5) return GRID_COLORS[3];
+  if (intensity < 0.75) return GRID_COLORS[4];
+  return GRID_COLORS[5];
+};
+
+// Grid square heatmap component — more squares, event counts, fill empty
+function GridSquares({ points, filter, bounds }: { points: MapPoint[]; filter: string; bounds: { minLat: number; maxLat: number; minLng: number; maxLng: number } }) {
   const gridData = useMemo(() => {
     if (points.length === 0) return [];
 
-    // Determine grid resolution based on point spread
-    const lats = points.map(p => p.geo_lat!);
-    const lngs = points.map(p => p.geo_lng!);
-    const latRange = Math.max(...lats) - Math.min(...lats);
-    const lngRange = Math.max(...lngs) - Math.min(...lngs);
-    const cellSize = Math.max(0.005, Math.min(latRange, lngRange) / 15);
+    const latRange = bounds.maxLat - bounds.minLat;
+    const lngRange = bounds.maxLng - bounds.minLng;
+    
+    // More squares: target ~25-35 cells per axis for small-city ISPs
+    const gridCount = 30;
+    const cellLat = Math.max(0.001, latRange / gridCount);
+    const cellLng = Math.max(0.001, lngRange / gridCount);
 
+    // Build occupied cells
     const cells = new Map<string, { lat: number; lng: number; count: number; severity: number; points: MapPoint[] }>();
 
     points.forEach(p => {
-      const cellLat = Math.floor(p.geo_lat! / cellSize) * cellSize;
-      const cellLng = Math.floor(p.geo_lng! / cellSize) * cellSize;
-      const key = `${cellLat},${cellLng}`;
-      const cell = cells.get(key) || { lat: cellLat, lng: cellLng, count: 0, severity: 0, points: [] };
+      const row = Math.floor((p.geo_lat! - bounds.minLat) / cellLat);
+      const col = Math.floor((p.geo_lng! - bounds.minLng) / cellLng);
+      const key = `${row},${col}`;
+      const cellLatStart = bounds.minLat + row * cellLat;
+      const cellLngStart = bounds.minLng + col * cellLng;
+      const cell = cells.get(key) || { lat: cellLatStart, lng: cellLngStart, count: 0, severity: 0, points: [] };
       cell.count++;
       cell.points.push(p);
 
-      // Aggregate severity
       if (filter === "vencido") cell.severity += (p.dias_atraso ?? 0);
       else if (filter === "chamados") cell.severity += (p.qtd_chamados ?? 0);
       else if (filter === "churn") cell.severity += (p.churn_risk_score ?? 0);
@@ -172,49 +190,74 @@ function GridSquares({ points, filter }: { points: MapPoint[]; filter: string })
       cells.set(key, cell);
     });
 
-    const maxCount = Math.max(...Array.from(cells.values()).map(c => c.count));
+    const maxCount = Math.max(1, ...Array.from(cells.values()).map(c => c.count));
 
-    return Array.from(cells.values()).map(cell => ({
-      ...cell,
-      cellSize,
-      intensity: maxCount > 0 ? cell.count / maxCount : 0,
-    }));
-  }, [points, filter]);
+    // Fill ALL grid cells (including empty ones)
+    const totalRows = Math.ceil(latRange / cellLat) + 1;
+    const totalCols = Math.ceil(lngRange / cellLng) + 1;
+    const allCells: { lat: number; lng: number; cellLat: number; cellLng: number; count: number; severity: number; intensity: number; points: MapPoint[] }[] = [];
 
-  const getGridColor = (intensity: number): string => {
-    if (intensity >= 0.75) return "#ef4444";
-    if (intensity >= 0.5) return "#f97316";
-    if (intensity >= 0.25) return "#eab308";
-    return "#22c55e";
-  };
+    for (let r = 0; r < totalRows; r++) {
+      for (let c = 0; c < totalCols; c++) {
+        const key = `${r},${c}`;
+        const cellLatStart = bounds.minLat + r * cellLat;
+        const cellLngStart = bounds.minLng + c * cellLng;
+        const existing = cells.get(key);
+        allCells.push({
+          lat: cellLatStart,
+          lng: cellLngStart,
+          cellLat,
+          cellLng,
+          count: existing?.count ?? 0,
+          severity: existing?.severity ?? 0,
+          intensity: existing ? existing.count / maxCount : 0,
+          points: existing?.points ?? [],
+        });
+      }
+    }
+
+    return allCells;
+  }, [points, filter, bounds]);
 
   return (
     <>
-      {gridData.map((cell, idx) => (
-        <Rectangle
-          key={idx}
-          bounds={[
-            [cell.lat, cell.lng],
-            [cell.lat + cell.cellSize, cell.lng + cell.cellSize],
-          ]}
-          pathOptions={{
-            color: getGridColor(cell.intensity),
-            fillColor: getGridColor(cell.intensity),
-            fillOpacity: 0.3 + cell.intensity * 0.4,
-            weight: 1,
-            opacity: 0.6,
-          }}
-        >
-          <Popup>
-            <div className="text-xs">
-              <p className="font-semibold">{cell.count} cliente{cell.count > 1 ? "s" : ""}</p>
-              {filter === "chamados" && <p>Total chamados: {cell.points.reduce((s, p) => s + (p.qtd_chamados ?? 0), 0)}</p>}
-              {filter === "vencido" && <p>Média atraso: {Math.round(cell.points.reduce((s, p) => s + (p.dias_atraso ?? 0), 0) / cell.count)}d</p>}
-              {filter === "churn" && <p>Score médio: {Math.round(cell.points.reduce((s, p) => s + (p.churn_risk_score ?? 0), 0) / cell.count)}</p>}
-            </div>
-          </Popup>
-        </Rectangle>
-      ))}
+      {gridData.map((cell, idx) => {
+        const color = getGridColor6(cell.intensity);
+        const isEmpty = cell.count === 0;
+        return (
+          <Rectangle
+            key={idx}
+            bounds={[
+              [cell.lat, cell.lng],
+              [cell.lat + cell.cellLat, cell.lng + cell.cellLng],
+            ]}
+            pathOptions={{
+              color: isEmpty ? color : color,
+              fillColor: color,
+              fillOpacity: isEmpty ? 0.15 : 0.25 + cell.intensity * 0.5,
+              weight: isEmpty ? 0.5 : 1,
+              opacity: isEmpty ? 0.3 : 0.7,
+            }}
+          >
+            {cell.count > 0 && (
+              <Popup>
+                <div className="text-xs">
+                  <p className="font-semibold">{cell.count} cliente{cell.count > 1 ? "s" : ""}</p>
+                  {filter === "chamados" && (
+                    <p>Total chamados: {cell.points.reduce((s, p) => s + (p.qtd_chamados ?? 0), 0)}</p>
+                  )}
+                  {filter === "vencido" && (
+                    <p>Média atraso: {Math.round(cell.points.reduce((s, p) => s + (p.dias_atraso ?? 0), 0) / cell.count)}d</p>
+                  )}
+                  {filter === "churn" && (
+                    <p>Score médio: {Math.round(cell.points.reduce((s, p) => s + (p.churn_risk_score ?? 0), 0) / cell.count)}</p>
+                  )}
+                </div>
+              </Popup>
+            )}
+          </Rectangle>
+        );
+      })}
     </>
   );
 }
@@ -245,9 +288,25 @@ export function AlertasMapa({ data, activeFilter, viewMode = "grid", height }: A
     return validPoints.map((p) => ({ lat: p.geo_lat!, lng: p.geo_lng! }));
   }, [validPoints]);
 
+  // Compute bounding box for grid (with padding)
+  const gridBounds = useMemo(() => {
+    if (validPoints.length === 0) return { minLat: -34, maxLat: 6, minLng: -74, maxLng: -28 };
+    let minLat = 90, maxLat = -90, minLng = 180, maxLng = -180;
+    validPoints.forEach(p => {
+      minLat = Math.min(minLat, p.geo_lat!);
+      maxLat = Math.max(maxLat, p.geo_lat!);
+      minLng = Math.min(minLng, p.geo_lng!);
+      maxLng = Math.max(maxLng, p.geo_lng!);
+    });
+    // Add 10% padding
+    const latPad = (maxLat - minLat) * 0.1 || 0.01;
+    const lngPad = (maxLng - minLng) * 0.1 || 0.01;
+    return { minLat: minLat - latPad, maxLat: maxLat + latPad, minLng: minLng - lngPad, maxLng: maxLng + lngPad };
+  }, [validPoints]);
+
   if (validPoints.length === 0) {
     return (
-      <div className="relative bg-slate-800 rounded-b-lg overflow-hidden flex items-center justify-center" style={{ height: height || "360px" }}>
+      <div className="relative bg-slate-800 rounded-b-lg overflow-hidden flex items-center justify-center" style={{ height: height || "520px" }}>
         <div className="text-center text-white/60">
           <p className="text-sm">Nenhum cliente com geolocalização disponível</p>
           <p className="text-xs mt-1">Verifique os campos geo_lat e geo_lng nos dados</p>
@@ -257,7 +316,7 @@ export function AlertasMapa({ data, activeFilter, viewMode = "grid", height }: A
   }
 
   return (
-    <div className="relative overflow-hidden rounded-b-lg" style={{ height: height || "360px" }}>
+    <div className="relative overflow-hidden rounded-b-lg" style={{ height: height || "520px" }}>
       <MapContainer
         center={centerPoint}
         zoom={5}
@@ -271,7 +330,7 @@ export function AlertasMapa({ data, activeFilter, viewMode = "grid", height }: A
         <SmartFitBounds points={boundsPoints} />
 
         {viewMode === "grid" ? (
-          <GridSquares points={validPoints} filter={activeFilter} />
+          <GridSquares points={validPoints} filter={activeFilter} bounds={gridBounds} />
         ) : (
           validPoints.map((point, idx) => (
             <CircleMarker
@@ -307,35 +366,37 @@ export function AlertasMapa({ data, activeFilter, viewMode = "grid", height }: A
         )}
       </MapContainer>
 
-      {/* Contextual Legend */}
-      <div className="absolute bottom-3 left-3 flex gap-3 text-xs bg-background/80 backdrop-blur-sm px-2 py-1 rounded z-[1000]">
+      {/* Contextual Legend — 6 colors */}
+      <div className="absolute bottom-3 left-3 flex gap-2 text-[10px] bg-background/80 backdrop-blur-sm px-2.5 py-1.5 rounded z-[1000]">
         {viewMode === "grid" ? (
           <>
-            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm" style={{background: "#22c55e"}}></span> Baixo</span>
-            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm" style={{background: "#eab308"}}></span> Médio</span>
-            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm" style={{background: "#f97316"}}></span> Alto</span>
-            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm" style={{background: "#ef4444"}}></span> Crítico</span>
+            <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm" style={{background: GRID_COLORS[0]}}></span> Vazio</span>
+            <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm" style={{background: GRID_COLORS[1]}}></span> Baixo</span>
+            <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm" style={{background: GRID_COLORS[2]}}></span> Moderado</span>
+            <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm" style={{background: GRID_COLORS[3]}}></span> Médio</span>
+            <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm" style={{background: GRID_COLORS[4]}}></span> Alto</span>
+            <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm" style={{background: GRID_COLORS[5]}}></span> Crítico</span>
           </>
         ) : (
           <>
             {activeFilter === "vencido" && (
               <>
-                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{background: "#22c55e"}}></span> 1-7 dias</span>
-                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{background: "#eab308"}}></span> 8-14 dias</span>
-                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{background: "#f97316"}}></span> 15-24 dias</span>
-                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{background: "#ef4444"}}></span> +25 dias</span>
+                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{background: "#22c55e"}}></span> 1-7d</span>
+                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{background: "#eab308"}}></span> 8-14d</span>
+                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{background: "#f97316"}}></span> 15-24d</span>
+                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{background: "#ef4444"}}></span> +25d</span>
               </>
             )}
             {activeFilter === "chamados" && (
               <>
-                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{background: "#22c55e"}}></span> 1 chamado</span>
-                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{background: "#f97316"}}></span> 2-4 chamados</span>
-                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{background: "#ef4444"}}></span> 5+ chamados</span>
+                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{background: "#22c55e"}}></span> 1</span>
+                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{background: "#f97316"}}></span> 2-4</span>
+                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{background: "#ef4444"}}></span> 5+</span>
               </>
             )}
             {activeFilter === "churn" && (
               <>
-                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{background: "#3b82f6"}}></span> Sem score</span>
+                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{background: "#3b82f6"}}></span> Baixo</span>
                 <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{background: "#eab308"}}></span> Médio</span>
                 <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{background: "#f97316"}}></span> Alto</span>
                 <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{background: "#ef4444"}}></span> Crítico</span>
