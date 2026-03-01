@@ -1,10 +1,16 @@
-import React, { useState, useEffect, useMemo, memo } from "react";
+import React, { useState, useEffect, useMemo, memo, useCallback } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Chamado } from "@/types/chamado";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Eye, ChevronDown, ChevronRight, Search, X } from "lucide-react";
+import { Eye, ChevronDown, ChevronRight, Search, X, Download, ArrowUpDown, ChevronUp } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Tooltip,
   TooltipContent,
@@ -147,6 +153,36 @@ export const ClientesTable = memo(({ chamados, onClienteClick, churnMap }: Clien
     return filtered;
   }, [chamados, nomeFilter, motivoFilter]);
 
+  const SortIcon = ({ column }: { column: any }) => {
+    if (!column.getIsSorted()) return <ArrowUpDown className="h-3 w-3 ml-1 opacity-40" />;
+    return column.getIsSorted() === "desc"
+      ? <ChevronDown className="h-3 w-3 ml-1 text-primary" />
+      : <ChevronUp className="h-3 w-3 ml-1 text-primary" />;
+  };
+
+  const downloadTable = useCallback(async (format: "csv" | "xlsx" | "ods") => {
+    const XLSX = await import("xlsx");
+    const rows = filteredChamados.map(c => ({
+      "ID Cliente": c["ID Cliente"],
+      "Cliente": c.Solicitante,
+      "Último Motivo": c["Motivo do Contato"],
+      "Status": c.Status,
+      "Chamados": c["Qtd. Chamados"],
+      "Dias Último": c["Dias ultimo chamado"],
+      "Tempo": c["Tempo de Atendimento"],
+      "Classificação": c.Classificação,
+      "Setor": c.Setor,
+      "Urgência": c.Urgência,
+      "Protocolo": c.Protocolo,
+      "Data Abertura": c["Data de Abertura"],
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Clientes em Risco");
+    const ext = format === "ods" ? "ods" : format;
+    XLSX.writeFile(wb, `clientes-risco-chamados.${ext}`, { bookType: format === "ods" ? "ods" : format as any });
+  }, [filteredChamados]);
+
   useEffect(() => { setCurrentPage(1); }, [nomeFilter, motivoFilter]);
 
   const toggleRow = (id: string) => {
@@ -176,7 +212,7 @@ export const ClientesTable = memo(({ chamados, onClienteClick, churnMap }: Clien
       accessorKey: 'Solicitante',
       header: ({ column }) => (
         <Button variant="ghost" size="sm" onClick={() => column.toggleSorting(column.getIsSorted() === "asc")} className="hover:bg-transparent p-0 h-auto font-medium text-xs">
-          Cliente
+          <span className="inline-flex items-center">Cliente <SortIcon column={column} /></span>
         </Button>
       ),
       cell: info => {
@@ -194,7 +230,7 @@ export const ClientesTable = memo(({ chamados, onClienteClick, churnMap }: Clien
       accessorKey: 'Motivo do Contato',
       header: ({ column }) => (
         <Button variant="ghost" size="sm" onClick={() => column.toggleSorting(column.getIsSorted() === "asc")} className="hover:bg-transparent p-0 h-auto font-medium text-xs">
-          Último Motivo
+          <span className="inline-flex items-center">Último Motivo <SortIcon column={column} /></span>
         </Button>
       ),
       cell: info => <span className="truncate max-w-[140px] block text-xs">{(info.getValue() as string) || "—"}</span>,
@@ -204,7 +240,7 @@ export const ClientesTable = memo(({ chamados, onClienteClick, churnMap }: Clien
       accessorKey: 'Status',
       header: ({ column }) => (
         <Button variant="ghost" size="sm" onClick={() => column.toggleSorting(column.getIsSorted() === "asc")} className="hover:bg-transparent p-0 h-auto font-medium text-xs">
-          Status
+          <span className="inline-flex items-center">Status <SortIcon column={column} /></span>
         </Button>
       ),
       cell: info => {
@@ -218,7 +254,7 @@ export const ClientesTable = memo(({ chamados, onClienteClick, churnMap }: Clien
       accessorFn: row => row["Qtd. Chamados"],
       header: ({ column }) => (
         <Button variant="ghost" size="sm" onClick={() => column.toggleSorting(column.getIsSorted() === "asc")} className="hover:bg-transparent p-0 h-auto font-medium text-xs">
-          Chamados
+          <span className="inline-flex items-center">Chamados <SortIcon column={column} /></span>
         </Button>
       ),
       cell: info => {
@@ -231,7 +267,7 @@ export const ClientesTable = memo(({ chamados, onClienteClick, churnMap }: Clien
       accessorKey: 'Dias ultimo chamado',
       header: ({ column }) => (
         <Button variant="ghost" size="sm" onClick={() => column.toggleSorting(column.getIsSorted() === "asc")} className="hover:bg-transparent p-0 h-auto font-medium text-xs">
-          Dias Último
+          <span className="inline-flex items-center">Dias Último <SortIcon column={column} /></span>
         </Button>
       ),
       cell: info => {
@@ -245,7 +281,7 @@ export const ClientesTable = memo(({ chamados, onClienteClick, churnMap }: Clien
       accessorKey: 'Tempo de Atendimento',
       header: ({ column }) => (
         <Button variant="ghost" size="sm" onClick={() => column.toggleSorting(column.getIsSorted() === "asc")} className="hover:bg-transparent p-0 h-auto font-medium text-xs">
-          Tempo
+          <span className="inline-flex items-center">Tempo <SortIcon column={column} /></span>
         </Button>
       ),
       cell: info => <span className="text-xs text-muted-foreground">{formatTempo(info.getValue() as string)}</span>,
@@ -255,7 +291,7 @@ export const ClientesTable = memo(({ chamados, onClienteClick, churnMap }: Clien
       accessorKey: 'Classificação',
       header: ({ column }) => (
         <Button variant="ghost" size="sm" onClick={() => column.toggleSorting(column.getIsSorted() === "asc")} className="hover:bg-transparent p-0 h-auto font-medium text-xs">
-          Classificação
+          <span className="inline-flex items-center">Classificação <SortIcon column={column} /></span>
         </Button>
       ),
       cell: info => {
@@ -362,11 +398,26 @@ export const ClientesTable = memo(({ chamados, onClienteClick, churnMap }: Clien
           </Select>
         </div>
         <div className="text-sm text-muted-foreground">{filteredChamados.length} de {chamados.length} clientes</div>
-        {(nomeFilter || motivoFilter !== "todos") && (
-          <Button variant="outline" size="sm" onClick={() => { setNomeFilter(""); setMotivoFilter("todos"); }}>
-            Limpar filtros
-          </Button>
-        )}
+        <div className="flex items-center gap-2 ml-auto">
+          {(nomeFilter || motivoFilter !== "todos") && (
+            <Button variant="outline" size="sm" onClick={() => { setNomeFilter(""); setMotivoFilter("todos"); }}>
+              Limpar filtros
+            </Button>
+          )}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm" className="gap-1">
+                <Download className="h-3.5 w-3.5" />
+                Exportar
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => downloadTable("csv")}>CSV</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => downloadTable("xlsx")}>Excel (.xlsx)</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => downloadTable("ods")}>OpenDocument (.ods)</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       </div>
 
       <div className="overflow-x-auto">

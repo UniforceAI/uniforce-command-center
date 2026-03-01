@@ -197,7 +197,10 @@ const Index = () => {
     const chamadosResolvidos = filteredChamados.filter(
       (c) => c.Status === "Resolvido" || c.Status === "Fechado",
     ).length;
-    const chamadosAbertos = filteredChamados.filter((c) => c.Status === "Novo" || c.Status === "Em Andamento").length;
+    const chamadosAbertos = filteredChamados.filter((c) => {
+      const s = c.Status?.trim();
+      return s === "Novo" || s === "Em Andamento" || s === "Aberto" || s === "EN";
+    }).length;
     const reincidentes = filteredChamados.filter((c) => c.Classificação === "Reincidente").length;
     const percentualReincidentes = totalChamados > 0 ? ((reincidentes / totalChamados) * 100).toFixed(1) : "0";
 
