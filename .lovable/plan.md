@@ -1,128 +1,147 @@
-## Diagnóstico objetivo do que está acontecendo
 
-Você está certo em cobrar: os dois pontos que você citou (espaçamento do card e WhatsApp) ainda não estão robustos no código atual.
+## Diagnóstico consolidado (com base no código atual)
 
-### 1) Espaçamento do card “sem efeito”
+Você está certo: os 3 problemas têm causa técnica concreta e hoje não estão “fechados” de forma robusta.
 
-No arquivo `src/components/crm/CrmDrawer.tsx`, os espaçamentos ainda estão com valores curtos nos pontos críticos:
+### 1) Card do cliente: por que o espaçamento “não parece mudar”
+No `CrmDrawer.tsx` os espaçamentos foram alterados, mas o ganho visual ficou pequeno porque:
+- o aumento foi incremental (`mt-6`→`mt-8`, `gap-y-4`→`gap-y-5`);
+- não houve separação estrutural entre blocos (infos, métricas, score, etiquetas);
+- o header continua muito denso visualmente para a quantidade de informação.
 
-- infos do cliente: `mt-6` + `gap-y-4`
-- boxes de informação: `mt-8` + `gap-2`
-- badges de score: `mt-7`
-- etiquetas: `mt-7`
+Resultado: tecnicamente mudou, mas perceptivamente ainda parece “colado”.
 
-Ou seja, a lógica de espaçamento “mais respirada” não foi aplicada de forma consistente no bloco inteiro do header. Por isso visualmente continua “grudado”.
+### 2) WhatsApp: por que ainda falha mesmo com `wa.me`
+A documentação oficial foi seguida parcialmente (formato `wa.me`, número sem símbolos, `text` codificado), porém há um ponto de execução:
+- em contexto de iframe/navegador, `window.open` pode ser bloqueado por política de popup;
+- o fallback atual (`window.location.assign`) pode não resolver no preview em alguns cenários de navegação embutida;
+- ainda falta estratégia de abertura “browser-safe” mais resiliente.
 
-### 2) Botão WhatsApp “aba bloqueada”
+Ou seja: o problema não é só URL, é **mecânica de abertura do link** no ambiente real.
 
-Você confirmou que o erro é **aba bloqueada**.  
-No código atual, o handler usa:
+### 3) Mapa com poucos quadrantes (2 células com milhares de registros)
+No `AlertasMapa.tsx`:
+- a grade só renderiza células **ocupadas**;
+- muitos clientes compartilham coordenadas iguais (ou quase iguais), então mesmo com `gridCount=40` colapsa em poucas células;
+- quando a origem não tem geocoordenada, usa fallback por bairro (coordenadas centrais), o que também concentra.
 
-- `window.open(link, "_blank", "noopener,noreferrer")`
-
-Mesmo estando correto em vários cenários, em algumas combinações de navegador + iframe + política de popup, isso pode ser bloqueado.
-
-Também há fragilidades no número:
-
-- sanitiza `\D`, mas não remove zeros à esquerda
-- não valida tamanho mínimo/máximo antes de abrir
-- pode montar URL inválida em casos específicos do dado
-
----
-
-## Conferência com a documentação oficial (clique para conversa)
-
-Com base na doc oficial que você enviou, as regras corretas são:
-
-1. Formato: `https://wa.me/<numero>`
-2. Número em formato internacional completo, só dígitos
-3. Sem `+`, `()`, `-`, espaços
-4. Mensagem em `?text=` com `encodeURIComponent`
-5. No seu caso: se não começar com `55`, prefixar `55`
-
-### Situação atual vs doc
-
-- **Correto no código atual:** usa `wa.me`, remove não-numéricos, usa `encodeURIComponent`.
-- **Incompleto:** não trata zeros à esquerda e não tem fallback anti-bloqueio de popup.
-- **Resultado prático:** comportamento intermitente (aba bloqueada), exatamente o que você está vendo.
+Conclusão: aumentar apenas `gridCount` não garante 10x mais quadrantes se os pontos de origem são repetidos.
 
 ---
 
-## Do I know what the issue is?
+## Confirmação sobre “feature única” do card
 
-Sim.  
-O problema principal do WhatsApp não é “URL errada”, e sim **abertura da aba em contexto bloqueável + normalização incompleta do telefone**.  
-No card, o problema é **escala de spacing aplicada parcialmente**, não de forma sistêmica no header inteiro.
+Sim: o **card principal de perfil CRM** é único (`CrmDrawer`) e é reutilizado em:
+- `VisaoGeral`
+- `Financeiro`
+- `ClientesEmRisco`
+- `Cancelamentos`
+- `NPS`
+
+Portanto, corrigindo `CrmDrawer`, corrige para essas áreas.  
+(`Index`/`Chamados` ainda usa um `ClienteDetailsSheet` separado, que não é o mesmo componente.)
 
 ---
 
 ## Plano de implementação (correção definitiva)
 
-### Etapa 1 — Corrigir espaçamento do card de forma uniforme
-
+## Etapa 1 — Espaçamento do card com mudança visual clara (não incremental)
 **Arquivo:** `src/components/crm/CrmDrawer.tsx`
 
-Aplicar uma escala única de espaçamento vertical para todas as seções do topo do card:
+1. Reestruturar header em blocos com wrappers dedicados:
+- Bloco A: identidade do cliente
+- Bloco B: dados cadastrais
+- Bloco C: métricas rápidas
+- Bloco D: score breakdown
+- Bloco E: etiquetas
 
-- Bloco infos cliente: subir para `mt-8` e `gap-y-5`
-- Bloco boxes: `mt-10` e `gap-3` (ou `gap-4` se necessário após teste)
-- Bloco badges de score: `mt-8` com `gap-2`
-- Bloco etiquetas: `mt-8`, título com `mb-2` explícito para não “colar”
-- Garantir `pb` no header para não encostar nas tabs
+2. Substituir apenas `mt-*` por separação forte:
+- `space-y-6` / `space-y-7` por bloco
+- inserir `Separator` entre blocos principais
+- aumentar paddings internos dos cards de métrica (`p-2` → `p-3`)
+- manter responsividade sem “estourar” mobile
 
-Objetivo: o mesmo “respiro” da última linha de infos (telefone/vencimento) replicado para boxes, badges e etiquetas.
+3. Ajustar densidade de texto:
+- labels com `leading-relaxed`
+- badges com `py-1` e `gap-2` consistentes
+
+**Resultado esperado:** diferença visual evidente e consistente em todas as páginas que usam `CrmDrawer`.
 
 ---
 
-### Etapa 2 — Corrigir WhatsApp com robustez anti-bloqueio
-
+## Etapa 2 — WhatsApp robusto (alinhado à documentação oficial + anti-bloqueio real)
 **Arquivo:** `src/components/crm/CrmDrawer.tsx`
 
-Refatorar `handleWhatsApp` com 3 camadas:
+1. Normalização final do telefone:
+- remover não dígitos
+- remover zeros à esquerda
+- prefixar `55` quando necessário
+- validar formato final (12–13 dígitos)
 
-1. **Normalização forte do número**
-  - converter para string
-  - remover não-numéricos
-  - remover zeros à esquerda
-  - prefixar `55` quando necessário
-  - validar comprimento esperado antes de abrir
-2. **Montagem do link oficial**
-  - `https://wa.me/${numero}?text=${encodeURIComponent(mensagem)}`
-  - mensagem padrão configurável (mantendo padrão comercial definido)
-3. **Abertura com fallback anti-popup**
-  - abrir `about:blank` imediatamente no clique do usuário
-  - setar `popup.location.href = waMeUrl`
-  - se `popup` vier nulo (bloqueio), fallback para `window.location.assign(waMeUrl)` (mesma aba)
+2. Link oficial:
+- `https://wa.me/<numero>?text=<urlencoded>`
 
-Também registrar ação no CRM somente após tentar abrir, e exibir toast claro em caso de número inválido.
+3. Estratégia de abertura em camadas (mais robusta que atual):
+- tentativa A: abrir via elemento `<a target="_blank" rel="noopener noreferrer">` com clique programático no gesto do usuário;
+- tentativa B: `window.open` tradicional;
+- tentativa C: `window.top.location.href` (quando permitido) / `window.location.href` como fallback final.
 
----
+4. Instrumentação de erro:
+- `toast` específico para cada falha (número inválido, bloqueio, navegação impedida)
+- log técnico para facilitar diagnóstico se ainda bloquear em ambiente específico
 
-### Etapa 3 — Evitar novo retrabalho (validação guiada)
-
-Após implementar:
-
-1. Testar com número formatado `(11) 97691-9401` e com número já internacional
-2. Validar em preview que não ocorre “aba bloqueada”
-3. Conferir visual do topo do card com foco em:
-  - distância entre infos → boxes
-  - distância boxes → badges churn score
-  - distância badges → título “Etiquetas”
-4. Testar o mesmo card nas páginas principais que o usam (`/`, `/financeiro`, `/chamados`, `/cancelamentos`, `/nps`) para garantir consistência visual global
+**Resultado esperado:** sai do ciclo “aba bloqueada” em preview e produção com fallback previsível.
 
 ---
 
-## Arquivos impactados
+## Etapa 3 — Quadrantes 10x mais granulares para cidades pequenas
+**Arquivo:** `src/components/map/AlertasMapa.tsx`  
+**Ajuste complementar:** `src/pages/VisaoGeral.tsx`
 
-- `src/components/crm/CrmDrawer.tsx` (único arquivo necessário para os dois problemas relatados)
+1. Tornar a grade configurável:
+- adicionar prop `gridDensity` (ex.: 40 padrão, 120/160 para alta resolução).
+
+2. Implementar subdivisão adaptativa por densidade:
+- para células com alta concentração, subdividir internamente (subgrid local) ao invés de manter célula única.
+
+3. Tratar coordenadas idênticas (causa principal do colapso):
+- aplicar jitter determinístico mínimo por `cliente_id` (somente para renderização de grid, sem alterar dado base),
+- evita “milhares de registros no mesmo pixel”.
+
+4. Controle na UI:
+- seletor “Granularidade do mapa”: Normal / Alta / Muito Alta
+- manter performance com limite de células renderizadas e simplificação progressiva.
+
+**Resultado esperado:** mapa deixa de mostrar 2 quadrados e passa a exibir distribuição útil para operação local.
+
+---
+
+## Sequência recomendada (para reduzir retrabalho)
+
+1. Corrigir WhatsApp (impacto direto em operação diária)  
+2. Corrigir espaçamento estrutural do card (visível em todo CRM)  
+3. Entregar granularidade do mapa com controle de densidade
+
+---
+
+## Verificação objetiva (aceite)
+
+1. **Card CRM**
+- Abrir perfil em `/visao-geral`, `/financeiro`, `/clientes-em-risco`.
+- Confirmar separação visível entre blocos (não só micro-ajuste).
+
+2. **WhatsApp**
+- Testar com telefone em formatos diferentes: `(47) 99999-9999`, `5547999999999`, `047999999999`.
+- Confirmar abertura em pelo menos uma das estratégias sem “aba bloqueada”.
+
+3. **Mapa**
+- Em IGP Telecom, alternar granularidade para “Muito Alta”.
+- Confirmar aumento real de quadrantes e melhor leitura espacial (sem concentrar tudo em 2 células).
 
 ---
 
 ## Riscos e mitigação
 
-- **Risco:** popup continuar bloqueado em algum navegador muito restritivo  
-**Mitigação:** abrir eu uma nova aba.
-- **Risco:** dados de celular com qualidade ruim no backend  
-**Mitigação:** validação forte + toast explicativo (não tentar abrir URL quebrada).
-- **Risco:** espaçamento ficar excessivo em telas menores  
-**Mitigação:** ajustar com classes responsivas (`sm:`) após validação visual.
+- **Bloqueio de navegação externa no ambiente embutido:** fallback em múltiplas camadas + mensagens claras.
+- **Mapa pesado em densidade alta:** teto de renderização + modo progressivo.
+- **Jitter mascarar precisão:** jitter mínimo, determinístico e apenas para visualização agregada.
