@@ -34,7 +34,7 @@ const tipoNPSLabels: Record<string, string> = {
 };
 
 export const NPSTable = memo(({ respostas, onOpenProfile }: NPSTableProps) => {
-  const [sorting, setSorting] = useState<SortingState>([]);
+  const [sorting, setSorting] = useState<SortingState>([{ id: 'nota', desc: false }]);
   const [globalFilter, setGlobalFilter] = useState("");
   const { addToWorkflow } = useCrmWorkflow();
 

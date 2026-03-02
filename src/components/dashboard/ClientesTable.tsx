@@ -39,6 +39,7 @@ import { ActionMenu } from "@/components/shared/ActionMenu";
 interface ClientesTableProps {
   chamados: Chamado[];
   onClienteClick: (chamado: Chamado) => void;
+  onOpenProfile?: (chamado: Chamado) => void;
   churnMap?: Map<number, { score: number; bucket: string }>;
 }
 
@@ -123,10 +124,10 @@ const getDiasBadge = (dias: number | null) => {
   return { cls: "bg-green-100 text-green-800 border-green-200 border text-xs", label: `${dias}d` };
 };
 
-export const ClientesTable = memo(({ chamados, onClienteClick, churnMap }: ClientesTableProps) => {
+export const ClientesTable = memo(({ chamados, onClienteClick, onOpenProfile, churnMap }: ClientesTableProps) => {
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const [columnResizeMode] = useState<ColumnResizeMode>('onChange');
-  const [sorting, setSorting] = useState<SortingState>([{ id: 'Data de Abertura', desc: true }]);
+  const [sorting, setSorting] = useState<SortingState>([{ id: 'score-risco', desc: true }]);
   const [currentPage, setCurrentPage] = useState(1);
   const [nomeFilter, setNomeFilter] = useState("");
   const [churnScoreFilter, setChurnScoreFilter] = useState("todos");
@@ -347,7 +348,16 @@ export const ClientesTable = memo(({ chamados, onClienteClick, churnMap }: Clien
     },
     {
       id: 'score-risco',
-      header: 'Churn',
+      header: ({ column }) => (
+        <Button variant="ghost" size="sm" onClick={() => column.toggleSorting(column.getIsSorted() === "asc")} className="hover:bg-transparent p-0 h-auto font-medium text-xs">
+          <span className="inline-flex items-center">Churn <SortIcon column={column} /></span>
+        </Button>
+      ),
+      accessorFn: (row) => {
+        if (!churnMap) return -1;
+        const clienteId = typeof row["ID Cliente"] === 'string' ? parseInt(row["ID Cliente"], 10) : row["ID Cliente"];
+        return churnMap.get(clienteId)?.score ?? -1;
+      },
       cell: ({ row }) => {
         if (!churnMap) return <span className="text-[10px] text-muted-foreground">—</span>;
         const clienteId = typeof row.original["ID Cliente"] === 'string'
@@ -361,7 +371,7 @@ export const ClientesTable = memo(({ chamados, onClienteClick, churnMap }: Clien
         return <Badge className={`${cls} border font-mono text-[10px]`}>{info.score}</Badge>;
       },
       size: 70,
-      enableSorting: false,
+      enableSorting: true,
     },
     {
       id: 'actions',
@@ -377,7 +387,7 @@ export const ClientesTable = memo(({ chamados, onClienteClick, churnMap }: Clien
               clientId={clienteId}
               clientName={chamado.Solicitante || `Cliente ${clienteId}`}
               variant="suporte"
-              onOpenProfile={() => onClienteClick(chamado)}
+              onOpenProfile={() => onOpenProfile ? onOpenProfile(chamado) : onClienteClick(chamado)}
             />
             <TooltipProvider>
               <Tooltip>

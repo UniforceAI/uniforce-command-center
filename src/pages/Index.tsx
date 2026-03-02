@@ -6,6 +6,11 @@ import { externalSupabase } from "@/integrations/supabase/external-client";
 import { getCategoriaName } from "@/lib/categoriasMap";
 import { useActiveIsp } from "@/hooks/useActiveIsp";
 import { useChurnScore } from "@/hooks/useChurnScore";
+import { useChurnData } from "@/hooks/useChurnData";
+import { useRiskBucketConfig } from "@/hooks/useRiskBucketConfig";
+import { useCrmWorkflow } from "@/hooks/useCrmWorkflow";
+import { useChamados } from "@/hooks/useChamados";
+import { CrmDrawer } from "@/components/crm/CrmDrawer";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { KPICardNew } from "@/components/shared/KPICardNew";
@@ -23,10 +28,14 @@ const Index = () => {
   const { toast } = useToast();
   const { signOut, isSuperAdmin, clearSelectedIsp } = useAuth();
   const { ispId, ispNome } = useActiveIsp();
-  const { scoreMap } = useChurnScore();
+  const { scoreMap, churnStatus, churnEvents, getScoreTotalReal } = useChurnScore();
+  const { getBucket } = useRiskBucketConfig();
+  const { workflowMap, addToWorkflow, updateStatus, updateTags, updateOwner } = useCrmWorkflow();
+  const { chamados: crmChamados } = useChamados();
   const [chamados, setChamados] = useState<Chamado[]>([]);
   const [selectedCliente, setSelectedCliente] = useState<Chamado | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [selectedCrmClienteId, setSelectedCrmClienteId] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   // Filtros
@@ -248,6 +257,31 @@ const Index = () => {
     setSheetOpen(true);
   }, []);
 
+  const handleOpenProfile = useCallback((chamado: Chamado) => {
+    const clienteId = typeof chamado["ID Cliente"] === 'string'
+      ? parseInt(chamado["ID Cliente"], 10)
+      : chamado["ID Cliente"];
+    setSelectedCrmClienteId(clienteId);
+  }, []);
+
+  const selectedCrmCliente = useMemo(() => {
+    if (!selectedCrmClienteId) return null;
+    return churnStatus.find(c => c.cliente_id === selectedCrmClienteId) || null;
+  }, [selectedCrmClienteId, churnStatus]);
+
+  const selectedCrmEvents = useMemo(() => {
+    if (!selectedCrmClienteId) return [];
+    return churnEvents.filter(e => e.cliente_id === selectedCrmClienteId);
+  }, [selectedCrmClienteId, churnEvents]);
+
+  const selectedCrmChamados = useMemo(() => {
+    if (!selectedCrmClienteId) return [];
+    return crmChamados.filter(c => {
+      const id = typeof c.id_cliente === "string" ? parseInt(c.id_cliente as any) : c.id_cliente;
+      return id === selectedCrmClienteId;
+    });
+  }, [selectedCrmClienteId, crmChamados]);
+
   // Função auxiliar para parsear data
   const parseData = (dataStr: string) => {
     try {
@@ -450,7 +484,7 @@ const Index = () => {
                   Clientes com abertura frequente de chamados no período selecionado
                 </p>
               </div>
-              <ClientesTable chamados={clientesCriticos} onClienteClick={handleClienteClick} churnMap={churnMap} />
+              <ClientesTable chamados={clientesCriticos} onClienteClick={handleClienteClick} onOpenProfile={handleOpenProfile} churnMap={churnMap} />
             </section>
 
             {/* Insights */}
@@ -466,6 +500,31 @@ const Index = () => {
       </main>
 
       <ClienteDetailsSheet chamado={selectedCliente} open={sheetOpen} onOpenChange={setSheetOpen} />
+
+      {/* CRM Profile Drawer */}
+      {selectedCrmCliente && (
+        <CrmDrawer
+          cliente={selectedCrmCliente}
+          score={getScoreTotalReal(selectedCrmCliente)}
+          bucket={getBucket(getScoreTotalReal(selectedCrmCliente))}
+          workflow={workflowMap.get(selectedCrmCliente.cliente_id)}
+          events={selectedCrmEvents}
+          chamadosCliente={selectedCrmChamados}
+          onClose={() => setSelectedCrmClienteId(null)}
+          onStartTreatment={async () => {
+            await addToWorkflow(selectedCrmCliente.cliente_id);
+          }}
+          onUpdateStatus={async (status) => {
+            await updateStatus(selectedCrmCliente.cliente_id, status);
+          }}
+          onUpdateTags={async (tags) => {
+            await updateTags(selectedCrmCliente.cliente_id, tags);
+          }}
+          onUpdateOwner={async (ownerId) => {
+            await updateOwner(selectedCrmCliente.cliente_id, ownerId);
+          }}
+        />
+      )}
     </div>
   );
 };
