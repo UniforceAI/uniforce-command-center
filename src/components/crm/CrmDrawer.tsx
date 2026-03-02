@@ -101,9 +101,9 @@ function CopyButton({ value, label }: { value: string; label: string }) {
   return (
     <button
       onClick={() => { navigator.clipboard.writeText(value); toast({ title: `${label} copiado!` }); }}
-      className="p-0.5 hover:text-primary transition-colors" title={`Copiar ${label}`}
+      className="p-1 rounded hover:bg-primary/10 hover:text-primary transition-colors" title={`Copiar ${label}`}
     >
-      <Copy className="h-3 w-3" />
+      <Copy className="h-3.5 w-3.5" />
     </button>
   );
 }
@@ -127,7 +127,6 @@ export function CrmDrawer({
   const [showTagPicker, setShowTagPicker] = useState(false);
   const [activeTab, setActiveTab] = useState("acompanhamento");
 
-  // Extended client data from eventos table
   const [extraData, setExtraData] = useState<ClienteExtraData | null>(null);
 
   useEffect(() => {
@@ -146,7 +145,6 @@ export function CrmDrawer({
     })();
   }, [clienteId, ispId]);
 
-  // Tempo de contrato
   const tempoContrato = useMemo(() => {
     if (!cliente) return null;
     const dtAtivacao = (cliente as any).data_ativacao || (cliente as any).data_instalacao;
@@ -159,7 +157,6 @@ export function CrmDrawer({
     return `${meses}m`;
   }, [cliente]);
 
-  // LTV
   const ltv = useMemo(() => {
     if (!cliente) return null;
     if ((cliente as any).ltv_estimado != null && (cliente as any).ltv_estimado > 0)
@@ -172,13 +169,10 @@ export function CrmDrawer({
   if (!cliente) return null;
 
   const clienteTags = workflow?.tags || [];
-
-  // Derived payment availability
   const hasPix = !!extraData?.pix_codigo;
   const hasBoleto = !!extraData?.linha_digitavel;
   const hasQrCode = !!extraData?.pix_qrcode_img;
 
-  // Derived client info
   const clienteDocumento = extraData?.cliente_documento || (cliente as any).cliente_documento || "";
   const clienteTipoPessoa = extraData?.cliente_tipo_pessoa || (cliente as any).cliente_tipo_pessoa || "";
   const clienteEmail = extraData?.cliente_email || (cliente as any).cliente_email || "";
@@ -188,6 +182,7 @@ export function CrmDrawer({
   const statusContrato = extraData?.status_contrato || (cliente as any).status_contrato || "";
   const tipoServico = extraData?.tipo_servico || (cliente as any).tipo_servico || "";
   const tipoConexao = extraData?.tipo_conexao || (cliente as any).tipo_conexao || "";
+  const tipoPessoaLabel = clienteTipoPessoa === "J" ? "Jurídica" : clienteTipoPessoa === "F" ? "Física" : clienteTipoPessoa || "—";
 
   const handleAddTag = async (tag: string) => {
     if (!tag || clienteTags.includes(tag)) return;
@@ -262,7 +257,9 @@ export function CrmDrawer({
       `Olá ${name}, tudo bem?\nPassando rapidinho para lembrar que sua fatura de internet está em aberto.\n\nQueremos garantir que você continue navegando, maratonando séries, estudando e trabalhando sem nenhuma interrupção!\n\n🔑 PIX (copia e cola):\n\n${pixCode}\n\nSe precisar, estamos aqui para ajudar!`
     );
     if (phone) {
-      window.open(`https://wa.me/55${phone}?text=${msg}`, "_blank");
+      // IMPORTANT: Use wa.me format — api.whatsapp.com gets blocked by browser (ERR_BLOCKED_BY_RESPONSE)
+      const link = `https://wa.me/${phone.startsWith("55") ? phone : `55${phone}`}?text=${msg}`;
+      window.open(link, "_blank", "noopener,noreferrer");
     } else {
       toast({ title: "Telefone indisponível", description: "Este cliente não possui celular cadastrado.", variant: "destructive" });
     }
@@ -290,7 +287,6 @@ export function CrmDrawer({
     handleQuickAction("copy_pix_qrcode", "QR Code PIX copiado");
   };
 
-  // Score breakdown
   const scores = [
     { name: "Financeiro", val: cliente.score_financeiro ?? 0 },
     { name: "Suporte", val: cliente.score_suporte ?? 0 },
@@ -312,94 +308,18 @@ export function CrmDrawer({
     } catch { return dateStr; }
   };
 
-  const tipoPessoaLabel = clienteTipoPessoa === "J" ? "Jurídica" : clienteTipoPessoa === "F" ? "Física" : clienteTipoPessoa || "—";
-
   return (
     <Dialog open={!!cliente} onOpenChange={() => onClose()}>
       <DialogContent className="max-w-3xl w-[95vw] max-h-[90vh] p-0 flex flex-col overflow-hidden">
         {/* ── HEADER ── */}
-        <DialogHeader className="p-5 pb-4 border-b bg-muted/30 shrink-0">
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex-1 min-w-0">
-              <DialogTitle className="text-lg font-bold leading-tight truncate">
-                {cliente.cliente_nome || `Cliente #${cliente.cliente_id}`}
-              </DialogTitle>
-              <DialogDescription className="sr-only">Detalhes do cliente em risco</DialogDescription>
-              {cliente.plano_nome && (
-                <div className="flex items-center gap-1.5 mt-1">
-                  <Package className="h-4 w-4 text-primary" />
-                  <span className="text-sm font-semibold text-primary">{cliente.plano_nome}</span>
-                </div>
-              )}
-            </div>
-            <Badge className={`${BUCKET_COLORS[bucket]} border text-sm font-mono px-3 py-1 shrink-0`}>
-              {score} · {bucket}
-            </Badge>
-          </div>
+        <DialogHeader className="px-6 pt-5 pb-4 border-b bg-muted/30 shrink-0 space-y-0">
+          <DialogDescription className="sr-only">Detalhes do cliente em risco</DialogDescription>
 
-          {/* Client detail row */}
-          <div className="mt-3 grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-1.5 text-xs text-muted-foreground">
-            <div className="flex items-center gap-1.5">
-              <Hash className="h-3 w-3 shrink-0" />
-              <span className="font-medium text-foreground">ID:</span> {cliente.cliente_id}
-              <CopyButton value={String(cliente.cliente_id)} label="ID" />
-            </div>
-            {clienteDocumento && (
-              <div className="flex items-center gap-1.5">
-                <IdCard className="h-3 w-3 shrink-0" />
-                <span className="font-medium text-foreground">Doc:</span> {clienteDocumento}
-                <CopyButton value={clienteDocumento} label="Documento" />
-              </div>
-            )}
-            <div className="flex items-center gap-1.5">
-              <User className="h-3 w-3 shrink-0" />
-              <span className="font-medium text-foreground">Pessoa:</span> {tipoPessoaLabel}
-            </div>
-            {clienteEmail && (
-              <div className="flex items-center gap-1.5 truncate">
-                <Mail className="h-3 w-3 shrink-0" />
-                <span className="font-medium text-foreground">Email:</span>
-                <span className="truncate">{clienteEmail}</span>
-                <CopyButton value={clienteEmail} label="E-mail" />
-              </div>
-            )}
-            {clienteCelular && (
-              <div className="flex items-center gap-1.5">
-                <Phone className="h-3 w-3 shrink-0" />
-                <span className="font-medium text-foreground">Tel:</span> {clienteCelular}
-                <CopyButton value={clienteCelular} label="Telefone" />
-              </div>
-            )}
-            {diaVencimento != null && (
-              <div className="flex items-center gap-1.5">
-                <Calendar className="h-3 w-3 shrink-0" />
-                <span className="font-medium text-foreground">Vencimento:</span> Dia {diaVencimento}
-              </div>
-            )}
-          </div>
-
-          {/* Badges row */}
-          <div className="mt-2 flex flex-wrap gap-1.5">
-            {metodoCobranca && (
-              <Badge variant="outline" className="text-[10px] capitalize">{metodoCobranca}</Badge>
-            )}
-            {statusContrato && (
-              <Badge variant="outline" className={`text-[10px] ${statusContrato === "Ativo" ? "border-green-300 bg-green-50 text-green-700" : "border-yellow-300 bg-yellow-50 text-yellow-700"}`}>
-                {statusContrato}
-              </Badge>
-            )}
-            {(tipoServico || tipoConexao) && (
-              <Badge variant="outline" className="text-[10px]">
-                {[tipoServico, tipoConexao].filter(Boolean).join(" · ")}
-              </Badge>
-            )}
-          </div>
-
-          {/* Status + Owner row */}
-          <div className="flex items-center gap-2 mt-3 flex-wrap">
+          {/* Row 1: Action buttons at the very top */}
+          <div className="flex items-center gap-2 mb-4">
             {workflow ? (
               <Select value={workflow.status_workflow} onValueChange={(v) => handleStatusChange(v as WorkflowStatus)}>
-                <SelectTrigger className="h-9 text-xs w-[170px] font-medium"><SelectValue /></SelectTrigger>
+                <SelectTrigger className="h-9 text-xs w-[180px] font-semibold border-primary/30"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="em_tratamento"><span className="flex items-center gap-1.5"><PlayCircle className="h-3.5 w-3.5 text-yellow-600" />Em Tratamento</span></SelectItem>
                   <SelectItem value="resolvido"><span className="flex items-center gap-1.5"><CheckCircle2 className="h-3.5 w-3.5 text-green-600" />Resolvido</span></SelectItem>
@@ -407,18 +327,156 @@ export function CrmDrawer({
                 </SelectContent>
               </Select>
             ) : (
-              <Button size="sm" className="h-9 text-xs gap-1.5 px-4" onClick={onStartTreatment}>
+              <Button size="sm" className="h-9 text-xs gap-1.5 px-5 font-semibold" onClick={onStartTreatment}>
                 <PlayCircle className="h-4 w-4" />Iniciar Tratamento
               </Button>
             )}
-
-            <Button size="sm" variant="outline" className="h-9 text-xs gap-1.5" onClick={handleAssumirOwner}>
+            <Button size="sm" variant="outline" className="h-9 text-xs gap-1.5 font-semibold" onClick={handleAssumirOwner}>
               <UserCheck className="h-3.5 w-3.5" />
               {workflow?.owner_user_id === user?.id ? "Você é o responsável" : "Assumir Atendimento"}
             </Button>
           </div>
 
-          {/* Tags */}
+          {/* Row 2: Name + Plan left  |  Badges stacked right */}
+          <div className="flex items-start justify-between gap-4">
+            {/* Left: Client identity */}
+            <div className="flex-1 min-w-0 space-y-1">
+              <DialogTitle className="text-xl font-bold leading-tight truncate">
+                {cliente.cliente_nome || `Cliente #${cliente.cliente_id}`}
+              </DialogTitle>
+              {cliente.plano_nome && (
+                <div className="flex items-center gap-2">
+                  <Package className="h-4 w-4 text-primary" />
+                  <span className="text-base font-semibold text-primary">{cliente.plano_nome}</span>
+                </div>
+              )}
+            </div>
+
+            {/* Right: Badges stacked vertically */}
+            <div className="flex flex-col items-end gap-1.5 shrink-0">
+              <Badge className={`${BUCKET_COLORS[bucket]} border text-sm font-mono px-3 py-1`}>
+                {score} · {bucket}
+              </Badge>
+              {statusContrato && (
+                <Badge variant="outline" className={`text-xs ${statusContrato === "Ativo" ? "border-green-300 bg-green-50 text-green-700" : "border-yellow-300 bg-yellow-50 text-yellow-700"}`}>
+                  {statusContrato}
+                </Badge>
+              )}
+              {metodoCobranca && (
+                <Badge variant="outline" className="text-xs capitalize">{metodoCobranca}</Badge>
+              )}
+              {(tipoServico || tipoConexao) && (
+                <Badge variant="outline" className="text-xs">
+                  {[tipoServico, tipoConexao].filter(Boolean).join(" · ")}
+                </Badge>
+              )}
+            </div>
+          </div>
+
+          {/* Row 3: Client data fields — larger text */}
+          <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2">
+            <div className="flex items-center gap-2 text-sm">
+              <Hash className="h-4 w-4 text-muted-foreground shrink-0" />
+              <span className="font-semibold text-foreground">ID:</span>
+              <span className="text-muted-foreground">{cliente.cliente_id}</span>
+              <CopyButton value={String(cliente.cliente_id)} label="ID" />
+            </div>
+            {clienteDocumento && (
+              <div className="flex items-center gap-2 text-sm">
+                <IdCard className="h-4 w-4 text-muted-foreground shrink-0" />
+                <span className="font-semibold text-foreground">Documento:</span>
+                <span className="text-muted-foreground">{clienteDocumento}</span>
+                <CopyButton value={clienteDocumento} label="Documento" />
+              </div>
+            )}
+            <div className="flex items-center gap-2 text-sm">
+              <User className="h-4 w-4 text-muted-foreground shrink-0" />
+              <span className="font-semibold text-foreground">Pessoa:</span>
+              <span className="text-muted-foreground">{tipoPessoaLabel}</span>
+            </div>
+            {clienteEmail && (
+              <div className="flex items-center gap-2 text-sm min-w-0">
+                <Mail className="h-4 w-4 text-muted-foreground shrink-0" />
+                <span className="font-semibold text-foreground">E-mail:</span>
+                <span className="text-muted-foreground truncate">{clienteEmail}</span>
+                <CopyButton value={clienteEmail} label="E-mail" />
+              </div>
+            )}
+            {clienteCelular && (
+              <div className="flex items-center gap-2 text-sm">
+                <Phone className="h-4 w-4 text-muted-foreground shrink-0" />
+                <span className="font-semibold text-foreground">Telefone:</span>
+                <span className="text-muted-foreground">{clienteCelular}</span>
+                <CopyButton value={clienteCelular} label="Telefone" />
+              </div>
+            )}
+            {diaVencimento != null && (
+              <div className="flex items-center gap-2 text-sm">
+                <Calendar className="h-4 w-4 text-muted-foreground shrink-0" />
+                <span className="font-semibold text-foreground">Vencimento:</span>
+                <span className="text-muted-foreground">Dia {diaVencimento}</span>
+              </div>
+            )}
+          </div>
+
+          {/* Row 4: Metric boxes */}
+          <div className="mt-4 grid grid-cols-4 sm:grid-cols-7 gap-2 text-center">
+            <div className="rounded-lg border bg-card p-2 shadow-sm">
+              <Activity className="h-3.5 w-3.5 mx-auto text-primary mb-0.5" />
+              <div className="text-xs font-bold">{driverPrincipal}</div>
+              <div className="text-[9px] text-muted-foreground">Driver</div>
+            </div>
+            <div className="rounded-lg border bg-card p-2 shadow-sm">
+              <DollarSign className="h-3.5 w-3.5 mx-auto text-muted-foreground mb-0.5" />
+              <div className="text-xs font-bold">{cliente.valor_mensalidade != null && cliente.valor_mensalidade > 0 ? `R$${cliente.valor_mensalidade.toFixed(0)}` : "—"}</div>
+              <div className="text-[9px] text-muted-foreground">Mensalidade</div>
+            </div>
+            <div className="rounded-lg border bg-card p-2 shadow-sm">
+              <Clock className="h-3.5 w-3.5 mx-auto text-muted-foreground mb-0.5" />
+              <div className={`text-xs font-bold ${(cliente.dias_atraso ?? 0) > 30 ? "text-destructive" : ""}`}>
+                {(cliente.dias_atraso ?? 0) > 0 ? `${Math.round(cliente.dias_atraso!)}d` : "Em dia"}
+              </div>
+              <div className="text-[9px] text-muted-foreground">Atraso</div>
+            </div>
+            <div className="rounded-lg border bg-card p-2 shadow-sm">
+              <Phone className="h-3.5 w-3.5 mx-auto text-muted-foreground mb-0.5" />
+              <div className="text-xs font-bold">{cliente.qtd_chamados_30d || 0}</div>
+              <div className="text-[9px] text-muted-foreground">Chamados 30d</div>
+            </div>
+            {npsData?.nota != null && (
+              <div className="rounded-lg border bg-card p-2 shadow-sm">
+                {npsData.classificacao === "DETRATOR" ? <ThumbsDown className="h-3.5 w-3.5 mx-auto text-destructive mb-0.5" />
+                 : npsData.classificacao === "PROMOTOR" ? <ThumbsUp className="h-3.5 w-3.5 mx-auto text-green-600 mb-0.5" />
+                 : <Minus className="h-3.5 w-3.5 mx-auto text-yellow-600 mb-0.5" />}
+                <div className="text-xs font-bold">{npsData.nota}</div>
+                <div className="text-[9px] text-muted-foreground">NPS</div>
+              </div>
+            )}
+            {tempoContrato && (
+              <div className="rounded-lg border bg-card p-2 shadow-sm">
+                <Calendar className="h-3.5 w-3.5 mx-auto text-muted-foreground mb-0.5" />
+                <div className="text-xs font-bold">{tempoContrato}</div>
+                <div className="text-[9px] text-muted-foreground">Contrato</div>
+              </div>
+            )}
+            {ltv != null && ltv > 0 && (
+              <div className="rounded-lg border bg-card p-2 shadow-sm">
+                <DollarSign className="h-3.5 w-3.5 mx-auto text-primary mb-0.5" />
+                <div className="text-xs font-bold">R${Math.round(ltv).toLocaleString("pt-BR")}</div>
+                <div className="text-[9px] text-muted-foreground">LTV</div>
+              </div>
+            )}
+          </div>
+
+          {/* Row 5: Score breakdown + Tags */}
+          <div className="mt-3 flex items-center gap-1.5 flex-wrap">
+            {scores.map(s => (
+              <Badge key={s.name} variant="outline" className={`text-[10px] font-mono ${s.val > 0 ? 'border-yellow-300 bg-yellow-50 text-yellow-800' : ''}`}>
+                {s.name}: {s.val}
+              </Badge>
+            ))}
+          </div>
+
           {workflow && (
             <div className="mt-3 space-y-1.5">
               <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1">
@@ -472,67 +530,9 @@ export function CrmDrawer({
               </div>
             </div>
           )}
-
-          {/* Data cards — 7 items */}
-          <div className="mt-3 grid grid-cols-4 sm:grid-cols-7 gap-2 text-center">
-            <div className="rounded-lg border bg-card p-2 shadow-sm">
-              <Activity className="h-3.5 w-3.5 mx-auto text-primary mb-0.5" />
-              <div className="text-xs font-bold">{driverPrincipal}</div>
-              <div className="text-[9px] text-muted-foreground">Driver</div>
-            </div>
-            <div className="rounded-lg border bg-card p-2 shadow-sm">
-              <DollarSign className="h-3.5 w-3.5 mx-auto text-muted-foreground mb-0.5" />
-              <div className="text-xs font-bold">{cliente.valor_mensalidade != null && cliente.valor_mensalidade > 0 ? `R$${cliente.valor_mensalidade.toFixed(0)}` : "—"}</div>
-              <div className="text-[9px] text-muted-foreground">Mensalidade</div>
-            </div>
-            <div className="rounded-lg border bg-card p-2 shadow-sm">
-              <Clock className="h-3.5 w-3.5 mx-auto text-muted-foreground mb-0.5" />
-              <div className={`text-xs font-bold ${(cliente.dias_atraso ?? 0) > 30 ? "text-destructive" : ""}`}>
-                {(cliente.dias_atraso ?? 0) > 0 ? `${Math.round(cliente.dias_atraso!)}d` : "Em dia"}
-              </div>
-              <div className="text-[9px] text-muted-foreground">Atraso</div>
-            </div>
-            <div className="rounded-lg border bg-card p-2 shadow-sm">
-              <Phone className="h-3.5 w-3.5 mx-auto text-muted-foreground mb-0.5" />
-              <div className="text-xs font-bold">{cliente.qtd_chamados_30d || 0}</div>
-              <div className="text-[9px] text-muted-foreground">Chamados 30d</div>
-            </div>
-            {npsData?.nota != null && (
-              <div className="rounded-lg border bg-card p-2 shadow-sm">
-                {npsData.classificacao === "DETRATOR" ? <ThumbsDown className="h-3.5 w-3.5 mx-auto text-destructive mb-0.5" /> :
-                 npsData.classificacao === "PROMOTOR" ? <ThumbsUp className="h-3.5 w-3.5 mx-auto text-green-600 mb-0.5" /> :
-                 <Minus className="h-3.5 w-3.5 mx-auto text-yellow-600 mb-0.5" />}
-                <div className="text-xs font-bold">{npsData.nota}</div>
-                <div className="text-[9px] text-muted-foreground">NPS</div>
-              </div>
-            )}
-            {tempoContrato && (
-              <div className="rounded-lg border bg-card p-2 shadow-sm">
-                <Calendar className="h-3.5 w-3.5 mx-auto text-muted-foreground mb-0.5" />
-                <div className="text-xs font-bold">{tempoContrato}</div>
-                <div className="text-[9px] text-muted-foreground">Contrato</div>
-              </div>
-            )}
-            {ltv != null && ltv > 0 && (
-              <div className="rounded-lg border bg-card p-2 shadow-sm">
-                <DollarSign className="h-3.5 w-3.5 mx-auto text-primary mb-0.5" />
-                <div className="text-xs font-bold">R${Math.round(ltv).toLocaleString("pt-BR")}</div>
-                <div className="text-[9px] text-muted-foreground">LTV</div>
-              </div>
-            )}
-          </div>
-
-          {/* Score breakdown */}
-          <div className="mt-3 flex gap-1.5 flex-wrap">
-            {scores.map(s => (
-              <Badge key={s.name} variant="outline" className={`text-[10px] font-mono ${s.val > 0 ? 'border-yellow-300 bg-yellow-50 text-yellow-800' : ''}`}>
-                {s.name}: {s.val}
-              </Badge>
-            ))}
-          </div>
         </DialogHeader>
 
-        {/* ── TABBED CONTENT with blue active tab ── */}
+        {/* ── TABBED CONTENT ── */}
         <div className="flex-1 overflow-hidden">
           <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col h-full">
             <TabsList className="mx-5 mt-3 w-fit bg-muted/50 p-1">
@@ -552,7 +552,7 @@ export function CrmDrawer({
 
             {/* ── TAB: Acompanhamento ── */}
             <TabsContent value="acompanhamento" className="flex-1 overflow-hidden m-0">
-              <ScrollArea className="h-[calc(90vh-480px)]">
+              <ScrollArea className="h-[calc(90vh-520px)]">
                 <div className="p-5 space-y-4">
                   {!workflow && (
                     <Button className="w-full h-10 gap-2" onClick={onStartTreatment}>
@@ -561,8 +561,8 @@ export function CrmDrawer({
                   )}
 
                   <div className="space-y-2">
-                    <span className="text-xs font-semibold uppercase text-muted-foreground flex items-center gap-1.5">
-                      <Pencil className="h-3 w-3" /> Inserir Nota
+                    <span className="text-sm font-semibold uppercase text-muted-foreground flex items-center gap-1.5">
+                      <Pencil className="h-3.5 w-3.5" /> Inserir Nota
                     </span>
                     <Textarea placeholder="Escreva uma observação, nota interna ou próxima ação..." value={noteText}
                       onChange={(e) => setNoteText(e.target.value)} className="min-h-[80px] text-sm resize-none" />
@@ -633,7 +633,7 @@ export function CrmDrawer({
 
             {/* ── TAB: Atendimento ── */}
             <TabsContent value="atendimento" className="flex-1 overflow-hidden m-0">
-              <ScrollArea className="h-[calc(90vh-480px)]">
+              <ScrollArea className="h-[calc(90vh-520px)]">
                 <div className="p-5 space-y-4">
                   <div className="grid grid-cols-2 gap-2">
                     <Button variant="outline" className="h-11 text-xs gap-2 justify-start font-medium hover:bg-primary/5 hover:border-primary/30" onClick={handleWhatsApp}>
@@ -684,7 +684,7 @@ export function CrmDrawer({
 
             {/* ── TAB: Abrir Chamado ── */}
             <TabsContent value="chamado" className="flex-1 overflow-hidden m-0">
-              <ScrollArea className="h-[calc(90vh-480px)]">
+              <ScrollArea className="h-[calc(90vh-520px)]">
                 <div className="p-5 space-y-4">
                   <div className="text-center py-8 space-y-3">
                     <Wrench className="h-10 w-10 mx-auto text-muted-foreground/40" />
@@ -704,7 +704,7 @@ export function CrmDrawer({
 
             {/* ── TAB: Mapa de Churn ── */}
             <TabsContent value="mapa" className="flex-1 overflow-hidden m-0">
-              <ScrollArea className="h-[calc(90vh-480px)]">
+              <ScrollArea className="h-[calc(90vh-520px)]">
                 <div className="p-5 space-y-3">
                   <h4 className="text-sm font-semibold flex items-center gap-2">
                     <TrendingDown className="h-4 w-4 text-destructive" />
