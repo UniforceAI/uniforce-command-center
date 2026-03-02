@@ -167,8 +167,8 @@ const Financeiro = () => {
   // ---- KPIs ----
   const kpis = useMemo(() => {
     const clientesUnicos = new Set(filteredEventos.map(e => e.cliente_id)).size;
-    const vencidos = filteredEventos.filter(e => e.vencido === true || e.dias_atraso > 0);
-    const aVencer = filteredEventos.filter(e => e.cobranca_status === "A Vencer" && !e.vencido);
+    const vencidos = filteredEventos.filter(e => e.dias_atraso > 0);
+    const aVencer = filteredEventos.filter(e => e.cobranca_status === "A Vencer" && !(e.dias_atraso > 0));
     
     // Clientes únicos vencidos
     const clientesVencidosSet = new Set(vencidos.map(e => e.cliente_id));
@@ -228,7 +228,7 @@ const Financeiro = () => {
   const vencidoPorPlanoBase = useMemo(() => {
     const porPlano: Record<string, { quantidade: number; valor: number }> = {};
     filteredEventos
-      .filter(e => e.vencido === true || e.dias_atraso > 0)
+      .filter(e => e.dias_atraso > 0)
       .forEach(e => {
         const planoNome = e.plano_nome || "Sem plano";
         if (!porPlano[planoNome]) porPlano[planoNome] = { quantidade: 0, valor: 0 };
@@ -274,7 +274,7 @@ const Financeiro = () => {
       e.event_type === "COBRANCA" ||
       (e.event_type === "SNAPSHOT" && (e.cobranca_status || e.valor_cobranca || e.data_vencimento))
     );
-    const vencidos = todosEventosFinanceiros.filter(e => e.dias_atraso > 0 || e.vencido === true);
+    const vencidos = todosEventosFinanceiros.filter(e => e.dias_atraso > 0);
     const porCliente = new Map<number, { evento: typeof vencidos[0]; diasReal: number }>();
     vencidos.forEach(e => {
       const diasReal = calcDiasAtrasoReal(e);

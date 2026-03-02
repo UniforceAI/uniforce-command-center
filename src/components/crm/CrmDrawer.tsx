@@ -421,7 +421,7 @@ export function CrmDrawer({
           </div>
 
           {/* Row 4: Metric boxes */}
-          <div className="mt-6 grid grid-cols-4 sm:grid-cols-7 gap-2 text-center">
+          <div className="mt-8 grid grid-cols-4 sm:grid-cols-7 gap-2 text-center">
             <div className="rounded-lg border bg-card p-2 shadow-sm">
               <Activity className="h-3.5 w-3.5 mx-auto text-primary mb-0.5" />
               <div className="text-xs font-bold">{driverPrincipal}</div>
@@ -470,7 +470,7 @@ export function CrmDrawer({
           </div>
 
           {/* Row 5: Score breakdown */}
-          <div className="mt-5 flex items-center gap-1.5 flex-wrap">
+          <div className="mt-7 flex items-center gap-1.5 flex-wrap">
             {scores.map(s => (
               <Badge key={s.name} variant="outline" className={`text-[10px] font-mono ${s.val > 0 ? 'border-yellow-300 bg-yellow-50 text-yellow-800' : ''}`}>
                 {s.name}: {s.val}
@@ -480,7 +480,7 @@ export function CrmDrawer({
 
           {/* Row 6: Tags */}
           {workflow && (
-            <div className="mt-5 space-y-2">
+            <div className="mt-7 space-y-2.5">
               <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1">
                 <Tag className="h-3 w-3" /> Etiquetas
               </span>

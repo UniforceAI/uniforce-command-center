@@ -150,8 +150,8 @@ const VisaoGeral = () => {
   const [plano, setPlano] = useState("todos");
   const [filial, setFilial] = useState("todos");
   const [mapTab, setMapTab] = useState("chamados");
-  const [churnChartMode, setChurnChartMode] = useState<"volume" | "taxa">("taxa");
-  const [geoMetric, setGeoMetric] = useState<GeoMetric>("churn");
+  const [churnChartMode, setChurnChartMode] = useState<"volume" | "taxa">("volume");
+  const [geoMetric, setGeoMetric] = useState<GeoMetric>("financeiro");
   const [fatoresMode, setFatoresMode] = useState<"risco" | "cancelados">("risco");
   const [selectedClienteRisco, setSelectedClienteRisco] = useState<ChurnStatus | null>(null);
   const [mapLightboxOpen, setMapLightboxOpen] = useState(false);
@@ -359,10 +359,23 @@ const VisaoGeral = () => {
     riscoMap.forEach(v => { mrrEmRisco += v.mrr; });
     const pctAltoRisco = clientesAtivos > 0 ? (clientesAltoRisco / clientesAtivos * 100) : 0;
 
-    // Inadimplência ativa
-    const vencidos = clientesUnicos.filter(e => isClienteVencido(e));
+    // Inadimplência ativa — usar apenas eventos financeiros para consistência com página Financeiro
+    const eventosFinanceirosBase = filteredEventos.filter(e =>
+      (e as any).event_type === "COBRANCA" ||
+      ((e as any).event_type === "SNAPSHOT" && ((e as any).cobranca_status || (e as any).valor_cobranca || (e as any).data_vencimento))
+    );
+    const clientesFinMap = new Map<number, Evento>();
+    eventosFinanceirosBase.forEach(e => {
+      if (!clientesFinMap.has(e.cliente_id) ||
+        new Date(e.event_datetime) > new Date(clientesFinMap.get(e.cliente_id)!.event_datetime)) {
+        clientesFinMap.set(e.cliente_id, e);
+      }
+    });
+    const clientesFinUnicos = Array.from(clientesFinMap.values());
+    const totalClientesFin = clientesFinMap.size;
+    const vencidos = clientesFinUnicos.filter(e => isClienteVencido(e));
     const totalVencido = vencidos.reduce((acc, e) => acc + (e.valor_cobranca || e.valor_mensalidade || 0), 0);
-    const pctInadimplencia = totalClientes > 0 ? (vencidos.length / totalClientes * 100) : 0;
+    const pctInadimplencia = totalClientesFin > 0 ? (vencidos.length / totalClientesFin * 100) : 0;
 
     return {
       totalClientes,
@@ -1291,6 +1304,7 @@ const VisaoGeral = () => {
                         activeFilter={mapTab as "churn" | "vencido" | "chamados"}
                         viewMode={mapViewMode}
                         height="520px"
+                        disableScrollZoom={true}
                       />
                     )}
                     {mapLightboxOpen && (

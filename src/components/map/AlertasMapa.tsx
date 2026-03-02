@@ -22,9 +22,10 @@ interface AlertasMapaProps {
   activeFilter: "churn" | "vencido" | "chamados";
   viewMode?: "markers" | "grid";
   height?: string;
+  disableScrollZoom?: boolean;
 }
 
-// Smart zoom: focus on densest cluster
+// Smart zoom: focus on densest cluster with tighter zoom
 function SmartFitBounds({ points }: { points: { lat: number; lng: number }[] }) {
   const map = useMap();
 
@@ -33,12 +34,13 @@ function SmartFitBounds({ points }: { points: { lat: number; lng: number }[] }) 
     if (points.length <= 3) {
       map.fitBounds(
         points.map(p => [p.lat, p.lng] as [number, number]),
-        { padding: [30, 30], maxZoom: 13 }
+        { padding: [30, 30], maxZoom: 15 }
       );
       return;
     }
 
-    const gridSize = 0.5;
+    // Use smaller grid to find the densest cluster
+    const gridSize = 0.15;
     const cells = new Map<string, { count: number; points: typeof points }>();
     points.forEach(p => {
       const key = `${Math.floor(p.lat / gridSize)},${Math.floor(p.lng / gridSize)}`;
@@ -48,12 +50,24 @@ function SmartFitBounds({ points }: { points: { lat: number; lng: number }[] }) 
       cells.set(key, cell);
     });
 
-    let densest = { count: 0, points: points };
-    cells.forEach(cell => {
-      if (cell.count > densest.count) densest = cell;
+    // Find densest cell and its neighbors
+    let densest = { count: 0, points: points, key: "" };
+    cells.forEach((cell, key) => {
+      if (cell.count > densest.count) densest = { ...cell, key };
     });
 
-    const target = densest.count > points.length * 0.6 ? densest.points : points;
+    // Include adjacent cells for smoother view
+    const [dRow, dCol] = densest.key.split(",").map(Number);
+    const clusterPoints: typeof points = [];
+    for (let dr = -1; dr <= 1; dr++) {
+      for (let dc = -1; dc <= 1; dc++) {
+        const adjKey = `${dRow + dr},${dCol + dc}`;
+        const adj = cells.get(adjKey);
+        if (adj) clusterPoints.push(...adj.points);
+      }
+    }
+
+    const target = clusterPoints.length > points.length * 0.3 ? clusterPoints : points;
     const b = target.reduce(
       (acc, p) => ({
         minLat: Math.min(acc.minLat, p.lat), maxLat: Math.max(acc.maxLat, p.lat),
@@ -63,7 +77,7 @@ function SmartFitBounds({ points }: { points: { lat: number; lng: number }[] }) 
     );
     map.fitBounds(
       [[b.minLat, b.minLng], [b.maxLat, b.maxLng]],
-      { padding: [40, 40], maxZoom: 14 }
+      { padding: [40, 40], maxZoom: 15 }
     );
   }, [points, map]);
 
@@ -140,11 +154,11 @@ function GridSquares({ points, filter, bounds }: { points: MapPoint[]; filter: s
 
     const latRange = bounds.maxLat - bounds.minLat;
     const lngRange = bounds.maxLng - bounds.minLng;
-    const gridCount = 25;
-    const cellLat = Math.max(0.001, latRange / gridCount);
-    const cellLng = Math.max(0.001, lngRange / gridCount);
+    const gridCount = 40; // More cells for finer granularity
+    const cellLat = Math.max(0.0005, latRange / gridCount);
+    const cellLng = Math.max(0.0005, lngRange / gridCount);
 
-    // Build occupied cells
+    // Build occupied cells only
     const cells = new Map<string, { row: number; col: number; count: number; metricSum: number; points: MapPoint[] }>();
     points.forEach(p => {
       const row = Math.floor((p.geo_lat! - bounds.minLat) / cellLat);
@@ -160,39 +174,22 @@ function GridSquares({ points, filter, bounds }: { points: MapPoint[]; filter: s
     });
 
     const maxCount = Math.max(1, ...Array.from(cells.values()).map(c => c.count));
-    const totalRows = Math.ceil(latRange / cellLat) + 1;
-    const totalCols = Math.ceil(lngRange / cellLng) + 1;
 
-    // Only emit cells that are within the convex "shape" of data —
-    // we check row occupancy to avoid filling oceans/empty zones
-    const occupiedRows = new Set<number>();
-    const occupiedCols = new Set<number>();
-    cells.forEach(c => { occupiedRows.add(c.row); occupiedCols.add(c.col); });
-
-    // Expand occupied range by 1 cell padding
-    const minRow = Math.max(0, Math.min(...occupiedRows) - 1);
-    const maxRow = Math.min(totalRows - 1, Math.max(...occupiedRows) + 1);
-    const minCol = Math.max(0, Math.min(...occupiedCols) - 1);
-    const maxCol = Math.min(totalCols - 1, Math.max(...occupiedCols) + 1);
-
+    // Only return cells that have data — no empty/gray filler cells
     const result: { lat: number; lng: number; cellLat: number; cellLng: number; count: number; metricSum: number; intensity: number; points: MapPoint[] }[] = [];
 
-    for (let r = minRow; r <= maxRow; r++) {
-      for (let c = minCol; c <= maxCol; c++) {
-        const key = `${r},${c}`;
-        const existing = cells.get(key);
-        result.push({
-          lat: bounds.minLat + r * cellLat,
-          lng: bounds.minLng + c * cellLng,
-          cellLat,
-          cellLng,
-          count: existing?.count ?? 0,
-          metricSum: existing?.metricSum ?? 0,
-          intensity: existing ? existing.count / maxCount : 0,
-          points: existing?.points ?? [],
-        });
-      }
-    }
+    cells.forEach(existing => {
+      result.push({
+        lat: bounds.minLat + existing.row * cellLat,
+        lng: bounds.minLng + existing.col * cellLng,
+        cellLat,
+        cellLng,
+        count: existing.count,
+        metricSum: existing.metricSum,
+        intensity: existing.count / maxCount,
+        points: existing.points,
+      });
+    });
     return result;
   }, [points, filter, bounds]);
 
@@ -274,7 +271,7 @@ function GridSquares({ points, filter, bounds }: { points: MapPoint[]; filter: s
 
 // ── Main Component ──
 
-export function AlertasMapa({ data, activeFilter, viewMode = "grid", height }: AlertasMapaProps) {
+export function AlertasMapa({ data, activeFilter, viewMode = "grid", height, disableScrollZoom = false }: AlertasMapaProps) {
   const validPoints = useMemo(() => {
     return data.filter((p) => {
       if (p.geo_lat === undefined || p.geo_lng === undefined || isNaN(p.geo_lat) || isNaN(p.geo_lng) || p.geo_lat === 0 || p.geo_lng === 0) return false;
@@ -322,7 +319,7 @@ export function AlertasMapa({ data, activeFilter, viewMode = "grid", height }: A
   }
 
   return (
-    <div className="relative overflow-hidden rounded-b-lg" style={{ height: height || "520px" }}>
+    <div className="relative overflow-hidden rounded-b-lg" style={{ height: height || "520px", isolation: "isolate", zIndex: 0 }}>
       {/* Custom CSS for grid cell labels */}
       <style>{`
         .grid-cell-label {
@@ -341,8 +338,8 @@ export function AlertasMapa({ data, activeFilter, viewMode = "grid", height }: A
       <MapContainer
         center={centerPoint}
         zoom={5}
-        style={{ height: "100%", width: "100%" }}
-        scrollWheelZoom={true}
+        style={{ height: "100%", width: "100%", zIndex: 1 }}
+        scrollWheelZoom={!disableScrollZoom}
       >
         <TileLayer
           attribution='&copy; <a href="https://carto.com/">CARTO</a>'
@@ -387,7 +384,7 @@ export function AlertasMapa({ data, activeFilter, viewMode = "grid", height }: A
       {/* Legend */}
       <div className="absolute bottom-3 left-3 flex gap-2 text-[10px] bg-white/90 backdrop-blur-sm px-2.5 py-1.5 rounded shadow-sm z-[1000]">
         {viewMode === "grid" ? (
-          GRID_COLORS.map((c, i) => (
+          GRID_COLORS.filter((_, i) => i > 0).map((c, i) => (
             <span key={i} className="flex items-center gap-1">
               <span className="w-2.5 h-2.5 rounded-sm border" style={{ background: c.bg, borderColor: c.border }}></span>
               <span className="text-gray-700">{c.label}</span>
