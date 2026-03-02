@@ -251,14 +251,9 @@ export function CrmDrawer({
 
   const handleWhatsApp = () => {
     const phone = clienteCelular.replace(/\D/g, "");
-    const name = cliente.cliente_nome?.split(" ")[0] || "cliente";
-    const pixCode = extraData?.pix_codigo || "";
-    const msg = encodeURIComponent(
-      `Olá ${name}, tudo bem?\nPassando rapidinho para lembrar que sua fatura de internet está em aberto.\n\nQueremos garantir que você continue navegando, maratonando séries, estudando e trabalhando sem nenhuma interrupção!\n\n🔑 PIX (copia e cola):\n\n${pixCode}\n\nSe precisar, estamos aqui para ajudar!`
-    );
     if (phone) {
-      // IMPORTANT: Use wa.me format — api.whatsapp.com gets blocked by browser (ERR_BLOCKED_BY_RESPONSE)
-      const link = `https://wa.me/${phone.startsWith("55") ? phone : `55${phone}`}?text=${msg}`;
+      const fullPhone = phone.startsWith("55") ? phone : `55${phone}`;
+      const link = `https://api.whatsapp.com/send/?phone=${fullPhone}&text=Oi&type=phone_number`;
       window.open(link, "_blank", "noopener,noreferrer");
     } else {
       toast({ title: "Telefone indisponível", description: "Este cliente não possui celular cadastrado.", variant: "destructive" });
@@ -312,69 +307,66 @@ export function CrmDrawer({
     <Dialog open={!!cliente} onOpenChange={() => onClose()}>
       <DialogContent className="max-w-3xl w-[95vw] max-h-[90vh] p-0 flex flex-col overflow-hidden">
         {/* ── HEADER ── */}
-        <DialogHeader className="px-6 pt-5 pb-4 border-b bg-muted/30 shrink-0 space-y-0">
+        <DialogHeader className="px-6 pt-5 pb-5 border-b bg-muted/30 shrink-0 space-y-0">
           <DialogDescription className="sr-only">Detalhes do cliente em risco</DialogDescription>
 
-          {/* Row 1: Action buttons at the very top */}
-          <div className="flex items-center gap-2 mb-4">
-            {workflow ? (
-              <Select value={workflow.status_workflow} onValueChange={(v) => handleStatusChange(v as WorkflowStatus)}>
-                <SelectTrigger className="h-9 text-xs w-[180px] font-semibold border-primary/30"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="em_tratamento"><span className="flex items-center gap-1.5"><PlayCircle className="h-3.5 w-3.5 text-yellow-600" />Em Tratamento</span></SelectItem>
-                  <SelectItem value="resolvido"><span className="flex items-center gap-1.5"><CheckCircle2 className="h-3.5 w-3.5 text-green-600" />Resolvido</span></SelectItem>
-                  <SelectItem value="perdido"><span className="flex items-center gap-1.5"><XCircle className="h-3.5 w-3.5 text-destructive" />Perdido</span></SelectItem>
-                </SelectContent>
-              </Select>
-            ) : (
-              <Button size="sm" className="h-9 text-xs gap-1.5 px-5 font-semibold" onClick={onStartTreatment}>
-                <PlayCircle className="h-4 w-4" />Iniciar Tratamento
+          {/* Row 1: Action buttons + Churn badge — same line */}
+          <div className="flex items-center justify-between gap-3 mb-5">
+            <div className="flex items-center gap-2">
+              {workflow ? (
+                <Select value={workflow.status_workflow} onValueChange={(v) => handleStatusChange(v as WorkflowStatus)}>
+                  <SelectTrigger className="h-9 text-xs w-[180px] font-semibold border-primary/30"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="em_tratamento"><span className="flex items-center gap-1.5"><PlayCircle className="h-3.5 w-3.5 text-yellow-600" />Em Tratamento</span></SelectItem>
+                    <SelectItem value="resolvido"><span className="flex items-center gap-1.5"><CheckCircle2 className="h-3.5 w-3.5 text-green-600" />Resolvido</span></SelectItem>
+                    <SelectItem value="perdido"><span className="flex items-center gap-1.5"><XCircle className="h-3.5 w-3.5 text-destructive" />Perdido</span></SelectItem>
+                  </SelectContent>
+                </Select>
+              ) : (
+                <Button size="sm" className="h-9 text-xs gap-1.5 px-5 font-semibold" onClick={onStartTreatment}>
+                  <PlayCircle className="h-4 w-4" />Iniciar Tratamento
+                </Button>
+              )}
+              <Button size="sm" variant="outline" className="h-9 text-xs gap-1.5 font-semibold" onClick={handleAssumirOwner}>
+                <UserCheck className="h-3.5 w-3.5" />
+                {workflow?.owner_user_id === user?.id ? "Você é o responsável" : "Assumir Atendimento"}
               </Button>
+            </div>
+            <Badge className={`${BUCKET_COLORS[bucket]} border text-sm font-mono px-3 py-1 shrink-0`}>
+              {score} · {bucket}
+            </Badge>
+          </div>
+
+          {/* Row 2: Client name */}
+          <DialogTitle className="text-xl font-bold leading-tight truncate">
+            {cliente.cliente_nome || `Cliente #${cliente.cliente_id}`}
+          </DialogTitle>
+
+          {/* Row 3: Plan + inline badges */}
+          <div className="flex items-center gap-2 flex-wrap mt-1.5">
+            {cliente.plano_nome && (
+              <div className="flex items-center gap-1.5">
+                <Package className="h-4 w-4 text-primary" />
+                <span className="text-base font-semibold text-primary">{cliente.plano_nome}</span>
+              </div>
             )}
-            <Button size="sm" variant="outline" className="h-9 text-xs gap-1.5 font-semibold" onClick={handleAssumirOwner}>
-              <UserCheck className="h-3.5 w-3.5" />
-              {workflow?.owner_user_id === user?.id ? "Você é o responsável" : "Assumir Atendimento"}
-            </Button>
-          </div>
-
-          {/* Row 2: Name + Plan left  |  Badges stacked right */}
-          <div className="flex items-start justify-between gap-4">
-            {/* Left: Client identity */}
-            <div className="flex-1 min-w-0 space-y-1">
-              <DialogTitle className="text-xl font-bold leading-tight truncate">
-                {cliente.cliente_nome || `Cliente #${cliente.cliente_id}`}
-              </DialogTitle>
-              {cliente.plano_nome && (
-                <div className="flex items-center gap-2">
-                  <Package className="h-4 w-4 text-primary" />
-                  <span className="text-base font-semibold text-primary">{cliente.plano_nome}</span>
-                </div>
-              )}
-            </div>
-
-            {/* Right: Badges stacked vertically */}
-            <div className="flex flex-col items-end gap-1.5 shrink-0">
-              <Badge className={`${BUCKET_COLORS[bucket]} border text-sm font-mono px-3 py-1`}>
-                {score} · {bucket}
+            {statusContrato && (
+              <Badge variant="outline" className={`text-xs ${statusContrato === "Ativo" ? "border-green-300 bg-green-50 text-green-700" : "border-yellow-300 bg-yellow-50 text-yellow-700"}`}>
+                {statusContrato}
               </Badge>
-              {statusContrato && (
-                <Badge variant="outline" className={`text-xs ${statusContrato === "Ativo" ? "border-green-300 bg-green-50 text-green-700" : "border-yellow-300 bg-yellow-50 text-yellow-700"}`}>
-                  {statusContrato}
-                </Badge>
-              )}
-              {metodoCobranca && (
-                <Badge variant="outline" className="text-xs capitalize">{metodoCobranca}</Badge>
-              )}
-              {(tipoServico || tipoConexao) && (
-                <Badge variant="outline" className="text-xs">
-                  {[tipoServico, tipoConexao].filter(Boolean).join(" · ")}
-                </Badge>
-              )}
-            </div>
+            )}
+            {metodoCobranca && (
+              <Badge variant="outline" className="text-xs capitalize">{metodoCobranca}</Badge>
+            )}
+            {(tipoServico || tipoConexao) && (
+              <Badge variant="outline" className="text-xs">
+                {[tipoServico, tipoConexao].filter(Boolean).join(" · ")}
+              </Badge>
+            )}
           </div>
 
-          {/* Row 3: Client data fields — larger text */}
-          <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2">
+          {/* Row 4: Client data fields */}
+          <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2.5">
             <div className="flex items-center gap-2 text-sm">
               <Hash className="h-4 w-4 text-muted-foreground shrink-0" />
               <span className="font-semibold text-foreground">ID:</span>
@@ -420,7 +412,7 @@ export function CrmDrawer({
           </div>
 
           {/* Row 4: Metric boxes */}
-          <div className="mt-4 grid grid-cols-4 sm:grid-cols-7 gap-2 text-center">
+          <div className="mt-5 grid grid-cols-4 sm:grid-cols-7 gap-2 text-center">
             <div className="rounded-lg border bg-card p-2 shadow-sm">
               <Activity className="h-3.5 w-3.5 mx-auto text-primary mb-0.5" />
               <div className="text-xs font-bold">{driverPrincipal}</div>
@@ -468,8 +460,8 @@ export function CrmDrawer({
             )}
           </div>
 
-          {/* Row 5: Score breakdown + Tags */}
-          <div className="mt-3 flex items-center gap-1.5 flex-wrap">
+          {/* Row 5: Score breakdown */}
+          <div className="mt-4 flex items-center gap-1.5 flex-wrap">
             {scores.map(s => (
               <Badge key={s.name} variant="outline" className={`text-[10px] font-mono ${s.val > 0 ? 'border-yellow-300 bg-yellow-50 text-yellow-800' : ''}`}>
                 {s.name}: {s.val}
@@ -477,8 +469,9 @@ export function CrmDrawer({
             ))}
           </div>
 
+          {/* Row 6: Tags */}
           {workflow && (
-            <div className="mt-3 space-y-1.5">
+            <div className="mt-4 space-y-1.5">
               <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1">
                 <Tag className="h-3 w-3" /> Etiquetas
               </span>
