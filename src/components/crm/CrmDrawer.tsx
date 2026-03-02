@@ -26,23 +26,23 @@ import {
   ThumbsDown, ThumbsUp, Minus, X, Plus, Clock, DollarSign,
   AlertTriangle, TrendingDown, Activity, FileText, Calendar,
   Trash2, Pencil, Save, Palette, Copy, CreditCard, ArrowRight,
-  QrCode, Package, Mail, User, Hash, IdCard,
-} from "lucide-react";
+  QrCode, Package, Mail, User, Hash, IdCard } from
+"lucide-react";
 import { getCategoriaDisplay } from "@/lib/categoriasMap";
 
 const BUCKET_COLORS: Record<RiskBucket, string> = {
   OK: "bg-green-100 text-green-800 border-green-200",
   ALERTA: "bg-yellow-100 text-yellow-800 border-yellow-200",
-  "CRÍTICO": "bg-red-100 text-red-800 border-red-200",
+  "CRÍTICO": "bg-red-100 text-red-800 border-red-200"
 };
 
-const STATUS_LABELS: Record<WorkflowStatus, { label: string; icon: typeof PlayCircle; cls: string }> = {
+const STATUS_LABELS: Record<WorkflowStatus, {label: string;icon: typeof PlayCircle;cls: string;}> = {
   em_tratamento: { label: "Em Tratamento", icon: PlayCircle, cls: "text-yellow-600 border-yellow-300 bg-yellow-50" },
   resolvido: { label: "Resolvido", icon: CheckCircle2, cls: "text-green-600 border-green-300 bg-green-50" },
-  perdido: { label: "Perdido", icon: XCircle, cls: "text-destructive border-red-300 bg-red-50" },
+  perdido: { label: "Perdido", icon: XCircle, cls: "text-destructive border-red-300 bg-red-50" }
 };
 
-const EVENTO_LABELS: Record<string, { label: string; icon: typeof AlertTriangle; color: string }> = {
+const EVENTO_LABELS: Record<string, {label: string;icon: typeof AlertTriangle;color: string;}> = {
   inadimplencia_iniciou: { label: "Inadimplência iniciou", icon: DollarSign, color: "text-destructive" },
   inadimplencia_agravou: { label: "Atraso agravou", icon: TrendingDown, color: "text-destructive" },
   inadimplencia_resolvida: { label: "Pagamento efetuado", icon: CheckCircle2, color: "text-green-600" },
@@ -57,13 +57,13 @@ const EVENTO_LABELS: Record<string, { label: string; icon: typeof AlertTriangle;
   suspensao_fidelidade: { label: "Suspensão de fidelidade", icon: FileText, color: "text-yellow-600" },
   score_financeiro: { label: "Score Financeiro", icon: DollarSign, color: "text-orange-600" },
   score_qualidade: { label: "Score Qualidade", icon: Activity, color: "text-blue-600" },
-  score_comportamental: { label: "Score Comportamental", icon: TrendingDown, color: "text-purple-600" },
+  score_comportamental: { label: "Score Comportamental", icon: TrendingDown, color: "text-purple-600" }
 };
 
 const TAG_COLORS = [
-  "#ef4444", "#f97316", "#eab308", "#22c55e", "#06b6d4",
-  "#3b82f6", "#6366f1", "#8b5cf6", "#ec4899", "#64748b",
-];
+"#ef4444", "#f97316", "#eab308", "#22c55e", "#06b6d4",
+"#3b82f6", "#6366f1", "#8b5cf6", "#ec4899", "#64748b"];
+
 
 interface ClienteExtraData {
   pix_codigo?: string;
@@ -87,7 +87,7 @@ interface CrmDrawerProps {
   workflow: CrmWorkflowRecord | undefined;
   events: ChurnEvent[];
   chamadosCliente: ChamadoData[];
-  npsData?: { nota?: number; classificacao?: string };
+  npsData?: {nota?: number;classificacao?: string;};
   onClose: () => void;
   onStartTreatment: () => Promise<void>;
   onUpdateStatus: (status: WorkflowStatus) => Promise<void>;
@@ -96,21 +96,21 @@ interface CrmDrawerProps {
 }
 
 /** Small helper to copy text and show toast */
-function CopyButton({ value, label }: { value: string; label: string }) {
+function CopyButton({ value, label }: {value: string;label: string;}) {
   const { toast } = useToast();
   return (
     <button
-      onClick={() => { navigator.clipboard.writeText(value); toast({ title: `${label} copiado!` }); }}
-      className="p-1 rounded hover:bg-primary/10 hover:text-primary transition-colors" title={`Copiar ${label}`}
-    >
+      onClick={() => {navigator.clipboard.writeText(value);toast({ title: `${label} copiado!` });}}
+      className="p-1 rounded hover:bg-primary/10 hover:text-primary transition-colors" title={`Copiar ${label}`}>
+      
       <Copy className="h-3.5 w-3.5" />
-    </button>
-  );
+    </button>);
+
 }
 
 export function CrmDrawer({
   cliente, score, bucket, workflow, events, chamadosCliente, npsData, onClose,
-  onStartTreatment, onUpdateStatus, onUpdateTags, onUpdateOwner,
+  onStartTreatment, onUpdateStatus, onUpdateTags, onUpdateOwner
 }: CrmDrawerProps) {
   const { user } = useAuth();
   const { ispId } = useActiveIsp();
@@ -133,15 +133,15 @@ export function CrmDrawer({
     if (!clienteId || !ispId) return;
     (async () => {
       try {
-        const { data } = await externalSupabase
-          .from("eventos")
-          .select("pix_codigo, linha_digitavel, pix_qrcode_img, cliente_documento, cliente_tipo_pessoa, cliente_email, cliente_celular, dia_vencimento, metodo_cobranca, status_contrato, tipo_servico, tipo_conexao")
-          .eq("isp_id", ispId)
-          .eq("cliente_id", clienteId)
-          .order("event_datetime", { ascending: false })
-          .limit(1);
+        const { data } = await externalSupabase.
+        from("eventos").
+        select("pix_codigo, linha_digitavel, pix_qrcode_img, cliente_documento, cliente_tipo_pessoa, cliente_email, cliente_celular, dia_vencimento, metodo_cobranca, status_contrato, tipo_servico, tipo_conexao").
+        eq("isp_id", ispId).
+        eq("cliente_id", clienteId).
+        order("event_datetime", { ascending: false }).
+        limit(1);
         if (data && data.length > 0) setExtraData(data[0]);
-      } catch { /* silent */ }
+      } catch {/* silent */}
     })();
   }, [clienteId, ispId]);
 
@@ -160,9 +160,9 @@ export function CrmDrawer({
   const ltv = useMemo(() => {
     if (!cliente) return null;
     if ((cliente as any).ltv_estimado != null && (cliente as any).ltv_estimado > 0)
-      return (cliente as any).ltv_estimado;
+    return (cliente as any).ltv_estimado;
     if (cliente.valor_mensalidade && (cliente as any).tempo_cliente_meses)
-      return cliente.valor_mensalidade * (cliente as any).tempo_cliente_meses;
+    return cliente.valor_mensalidade * (cliente as any).tempo_cliente_meses;
     return null;
   }, [cliente]);
 
@@ -186,13 +186,13 @@ export function CrmDrawer({
 
   const handleAddTag = async (tag: string) => {
     if (!tag || clienteTags.includes(tag)) return;
-    try { await onUpdateTags([...clienteTags, tag]); }
-    catch { toast({ title: "Erro ao adicionar tag", variant: "destructive" }); }
+    try {await onUpdateTags([...clienteTags, tag]);}
+    catch {toast({ title: "Erro ao adicionar tag", variant: "destructive" });}
   };
 
   const handleRemoveTag = async (tag: string) => {
-    try { await onUpdateTags(clienteTags.filter(t => t !== tag)); }
-    catch { toast({ title: "Erro ao remover tag", variant: "destructive" }); }
+    try {await onUpdateTags(clienteTags.filter((t) => t !== tag));}
+    catch {toast({ title: "Erro ao remover tag", variant: "destructive" });}
   };
 
   const handleCreateGlobalTag = async () => {
@@ -201,7 +201,7 @@ export function CrmDrawer({
       await createTag(newTagName.trim(), newTagColor);
       toast({ title: `Tag "${newTagName}" criada` });
       setNewTagName("");
-    } catch { toast({ title: "Erro ao criar tag", variant: "destructive" }); }
+    } catch {toast({ title: "Erro ao criar tag", variant: "destructive" });}
   };
 
   const handleAddComment = async () => {
@@ -210,7 +210,7 @@ export function CrmDrawer({
       await addComment(noteText.trim(), "comment");
       setNoteText("");
       toast({ title: "Nota adicionada" });
-    } catch { toast({ title: "Erro ao salvar nota", variant: "destructive" }); }
+    } catch {toast({ title: "Erro ao salvar nota", variant: "destructive" });}
   };
 
   const handleEditComment = async (commentId: string) => {
@@ -220,12 +220,12 @@ export function CrmDrawer({
       setEditingCommentId(null);
       setEditingText("");
       toast({ title: "Nota atualizada" });
-    } catch { toast({ title: "Erro ao editar nota", variant: "destructive" }); }
+    } catch {toast({ title: "Erro ao editar nota", variant: "destructive" });}
   };
 
   const handleDeleteComment = async (commentId: string) => {
-    try { await deleteComment(commentId); toast({ title: "Interação removida" }); }
-    catch { toast({ title: "Erro ao excluir", variant: "destructive" }); }
+    try {await deleteComment(commentId);toast({ title: "Interação removida" });}
+    catch {toast({ title: "Erro ao excluir", variant: "destructive" });}
   };
 
   const handleQuickAction = async (actionType: string, label: string) => {
@@ -234,19 +234,19 @@ export function CrmDrawer({
       await addComment(`Ação: ${label}`, "action", { action_type: actionType });
       if (workflow) await onUpdateStatus(workflow.status_workflow);
       toast({ title: `${label} registrado` });
-    } catch { toast({ title: "Erro ao registrar ação", variant: "destructive" }); }
+    } catch {toast({ title: "Erro ao registrar ação", variant: "destructive" });}
     setActionLoading(null);
   };
 
   const handleAssumirOwner = async () => {
     if (!user) return;
-    try { await onUpdateOwner(user.id); toast({ title: "Você assumiu este atendimento" }); }
-    catch { toast({ title: "Erro", variant: "destructive" }); }
+    try {await onUpdateOwner(user.id);toast({ title: "Você assumiu este atendimento" });}
+    catch {toast({ title: "Erro", variant: "destructive" });}
   };
 
   const handleStatusChange = async (status: WorkflowStatus) => {
-    try { await onUpdateStatus(status); toast({ title: `Marcado como ${STATUS_LABELS[status].label}` }); }
-    catch { toast({ title: "Erro ao atualizar status", variant: "destructive" }); }
+    try {await onUpdateStatus(status);toast({ title: `Marcado como ${STATUS_LABELS[status].label}` });}
+    catch {toast({ title: "Erro ao atualizar status", variant: "destructive" });}
   };
 
   const handleWhatsApp = () => {
@@ -313,51 +313,51 @@ export function CrmDrawer({
   };
 
   const scores = [
-    { name: "Financeiro", val: cliente.score_financeiro ?? 0 },
-    { name: "Suporte", val: cliente.score_suporte ?? 0 },
-    { name: "NPS", val: cliente.score_nps ?? 0 },
-    { name: "Qualidade", val: cliente.score_qualidade ?? 0 },
-    { name: "Comportamental", val: cliente.score_comportamental ?? 0 },
-  ].sort((a, b) => b.val - a.val);
+  { name: "Financeiro", val: cliente.score_financeiro ?? 0 },
+  { name: "Suporte", val: cliente.score_suporte ?? 0 },
+  { name: "NPS", val: cliente.score_nps ?? 0 },
+  { name: "Qualidade", val: cliente.score_qualidade ?? 0 },
+  { name: "Comportamental", val: cliente.score_comportamental ?? 0 }].
+  sort((a, b) => b.val - a.val);
   const driverPrincipal = scores[0]?.name || "—";
 
   const getTagColor = (tagName: string) => {
-    const gt = globalTags.find(t => t.name === tagName);
+    const gt = globalTags.find((t) => t.name === tagName);
     return gt?.color || "#64748b";
   };
 
   const formatChamadoDate = (dateStr: string) => {
     try {
-      if (dateStr.includes("/")) { const [datePart] = dateStr.split(" "); return datePart; }
+      if (dateStr.includes("/")) {const [datePart] = dateStr.split(" ");return datePart;}
       return safeFormatDate(dateStr, { day: "2-digit", month: "2-digit", year: "2-digit" });
-    } catch { return dateStr; }
+    } catch {return dateStr;}
   };
 
   return (
     <Dialog open={!!cliente} onOpenChange={() => onClose()}>
       <DialogContent className="max-w-3xl w-[95vw] max-h-[90vh] p-0 flex flex-col overflow-hidden">
         {/* ── HEADER ── */}
-        <DialogHeader className="px-6 pt-5 pb-8 border-b bg-muted/30 shrink-0 space-y-0">
+        <DialogHeader className="px-6 pt-5 pb-6 border-b bg-muted/30 shrink-0 space-y-0 my-[15px] py-[15px]">
           <DialogDescription className="sr-only">Detalhes do cliente em risco</DialogDescription>
 
           {/* Header core: actions/name on left + all badges on right */}
           <div className="flex items-start justify-between gap-5">
             <div className="flex-1 min-w-0 space-y-4">
               <div className="flex flex-wrap items-center gap-2.5 pb-1">
-                {workflow ? (
-                  <Select value={workflow.status_workflow} onValueChange={(v) => handleStatusChange(v as WorkflowStatus)}>
+                {workflow ?
+                <Select value={workflow.status_workflow} onValueChange={(v) => handleStatusChange(v as WorkflowStatus)}>
                     <SelectTrigger className="h-9 text-xs w-[180px] font-semibold border-primary/30"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="em_tratamento"><span className="flex items-center gap-1.5"><PlayCircle className="h-3.5 w-3.5 text-yellow-600" />Em Tratamento</span></SelectItem>
                       <SelectItem value="resolvido"><span className="flex items-center gap-1.5"><CheckCircle2 className="h-3.5 w-3.5 text-green-600" />Resolvido</span></SelectItem>
                       <SelectItem value="perdido"><span className="flex items-center gap-1.5"><XCircle className="h-3.5 w-3.5 text-destructive" />Perdido</span></SelectItem>
                     </SelectContent>
-                  </Select>
-                ) : (
-                  <Button size="sm" className="h-9 text-xs gap-1.5 px-5 font-semibold" onClick={onStartTreatment}>
+                  </Select> :
+
+                <Button size="sm" className="h-9 text-xs gap-1.5 px-5 font-semibold" onClick={onStartTreatment}>
                     <PlayCircle className="h-4 w-4" />Iniciar Tratamento
                   </Button>
-                )}
+                }
                 <Button size="sm" variant="outline" className="h-9 text-xs gap-1.5 font-semibold" onClick={handleAssumirOwner}>
                   <UserCheck className="h-3.5 w-3.5" />
                   {workflow?.owner_user_id === user?.id ? "Você é o responsável" : "Assumir Atendimento"}
@@ -369,12 +369,12 @@ export function CrmDrawer({
                   {cliente.cliente_nome || `Cliente #${cliente.cliente_id}`}
                 </DialogTitle>
 
-                {cliente.plano_nome && (
-                  <div className="flex items-center gap-1.5">
+                {cliente.plano_nome &&
+                <div className="flex items-center gap-1.5">
                     <Package className="h-4 w-4 text-primary" />
                     <span className="text-base font-semibold text-primary leading-tight">{cliente.plano_nome}</span>
                   </div>
-                )}
+                }
               </div>
             </div>
 
@@ -383,76 +383,76 @@ export function CrmDrawer({
                 {score} · {bucket}
               </Badge>
 
-              {(statusContrato || metodoCobranca || tipoServico || tipoConexao) && (
-                <div className="flex flex-wrap justify-end gap-1.5">
-                  {statusContrato && (
-                    <Badge variant="outline" className={`text-xs ${statusContrato === "Ativo" ? "border-green-300 bg-green-50 text-green-700" : "border-yellow-300 bg-yellow-50 text-yellow-700"}`}>
+              {(statusContrato || metodoCobranca || tipoServico || tipoConexao) &&
+              <div className="flex flex-wrap justify-end gap-1.5">
+                  {statusContrato &&
+                <Badge variant="outline" className={`text-xs ${statusContrato === "Ativo" ? "border-green-300 bg-green-50 text-green-700" : "border-yellow-300 bg-yellow-50 text-yellow-700"}`}>
                       {statusContrato}
                     </Badge>
-                  )}
-                  {metodoCobranca && (
-                    <Badge variant="outline" className="text-xs capitalize">{metodoCobranca}</Badge>
-                  )}
-                  {(tipoServico || tipoConexao) && (
-                    <Badge variant="outline" className="text-xs">
+                }
+                  {metodoCobranca &&
+                <Badge variant="outline" className="text-xs capitalize">{metodoCobranca}</Badge>
+                }
+                  {(tipoServico || tipoConexao) &&
+                <Badge variant="outline" className="text-xs">
                       {[tipoServico, tipoConexao].filter(Boolean).join(" · ")}
                     </Badge>
-                  )}
+                }
                 </div>
-              )}
+              }
             </div>
           </div>
 
           {/* ── Bloco B: Dados cadastrais ── */}
-          <Separator className="my-6" />
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
+          <Separator className="mt-6" />
+          <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
             <div className="flex items-center gap-2 text-sm leading-relaxed">
               <Hash className="h-4 w-4 text-muted-foreground shrink-0" />
               <span className="font-semibold text-foreground">ID:</span>
               <span className="text-muted-foreground">{cliente.cliente_id}</span>
               <CopyButton value={String(cliente.cliente_id)} label="ID" />
             </div>
-            {clienteDocumento && (
-              <div className="flex items-center gap-2 text-sm leading-relaxed">
+            {clienteDocumento &&
+            <div className="flex items-center gap-2 text-sm leading-relaxed">
                 <IdCard className="h-4 w-4 text-muted-foreground shrink-0" />
                 <span className="font-semibold text-foreground">Documento:</span>
                 <span className="text-muted-foreground">{clienteDocumento}</span>
                 <CopyButton value={clienteDocumento} label="Documento" />
               </div>
-            )}
+            }
             <div className="flex items-center gap-2 text-sm leading-relaxed">
               <User className="h-4 w-4 text-muted-foreground shrink-0" />
               <span className="font-semibold text-foreground">Pessoa:</span>
               <span className="text-muted-foreground">{tipoPessoaLabel}</span>
             </div>
-            {clienteEmail && (
-              <div className="flex items-center gap-2 text-sm min-w-0 leading-relaxed">
+            {clienteEmail &&
+            <div className="flex items-center gap-2 text-sm min-w-0 leading-relaxed">
                 <Mail className="h-4 w-4 text-muted-foreground shrink-0" />
                 <span className="font-semibold text-foreground">E-mail:</span>
                 <span className="text-muted-foreground truncate">{clienteEmail}</span>
                 <CopyButton value={clienteEmail} label="E-mail" />
               </div>
-            )}
-            {clienteCelular && (
-              <div className="flex items-center gap-2 text-sm leading-relaxed">
+            }
+            {clienteCelular &&
+            <div className="flex items-center gap-2 text-sm leading-relaxed">
                 <Phone className="h-4 w-4 text-muted-foreground shrink-0" />
                 <span className="font-semibold text-foreground">Telefone:</span>
                 <span className="text-muted-foreground">{clienteCelular}</span>
                 <CopyButton value={clienteCelular} label="Telefone" />
               </div>
-            )}
-            {diaVencimento != null && (
-              <div className="flex items-center gap-2 text-sm leading-relaxed">
+            }
+            {diaVencimento != null &&
+            <div className="flex items-center gap-2 text-sm leading-relaxed">
                 <Calendar className="h-4 w-4 text-muted-foreground shrink-0" />
                 <span className="font-semibold text-foreground">Vencimento:</span>
                 <span className="text-muted-foreground">Dia {diaVencimento}</span>
               </div>
-            )}
+            }
           </div>
 
           {/* ── Bloco C: Métricas rápidas ── */}
-          <Separator className="my-6" />
-          <div className="grid grid-cols-4 sm:grid-cols-7 gap-3 text-center">
+          <Separator className="mt-5" />
+          <div className="mt-5 grid grid-cols-4 sm:grid-cols-7 gap-3 text-center">
             <div className="rounded-lg border bg-card p-2 shadow-sm">
               <Activity className="h-3.5 w-3.5 mx-auto text-primary mb-0.5" />
               <div className="text-xs font-bold">{driverPrincipal}</div>
@@ -475,73 +475,73 @@ export function CrmDrawer({
               <div className="text-xs font-bold">{cliente.qtd_chamados_30d || 0}</div>
               <div className="text-[9px] text-muted-foreground">Chamados 30d</div>
             </div>
-            {npsData?.nota != null && (
-              <div className="rounded-lg border bg-card p-2 shadow-sm">
-                {npsData.classificacao === "DETRATOR" ? <ThumbsDown className="h-3.5 w-3.5 mx-auto text-destructive mb-0.5" />
-                 : npsData.classificacao === "PROMOTOR" ? <ThumbsUp className="h-3.5 w-3.5 mx-auto text-green-600 mb-0.5" />
-                 : <Minus className="h-3.5 w-3.5 mx-auto text-yellow-600 mb-0.5" />}
+            {npsData?.nota != null &&
+            <div className="rounded-lg border bg-card p-2 shadow-sm">
+                {npsData.classificacao === "DETRATOR" ? <ThumbsDown className="h-3.5 w-3.5 mx-auto text-destructive mb-0.5" /> :
+              npsData.classificacao === "PROMOTOR" ? <ThumbsUp className="h-3.5 w-3.5 mx-auto text-green-600 mb-0.5" /> :
+              <Minus className="h-3.5 w-3.5 mx-auto text-yellow-600 mb-0.5" />}
                 <div className="text-xs font-bold">{npsData.nota}</div>
                 <div className="text-[9px] text-muted-foreground">NPS</div>
               </div>
-            )}
-            {tempoContrato && (
-              <div className="rounded-lg border bg-card p-2 shadow-sm">
+            }
+            {tempoContrato &&
+            <div className="rounded-lg border bg-card p-2 shadow-sm">
                 <Calendar className="h-3.5 w-3.5 mx-auto text-muted-foreground mb-0.5" />
                 <div className="text-xs font-bold">{tempoContrato}</div>
                 <div className="text-[9px] text-muted-foreground">Contrato</div>
               </div>
-            )}
-            {ltv != null && ltv > 0 && (
-              <div className="rounded-lg border bg-card p-2 shadow-sm">
+            }
+            {ltv != null && ltv > 0 &&
+            <div className="rounded-lg border bg-card p-2 shadow-sm">
                 <DollarSign className="h-3.5 w-3.5 mx-auto text-primary mb-0.5" />
                 <div className="text-xs font-bold">R${Math.round(ltv).toLocaleString("pt-BR")}</div>
                 <div className="text-[9px] text-muted-foreground">LTV</div>
               </div>
-            )}
+            }
           </div>
 
           {/* ── Bloco D: Score breakdown ── */}
-          <Separator className="my-6" />
-          <div className="flex items-center gap-2 flex-wrap">
-            {scores.map(s => (
-              <Badge key={s.name} variant="outline" className={`text-[10px] font-mono ${s.val > 0 ? 'border-yellow-300 bg-yellow-50 text-yellow-800' : ''}`}>
+          <Separator className="mt-5" />
+          <div className="mt-4 flex items-center gap-2 flex-wrap my-[10px]">
+            {scores.map((s) =>
+            <Badge key={s.name} variant="outline" className={`text-[10px] font-mono ${s.val > 0 ? 'border-yellow-300 bg-yellow-50 text-yellow-800' : ''}`}>
                 {s.name}: {s.val}
               </Badge>
-            ))}
+            )}
           </div>
 
           {/* ── Bloco E: Etiquetas ── */}
-          {workflow && (
-            <div className="mt-6 pt-6 border-t space-y-3">
-              <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1">
+          {workflow &&
+          <div className="mt-5 pt-4 border-t space-y-3 my-[10px] py-0">
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1 my-[10px]">
                 <Tag className="h-3 w-3" /> Etiquetas
               </span>
               <div className="flex flex-wrap gap-1.5">
-                {clienteTags.map(t => (
-                  <Badge key={t} className="text-xs gap-1.5 pr-1 py-0.5 text-white border-0" style={{ backgroundColor: getTagColor(t) }}>
+                {clienteTags.map((t) =>
+              <Badge key={t} className="text-xs gap-1.5 pr-1 py-0.5 text-white border-0" style={{ backgroundColor: getTagColor(t) }}>
                     {t}
                     <button onClick={() => handleRemoveTag(t)} className="hover:opacity-70 transition-opacity"><X className="h-3 w-3" /></button>
                   </Badge>
-                ))}
+              )}
                 <Popover open={showTagPicker} onOpenChange={setShowTagPicker}>
                   <PopoverTrigger asChild>
                     <Button variant="outline" size="sm" className="h-7 w-7 p-0 border-dashed rounded-full"><Plus className="h-3 w-3" /></Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-64 p-3 space-y-3" align="start">
                     <span className="text-xs font-semibold">Tags disponíveis</span>
-                    {globalTags.length > 0 ? (
-                      <div className="flex flex-wrap gap-1.5 max-h-[150px] overflow-y-auto">
-                        {globalTags.filter(t => !clienteTags.includes(t.name)).map(t => (
-                          <button key={t.id} onClick={() => { handleAddTag(t.name); setShowTagPicker(false); }}
-                            className="text-xs px-2 py-1 rounded-full text-white hover:opacity-80 transition-opacity" style={{ backgroundColor: t.color }}>{t.name}</button>
-                        ))}
-                      </div>
-                    ) : <p className="text-[11px] text-muted-foreground italic">Nenhuma tag criada ainda.</p>}
+                    {globalTags.length > 0 ?
+                  <div className="flex flex-wrap gap-1.5 max-h-[150px] overflow-y-auto">
+                        {globalTags.filter((t) => !clienteTags.includes(t.name)).map((t) =>
+                    <button key={t.id} onClick={() => {handleAddTag(t.name);setShowTagPicker(false);}}
+                    className="text-xs px-2 py-1 rounded-full text-white hover:opacity-80 transition-opacity" style={{ backgroundColor: t.color }}>{t.name}</button>
+                    )}
+                      </div> :
+                  <p className="text-[11px] text-muted-foreground italic">Nenhuma tag criada ainda.</p>}
                     <Separator />
                     <span className="text-[11px] font-semibold">Criar nova tag</span>
                     <div className="flex gap-1.5 items-center">
                       <Input placeholder="Nome..." value={newTagName} onChange={(e) => setNewTagName(e.target.value)}
-                        onKeyDown={(e) => { if (e.key === "Enter") handleCreateGlobalTag(); }} className="h-7 text-xs flex-1" />
+                    onKeyDown={(e) => {if (e.key === "Enter") handleCreateGlobalTag();}} className="h-7 text-xs flex-1" />
                       <Popover>
                         <PopoverTrigger asChild>
                           <button className="h-7 w-7 rounded-md border flex items-center justify-center shrink-0" style={{ backgroundColor: newTagColor }}>
@@ -550,10 +550,10 @@ export function CrmDrawer({
                         </PopoverTrigger>
                         <PopoverContent className="w-auto p-2" align="end">
                           <div className="grid grid-cols-5 gap-1.5">
-                            {TAG_COLORS.map(c => (
-                              <button key={c} className={`h-6 w-6 rounded-full border-2 ${newTagColor === c ? "border-foreground" : "border-transparent"}`}
-                                style={{ backgroundColor: c }} onClick={() => setNewTagColor(c)} />
-                            ))}
+                            {TAG_COLORS.map((c) =>
+                          <button key={c} className={`h-6 w-6 rounded-full border-2 ${newTagColor === c ? "border-foreground" : "border-transparent"}`}
+                          style={{ backgroundColor: c }} onClick={() => setNewTagColor(c)} />
+                          )}
                           </div>
                         </PopoverContent>
                       </Popover>
@@ -563,12 +563,12 @@ export function CrmDrawer({
                 </Popover>
               </div>
             </div>
-          )}
+          }
         </DialogHeader>
 
         {/* ── TABBED CONTENT ── */}
         <div className="flex-1 overflow-hidden">
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col h-full">
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col h-full py-[5px]">
             <TabsList className="mx-5 mt-3 w-fit bg-muted/50 p-1">
               <TabsTrigger value="acompanhamento" className="text-xs gap-1.5 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
                 <MessageSquare className="h-3.5 w-3.5" />Acompanhamento
@@ -588,18 +588,18 @@ export function CrmDrawer({
             <TabsContent value="acompanhamento" className="flex-1 overflow-hidden m-0">
               <ScrollArea className="h-[calc(90vh-520px)]">
                 <div className="p-5 space-y-4">
-                  {!workflow && (
-                    <Button className="w-full h-10 gap-2" onClick={onStartTreatment}>
+                  {!workflow &&
+                  <Button className="w-full h-10 gap-2" onClick={onStartTreatment}>
                       <PlayCircle className="h-4 w-4" />Enviar para Tratamento
                     </Button>
-                  )}
+                  }
 
                   <div className="space-y-2">
                     <span className="text-sm font-semibold uppercase text-muted-foreground flex items-center gap-1.5">
                       <Pencil className="h-3.5 w-3.5" /> Inserir Nota
                     </span>
                     <Textarea placeholder="Escreva uma observação, nota interna ou próxima ação..." value={noteText}
-                      onChange={(e) => setNoteText(e.target.value)} className="min-h-[80px] text-sm resize-none" />
+                    onChange={(e) => setNoteText(e.target.value)} className="min-h-[80px] text-sm resize-none" />
                     <div className="flex gap-2">
                       <Button size="sm" className="h-8 text-xs px-4" onClick={handleAddComment} disabled={!noteText.trim()}>
                         <FileText className="h-3.5 w-3.5 mr-1.5" />Salvar nota
@@ -616,22 +616,22 @@ export function CrmDrawer({
                     <span className="text-xs font-semibold uppercase text-muted-foreground flex items-center gap-1.5">
                       <Clock className="h-3 w-3" /> Histórico de Interações ({comments.length})
                     </span>
-                    {comments.length === 0 ? (
-                      <p className="text-xs text-muted-foreground italic py-3 text-center">Nenhuma interação registrada ainda.</p>
-                    ) : (
-                      <div className="space-y-2 max-h-[250px] overflow-y-auto">
-                        {comments.map((c) => (
-                          <div key={c.id} className={`rounded-lg border p-3 text-sm space-y-1 ${c.type === "action" ? "bg-primary/5 border-primary/20" : "bg-muted/30 border-muted"}`}>
-                            {editingCommentId === c.id ? (
-                              <div className="space-y-2">
+                    {comments.length === 0 ?
+                    <p className="text-xs text-muted-foreground italic py-3 text-center">Nenhuma interação registrada ainda.</p> :
+
+                    <div className="space-y-2 max-h-[250px] overflow-y-auto">
+                        {comments.map((c) =>
+                      <div key={c.id} className={`rounded-lg border p-3 text-sm space-y-1 ${c.type === "action" ? "bg-primary/5 border-primary/20" : "bg-muted/30 border-muted"}`}>
+                            {editingCommentId === c.id ?
+                        <div className="space-y-2">
                                 <Textarea value={editingText} onChange={(e) => setEditingText(e.target.value)} className="min-h-[60px] text-xs resize-none" />
                                 <div className="flex gap-1.5">
                                   <Button size="sm" className="h-6 text-[10px] gap-1 px-2" onClick={() => handleEditComment(c.id)}><Save className="h-2.5 w-2.5" />Salvar</Button>
                                   <Button size="sm" variant="ghost" className="h-6 text-[10px] px-2" onClick={() => setEditingCommentId(null)}>Cancelar</Button>
                                 </div>
-                              </div>
-                            ) : (
-                              <div className="flex justify-between items-start gap-2">
+                              </div> :
+
+                        <div className="flex justify-between items-start gap-2">
                                 <span className="font-medium flex items-center gap-1.5 flex-1">
                                   {c.type === "action" ? <Activity className="h-3.5 w-3.5 text-primary shrink-0" /> : <MessageSquare className="h-3.5 w-3.5 text-muted-foreground shrink-0" />}
                                   {c.body}
@@ -640,21 +640,21 @@ export function CrmDrawer({
                                   <span className="text-muted-foreground text-[10px] mr-1">
                                     {safeFormatDate(c.created_at, { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
                                   </span>
-                                  {c.type === "comment" && (
-                                    <button onClick={() => { setEditingCommentId(c.id); setEditingText(c.body); }} className="p-0.5 hover:text-primary transition-colors" title="Editar">
+                                  {c.type === "comment" &&
+                            <button onClick={() => {setEditingCommentId(c.id);setEditingText(c.body);}} className="p-0.5 hover:text-primary transition-colors" title="Editar">
                                       <Pencil className="h-3 w-3" />
                                     </button>
-                                  )}
+                            }
                                   <button onClick={() => handleDeleteComment(c.id)} className="p-0.5 hover:text-destructive transition-colors" title="Excluir">
                                     <Trash2 className="h-3 w-3" />
                                   </button>
                                 </div>
                               </div>
-                            )}
+                        }
                           </div>
-                        ))}
+                      )}
                       </div>
-                    )}
+                    }
                   </div>
 
                   <Separator />
@@ -674,22 +674,22 @@ export function CrmDrawer({
                       <Send className="h-4 w-4 shrink-0" />Enviar WhatsApp
                     </Button>
                     <Button variant="outline" className={`h-11 text-xs gap-2 justify-start font-medium ${hasPix ? "hover:bg-primary/5 hover:border-primary/30" : "opacity-40 cursor-not-allowed"}`}
-                      onClick={handleCopyPix} disabled={!hasPix}>
+                    onClick={handleCopyPix} disabled={!hasPix}>
                       <Copy className="h-4 w-4 shrink-0" />Copiar PIX
                       {!hasPix && <span className="text-[9px] text-muted-foreground ml-auto">indisponível</span>}
                     </Button>
                     <Button variant="outline" className={`h-11 text-xs gap-2 justify-start font-medium ${hasBoleto ? "hover:bg-primary/5 hover:border-primary/30" : "opacity-40 cursor-not-allowed"}`}
-                      onClick={handleCopyBoleto} disabled={!hasBoleto}>
+                    onClick={handleCopyBoleto} disabled={!hasBoleto}>
                       <CreditCard className="h-4 w-4 shrink-0" />Copiar Boleto
                       {!hasBoleto && <span className="text-[9px] text-muted-foreground ml-auto">indisponível</span>}
                     </Button>
                     <Button variant="outline" className={`h-11 text-xs gap-2 justify-start font-medium ${hasQrCode ? "hover:bg-primary/5 hover:border-primary/30" : "opacity-40 cursor-not-allowed"}`}
-                      onClick={handleCopyPixQrCode} disabled={!hasQrCode}>
+                    onClick={handleCopyPixQrCode} disabled={!hasQrCode}>
                       <QrCode className="h-4 w-4 shrink-0" />Copiar PIX QR Code
                       {!hasQrCode && <span className="text-[9px] text-muted-foreground ml-auto">indisponível</span>}
                     </Button>
                     <Button variant="outline" className="h-11 text-xs gap-2 justify-start font-medium hover:bg-primary/5 hover:border-primary/30"
-                      onClick={() => handleQuickAction("ligacao", "Ligação realizada")}>
+                    onClick={() => handleQuickAction("ligacao", "Ligação realizada")}>
                       <Phone className="h-4 w-4 shrink-0" />Registrar Contato
                     </Button>
                   </div>
@@ -698,11 +698,11 @@ export function CrmDrawer({
 
                   <div className="grid grid-cols-2 gap-2">
                     <Button variant="outline" className="h-11 text-xs gap-2 justify-start bg-green-50 hover:bg-green-100 border-green-200 text-green-700"
-                      onClick={() => handleStatusChange("resolvido")}>
+                    onClick={() => handleStatusChange("resolvido")}>
                       <CheckCircle2 className="h-4 w-4" />Caso Resolvido
                     </Button>
                     <Button variant="outline" className="h-11 text-xs gap-2 justify-start bg-red-50 hover:bg-red-100 border-red-200 text-red-700"
-                      onClick={() => handleStatusChange("perdido")}>
+                    onClick={() => handleStatusChange("perdido")}>
                       <XCircle className="h-4 w-4" />Cliente em Churn
                     </Button>
                   </div>
@@ -728,7 +728,7 @@ export function CrmDrawer({
                       Em breve você poderá criar chamados de forma integrada.
                     </p>
                     <Button variant="outline" className="h-11 text-xs gap-2 font-medium"
-                      onClick={() => { toast({ title: "Chamado aberto", description: "Ordem de serviço criada via ERP." }); handleQuickAction("os_opened", "OS aberta no ERP"); }}>
+                    onClick={() => {toast({ title: "Chamado aberto", description: "Ordem de serviço criada via ERP." });handleQuickAction("os_opened", "OS aberta no ERP");}}>
                       <Wrench className="h-4 w-4" />Abrir Chamado (OS)
                     </Button>
                   </div>
@@ -745,17 +745,17 @@ export function CrmDrawer({
                     Mapa de Churn
                     {events.length > 0 && <Badge variant="secondary" className="text-[10px] ml-1">{events.length}</Badge>}
                   </h4>
-                  {events.length > 0 ? (
-                    <div className="space-y-2">
+                  {events.length > 0 ?
+                  <div className="space-y-2">
                       {events.map((e, idx) => {
-                        const dateStr = safeFormatDate(e.data_evento, { day: "2-digit", month: "2-digit", year: "2-digit" });
-                        const evtConfig = EVENTO_LABELS[e.tipo_evento];
-                        const EvtIcon = evtConfig?.icon || AlertTriangle;
-                        const evtColor = evtConfig?.color || "text-muted-foreground";
-                        const isChamadoReincidente = e.tipo_evento === "chamado_reincidente";
+                      const dateStr = safeFormatDate(e.data_evento, { day: "2-digit", month: "2-digit", year: "2-digit" });
+                      const evtConfig = EVENTO_LABELS[e.tipo_evento];
+                      const EvtIcon = evtConfig?.icon || AlertTriangle;
+                      const evtColor = evtConfig?.color || "text-muted-foreground";
+                      const isChamadoReincidente = e.tipo_evento === "chamado_reincidente";
 
-                        return (
-                          <div key={e.id || idx} className={`rounded-lg border p-3 text-sm space-y-2 ${e.tipo_evento.includes("detrator") || e.tipo_evento.includes("cancelamento") ? "border-destructive/30 bg-destructive/5" : "bg-card"}`}>
+                      return (
+                        <div key={e.id || idx} className={`rounded-lg border p-3 text-sm space-y-2 ${e.tipo_evento.includes("detrator") || e.tipo_evento.includes("cancelamento") ? "border-destructive/30 bg-destructive/5" : "bg-card"}`}>
                             <div className="flex justify-between items-center gap-2">
                               <span className={`font-medium flex items-center gap-1.5 ${evtColor}`}>
                                 <EvtIcon className="h-3.5 w-3.5 shrink-0" />{evtConfig?.label || e.tipo_evento}
@@ -766,11 +766,11 @@ export function CrmDrawer({
                               </div>
                             </div>
                             {e.descricao && <div className="text-muted-foreground text-xs leading-relaxed">{e.descricao}</div>}
-                            {isChamadoReincidente && chamadosCliente.length > 0 && (
-                              <div className="mt-1 space-y-1 pl-3 border-l-2 border-yellow-300">
+                            {isChamadoReincidente && chamadosCliente.length > 0 &&
+                          <div className="mt-1 space-y-1 pl-3 border-l-2 border-yellow-300">
                                 <span className="text-[10px] font-semibold text-muted-foreground uppercase">Chamados ({chamadosCliente.length})</span>
-                                {chamadosCliente.map((ch, i) => (
-                                  <div key={ch.id || i} className="flex items-start gap-2 text-[11px] py-1 border-b border-border/30 last:border-0">
+                                {chamadosCliente.map((ch, i) =>
+                            <div key={ch.id || i} className="flex items-start gap-2 text-[11px] py-1 border-b border-border/30 last:border-0">
                                     <Phone className="h-3 w-3 text-muted-foreground shrink-0 mt-0.5" />
                                     <div className="flex-1 min-w-0">
                                       <div className="font-medium truncate">{(ch.motivo_contato && ch.motivo_contato !== "Não informado" ? ch.motivo_contato : null) || getCategoriaDisplay(ch.categoria, ispId) || "Sem assunto"}</div>
@@ -782,22 +782,22 @@ export function CrmDrawer({
                                       </div>
                                     </div>
                                   </div>
-                                ))}
-                              </div>
                             )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <p className="text-sm text-muted-foreground italic text-center py-6">Nenhum evento encontrado.</p>
-                  )}
+                              </div>
+                          }
+                          </div>);
+
+                    })}
+                    </div> :
+
+                  <p className="text-sm text-muted-foreground italic text-center py-6">Nenhum evento encontrado.</p>
+                  }
                 </div>
               </ScrollArea>
             </TabsContent>
           </Tabs>
         </div>
       </DialogContent>
-    </Dialog>
-  );
+    </Dialog>);
+
 }
