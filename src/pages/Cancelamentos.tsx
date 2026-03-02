@@ -1103,6 +1103,7 @@ const Cancelamentos = () => {
                                   clientPhone={(c as any).cliente_telefone || (c as any).telefone}
                                   variant="cancelamento"
                                   onSendToTreatment={() => addToWorkflow(c.cliente_id)}
+                                  onOpenProfile={() => setSelectedCliente(c)}
                                 />
                               </TableCell>
                             </TableRow>

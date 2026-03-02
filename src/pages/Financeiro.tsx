@@ -8,18 +8,18 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { useEventos } from "@/hooks/useEventos";
 import { useChurnScore } from "@/hooks/useChurnScore";
+import { useChurnData } from "@/hooks/useChurnData";
+import { useRiskBucketConfig } from "@/hooks/useRiskBucketConfig";
+import { useCrmWorkflow } from "@/hooks/useCrmWorkflow";
+import { useChamados } from "@/hooks/useChamados";
 import { GlobalFilters } from "@/components/shared/GlobalFilters";
 import { IspActions } from "@/components/shared/IspActions";
 import { LoadingScreen } from "@/components/shared/LoadingScreen";
 import { KPICardNew } from "@/components/shared/KPICardNew";
 import { ActionMenu } from "@/components/shared/ActionMenu";
+import { CrmDrawer } from "@/components/crm/CrmDrawer";
 import { FAIXAS_AGING } from "@/types/evento";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 import { 
   DollarSign, 
   TrendingUp, 
@@ -34,9 +34,6 @@ import {
   ChevronDown,
   AlertTriangle,
   Download,
-  QrCode,
-  Barcode,
-  Copy,
   BarChart3,
   CreditCard,
   ClipboardList,
@@ -65,7 +62,12 @@ const Financeiro = () => {
   const { signOut } = useAuth();
   const { ispNome } = useActiveIsp();
   const { eventos, isLoading, error } = useEventos();
-  const { scoreMap } = useChurnScore();
+  const { scoreMap, getScoreTotalReal } = useChurnScore();
+  const { churnStatus, churnEvents } = useChurnData();
+  const { getBucket } = useRiskBucketConfig();
+  const { workflowMap, addToWorkflow, updateStatus, updateTags, updateOwner } = useCrmWorkflow();
+  const { chamados } = useChamados();
+  const [selectedClienteId, setSelectedClienteId] = useState<number | null>(null);
 
   const churnMap = useMemo(() => {
     const m = new Map<number, { score: number; bucket: string }>();
@@ -74,6 +76,24 @@ const Financeiro = () => {
     });
     return m;
   }, [scoreMap]);
+  // CRM profile drawer data
+  const selectedCliente = useMemo(() => {
+    if (!selectedClienteId) return null;
+    return churnStatus.find(c => c.cliente_id === selectedClienteId) || null;
+  }, [selectedClienteId, churnStatus]);
+
+  const selectedEvents = useMemo(() => {
+    if (!selectedClienteId) return [];
+    return churnEvents.filter(e => e.cliente_id === selectedClienteId);
+  }, [selectedClienteId, churnEvents]);
+
+  const selectedChamados = useMemo(() => {
+    if (!selectedClienteId) return [];
+    return chamados.filter(c => {
+      const id = typeof c.id_cliente === "string" ? parseInt(c.id_cliente as any) : c.id_cliente;
+      return id === selectedClienteId;
+    });
+  }, [selectedClienteId, chamados]);
 
   // Filtros
   const [periodo, setPeriodo] = useState("7");
@@ -717,38 +737,13 @@ const Financeiro = () => {
                                 </Badge>
                               </TableCell>
                               <TableCell className="text-center">
-                                <div className="flex items-center justify-center gap-0.5">
-                                  {/* Copiar PIX */}
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-primary"
-                                        onClick={() => copyToClipboard(e.pix_codigo, "Código PIX")}>
-                                        <Copy className="h-3.5 w-3.5" />
-                                      </Button>
-                                    </TooltipTrigger>
-                                    <TooltipContent>Copiar PIX</TooltipContent>
-                                  </Tooltip>
-                                  {/* Copiar QR Code PIX */}
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-primary"
-                                        onClick={() => copyToClipboard(e.pix_qrcode_img || e.pix_imagem_src, "QR Code PIX")}>
-                                        <QrCode className="h-3.5 w-3.5" />
-                                      </Button>
-                                    </TooltipTrigger>
-                                    <TooltipContent>Copiar QR Code PIX</TooltipContent>
-                                  </Tooltip>
-                                  {/* Copiar Linha Digitável */}
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-primary"
-                                        onClick={() => copyToClipboard(e.linha_digitavel, "Linha digitável")}>
-                                        <Barcode className="h-3.5 w-3.5" />
-                                      </Button>
-                                    </TooltipTrigger>
-                                    <TooltipContent>Copiar linha digitável do boleto</TooltipContent>
-                                  </Tooltip>
-                                </div>
+                                <ActionMenu
+                                  clientId={e.cliente_id}
+                                  clientName={e.cliente_nome}
+                                  clientPhone={e.cliente_celular}
+                                  variant="cobranca"
+                                  onOpenProfile={() => setSelectedClienteId(e.cliente_id)}
+                                />
                               </TableCell>
                             </TableRow>
                           );
@@ -762,6 +757,23 @@ const Financeiro = () => {
           </>
         )}
       </main>
+
+      {/* CRM Profile Drawer */}
+      {selectedCliente && (
+        <CrmDrawer
+          cliente={selectedCliente}
+          score={getScoreTotalReal(selectedCliente)}
+          bucket={getBucket(getScoreTotalReal(selectedCliente))}
+          workflow={workflowMap.get(selectedCliente.cliente_id)}
+          events={selectedEvents}
+          chamadosCliente={selectedChamados}
+          onClose={() => setSelectedClienteId(null)}
+          onStartTreatment={() => addToWorkflow(selectedCliente.cliente_id)}
+          onUpdateStatus={(s) => updateStatus(selectedCliente.cliente_id, s)}
+          onUpdateTags={(t) => updateTags(selectedCliente.cliente_id, t)}
+          onUpdateOwner={(o) => updateOwner(selectedCliente.cliente_id, o || "")}
+        />
+      )}
     </div>
   );
 };
