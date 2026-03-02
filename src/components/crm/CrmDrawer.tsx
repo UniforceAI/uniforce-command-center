@@ -250,15 +250,31 @@ export function CrmDrawer({
   };
 
   const handleWhatsApp = () => {
-    const sanitizedPhone = clienteCelular.replace(/\D/g, "");
-    if (sanitizedPhone) {
-      const fullPhone = sanitizedPhone.startsWith("55") ? sanitizedPhone : `55${sanitizedPhone}`;
-      const encodedMessage = encodeURIComponent("Oi");
-      const link = `https://wa.me/${fullPhone}?text=${encodedMessage}`;
-      window.open(link, "_blank", "noopener,noreferrer");
-    } else {
-      toast({ title: "Telefone indisponível", description: "Este cliente não possui celular cadastrado.", variant: "destructive" });
+    // 1. Normalização forte do número conforme doc oficial wa.me
+    let phone = String(clienteCelular || "").replace(/\D/g, "").replace(/^0+/, "");
+    if (!phone || phone.length < 8) {
+      toast({ title: "Telefone indisponível", description: "Este cliente não possui celular válido cadastrado.", variant: "destructive" });
+      return;
     }
+    if (!phone.startsWith("55")) phone = `55${phone}`;
+    if (phone.length < 12 || phone.length > 13) {
+      toast({ title: "Número inválido", description: `O número ${phone} não tem o formato esperado (12-13 dígitos).`, variant: "destructive" });
+      return;
+    }
+
+    // 2. Montagem do link oficial
+    const mensagem = encodeURIComponent("Oi");
+    const waUrl = `https://wa.me/${phone}?text=${mensagem}`;
+
+    // 3. Abertura com fallback anti-popup
+    const popup = window.open("about:blank", "_blank");
+    if (popup) {
+      popup.location.href = waUrl;
+    } else {
+      // Fallback: abre na mesma aba se popup bloqueado
+      window.location.assign(waUrl);
+    }
+
     handleQuickAction("whatsapp", "WhatsApp enviado");
   };
 
@@ -375,7 +391,7 @@ export function CrmDrawer({
           </div>
 
           {/* Client data fields */}
-          <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
+          <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-5">
             <div className="flex items-center gap-2 text-sm leading-6">
               <Hash className="h-4 w-4 text-muted-foreground shrink-0" />
               <span className="font-semibold text-foreground">ID:</span>
@@ -421,7 +437,7 @@ export function CrmDrawer({
           </div>
 
           {/* Row 4: Metric boxes */}
-          <div className="mt-8 grid grid-cols-4 sm:grid-cols-7 gap-2 text-center">
+          <div className="mt-10 grid grid-cols-4 sm:grid-cols-7 gap-3 text-center">
             <div className="rounded-lg border bg-card p-2 shadow-sm">
               <Activity className="h-3.5 w-3.5 mx-auto text-primary mb-0.5" />
               <div className="text-xs font-bold">{driverPrincipal}</div>
@@ -470,7 +486,7 @@ export function CrmDrawer({
           </div>
 
           {/* Row 5: Score breakdown */}
-          <div className="mt-7 flex items-center gap-1.5 flex-wrap">
+          <div className="mt-8 flex items-center gap-2 flex-wrap">
             {scores.map(s => (
               <Badge key={s.name} variant="outline" className={`text-[10px] font-mono ${s.val > 0 ? 'border-yellow-300 bg-yellow-50 text-yellow-800' : ''}`}>
                 {s.name}: {s.val}
@@ -480,7 +496,7 @@ export function CrmDrawer({
 
           {/* Row 6: Tags */}
           {workflow && (
-            <div className="mt-7 space-y-2.5">
+            <div className="mt-8 space-y-3">
               <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1">
                 <Tag className="h-3 w-3" /> Etiquetas
               </span>
