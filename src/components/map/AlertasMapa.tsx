@@ -23,6 +23,7 @@ interface AlertasMapaProps {
   viewMode?: "markers" | "grid";
   height?: string;
   disableScrollZoom?: boolean;
+  gridDensity?: number;
 }
 
 // Smart zoom: focus on densest cluster with tighter zoom
@@ -146,23 +147,36 @@ const fmtNum = (n: number): string => {
   return String(n);
 };
 
+// ── Deterministic jitter to spread identical coordinates ──
+function deterministicJitter(id: string | number, axis: "lat" | "lng", cellSize: number): number {
+  const str = `${id}_${axis}`;
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = ((hash << 5) - hash) + str.charCodeAt(i);
+    hash |= 0;
+  }
+  // Return value between -0.4*cellSize and +0.4*cellSize
+  return ((hash % 1000) / 1000) * 0.8 * cellSize - 0.4 * cellSize;
+}
+
 // ── Grid Squares with inline numbers (Toronto-style) ──
 
-function GridSquares({ points, filter, bounds }: { points: MapPoint[]; filter: string; bounds: { minLat: number; maxLat: number; minLng: number; maxLng: number } }) {
+function GridSquares({ points, filter, bounds, gridCount = 40 }: { points: MapPoint[]; filter: string; bounds: { minLat: number; maxLat: number; minLng: number; maxLng: number }; gridCount?: number }) {
   const gridData = useMemo(() => {
     if (points.length === 0) return [];
 
     const latRange = bounds.maxLat - bounds.minLat;
     const lngRange = bounds.maxLng - bounds.minLng;
-    const gridCount = 40; // More cells for finer granularity
-    const cellLat = Math.max(0.0005, latRange / gridCount);
-    const cellLng = Math.max(0.0005, lngRange / gridCount);
+    const cellLat = Math.max(0.0002, latRange / gridCount);
+    const cellLng = Math.max(0.0002, lngRange / gridCount);
 
-    // Build occupied cells only
+    // Build occupied cells — apply jitter to spread identical coordinates
     const cells = new Map<string, { row: number; col: number; count: number; metricSum: number; points: MapPoint[] }>();
     points.forEach(p => {
-      const row = Math.floor((p.geo_lat! - bounds.minLat) / cellLat);
-      const col = Math.floor((p.geo_lng! - bounds.minLng) / cellLng);
+      const jLat = p.geo_lat! + deterministicJitter(p.cliente_id, "lat", cellLat);
+      const jLng = p.geo_lng! + deterministicJitter(p.cliente_id, "lng", cellLng);
+      const row = Math.floor((jLat - bounds.minLat) / cellLat);
+      const col = Math.floor((jLng - bounds.minLng) / cellLng);
       const key = `${row},${col}`;
       const cell = cells.get(key) || { row, col, count: 0, metricSum: 0, points: [] };
       cell.count++;
@@ -175,7 +189,6 @@ function GridSquares({ points, filter, bounds }: { points: MapPoint[]; filter: s
 
     const maxCount = Math.max(1, ...Array.from(cells.values()).map(c => c.count));
 
-    // Only return cells that have data — no empty/gray filler cells
     const result: { lat: number; lng: number; cellLat: number; cellLng: number; count: number; metricSum: number; intensity: number; points: MapPoint[] }[] = [];
 
     cells.forEach(existing => {
@@ -191,7 +204,7 @@ function GridSquares({ points, filter, bounds }: { points: MapPoint[]; filter: s
       });
     });
     return result;
-  }, [points, filter, bounds]);
+  }, [points, filter, bounds, gridCount]);
 
   // Get the display number for a cell
   const getCellDisplayNumber = (cell: typeof gridData[0]): string => {
@@ -271,7 +284,7 @@ function GridSquares({ points, filter, bounds }: { points: MapPoint[]; filter: s
 
 // ── Main Component ──
 
-export function AlertasMapa({ data, activeFilter, viewMode = "grid", height, disableScrollZoom = false }: AlertasMapaProps) {
+export function AlertasMapa({ data, activeFilter, viewMode = "grid", height, disableScrollZoom = false, gridDensity = 120 }: AlertasMapaProps) {
   const validPoints = useMemo(() => {
     return data.filter((p) => {
       if (p.geo_lat === undefined || p.geo_lng === undefined || isNaN(p.geo_lat) || isNaN(p.geo_lng) || p.geo_lat === 0 || p.geo_lng === 0) return false;
@@ -348,7 +361,7 @@ export function AlertasMapa({ data, activeFilter, viewMode = "grid", height, dis
         <SmartFitBounds points={boundsPoints} />
 
         {viewMode === "grid" ? (
-          <GridSquares points={validPoints} filter={activeFilter} bounds={gridBounds} />
+          <GridSquares points={validPoints} filter={activeFilter} bounds={gridBounds} gridCount={gridDensity} />
         ) : (
           validPoints.map((point, idx) => (
             <CircleMarker

@@ -266,13 +266,26 @@ export function CrmDrawer({
     const mensagem = encodeURIComponent("Oi");
     const waUrl = `https://wa.me/${phone}?text=${mensagem}`;
 
-    // 3. Abertura com fallback anti-popup
-    const popup = window.open("about:blank", "_blank");
-    if (popup) {
-      popup.location.href = waUrl;
-    } else {
-      // Fallback: abre na mesma aba se popup bloqueado
-      window.location.assign(waUrl);
+    // 3. Abertura via <a> programático (mais resiliente contra bloqueio de popup)
+    try {
+      const anchor = document.createElement("a");
+      anchor.href = waUrl;
+      anchor.target = "_blank";
+      anchor.rel = "noopener noreferrer";
+      anchor.style.display = "none";
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+    } catch {
+      // Fallback: tenta window.open, depois mesma aba
+      const popup = window.open(waUrl, "_blank");
+      if (!popup) {
+        try {
+          window.top!.location.href = waUrl;
+        } catch {
+          window.location.href = waUrl;
+        }
+      }
     }
 
     handleQuickAction("whatsapp", "WhatsApp enviado");
@@ -324,7 +337,7 @@ export function CrmDrawer({
     <Dialog open={!!cliente} onOpenChange={() => onClose()}>
       <DialogContent className="max-w-3xl w-[95vw] max-h-[90vh] p-0 flex flex-col overflow-hidden">
         {/* ── HEADER ── */}
-        <DialogHeader className="px-6 pt-5 pb-5 border-b bg-muted/30 shrink-0 space-y-0">
+        <DialogHeader className="px-6 pt-5 pb-6 border-b bg-muted/30 shrink-0 space-y-0">
           <DialogDescription className="sr-only">Detalhes do cliente em risco</DialogDescription>
 
           {/* Header core: actions/name on left + all badges on right */}
@@ -390,29 +403,30 @@ export function CrmDrawer({
             </div>
           </div>
 
-          {/* Client data fields */}
-          <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-5">
-            <div className="flex items-center gap-2 text-sm leading-6">
+          {/* ── Bloco B: Dados cadastrais ── */}
+          <Separator className="mt-6" />
+          <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
+            <div className="flex items-center gap-2 text-sm leading-relaxed">
               <Hash className="h-4 w-4 text-muted-foreground shrink-0" />
               <span className="font-semibold text-foreground">ID:</span>
               <span className="text-muted-foreground">{cliente.cliente_id}</span>
               <CopyButton value={String(cliente.cliente_id)} label="ID" />
             </div>
             {clienteDocumento && (
-              <div className="flex items-center gap-2 text-sm leading-6">
+              <div className="flex items-center gap-2 text-sm leading-relaxed">
                 <IdCard className="h-4 w-4 text-muted-foreground shrink-0" />
                 <span className="font-semibold text-foreground">Documento:</span>
                 <span className="text-muted-foreground">{clienteDocumento}</span>
                 <CopyButton value={clienteDocumento} label="Documento" />
               </div>
             )}
-            <div className="flex items-center gap-2 text-sm leading-6">
+            <div className="flex items-center gap-2 text-sm leading-relaxed">
               <User className="h-4 w-4 text-muted-foreground shrink-0" />
               <span className="font-semibold text-foreground">Pessoa:</span>
               <span className="text-muted-foreground">{tipoPessoaLabel}</span>
             </div>
             {clienteEmail && (
-              <div className="flex items-center gap-2 text-sm min-w-0 leading-6">
+              <div className="flex items-center gap-2 text-sm min-w-0 leading-relaxed">
                 <Mail className="h-4 w-4 text-muted-foreground shrink-0" />
                 <span className="font-semibold text-foreground">E-mail:</span>
                 <span className="text-muted-foreground truncate">{clienteEmail}</span>
@@ -420,7 +434,7 @@ export function CrmDrawer({
               </div>
             )}
             {clienteCelular && (
-              <div className="flex items-center gap-2 text-sm leading-6">
+              <div className="flex items-center gap-2 text-sm leading-relaxed">
                 <Phone className="h-4 w-4 text-muted-foreground shrink-0" />
                 <span className="font-semibold text-foreground">Telefone:</span>
                 <span className="text-muted-foreground">{clienteCelular}</span>
@@ -428,7 +442,7 @@ export function CrmDrawer({
               </div>
             )}
             {diaVencimento != null && (
-              <div className="flex items-center gap-2 text-sm leading-6">
+              <div className="flex items-center gap-2 text-sm leading-relaxed">
                 <Calendar className="h-4 w-4 text-muted-foreground shrink-0" />
                 <span className="font-semibold text-foreground">Vencimento:</span>
                 <span className="text-muted-foreground">Dia {diaVencimento}</span>
@@ -436,8 +450,9 @@ export function CrmDrawer({
             )}
           </div>
 
-          {/* Row 4: Metric boxes */}
-          <div className="mt-10 grid grid-cols-4 sm:grid-cols-7 gap-3 text-center">
+          {/* ── Bloco C: Métricas rápidas ── */}
+          <Separator className="mt-5" />
+          <div className="mt-5 grid grid-cols-4 sm:grid-cols-7 gap-3 text-center">
             <div className="rounded-lg border bg-card p-2 shadow-sm">
               <Activity className="h-3.5 w-3.5 mx-auto text-primary mb-0.5" />
               <div className="text-xs font-bold">{driverPrincipal}</div>
@@ -485,8 +500,9 @@ export function CrmDrawer({
             )}
           </div>
 
-          {/* Row 5: Score breakdown */}
-          <div className="mt-8 flex items-center gap-2 flex-wrap">
+          {/* ── Bloco D: Score breakdown ── */}
+          <Separator className="mt-5" />
+          <div className="mt-4 flex items-center gap-2 flex-wrap">
             {scores.map(s => (
               <Badge key={s.name} variant="outline" className={`text-[10px] font-mono ${s.val > 0 ? 'border-yellow-300 bg-yellow-50 text-yellow-800' : ''}`}>
                 {s.name}: {s.val}
@@ -494,9 +510,9 @@ export function CrmDrawer({
             ))}
           </div>
 
-          {/* Row 6: Tags */}
+          {/* ── Bloco E: Etiquetas ── */}
           {workflow && (
-            <div className="mt-8 space-y-3">
+            <div className="mt-5 pt-4 border-t space-y-3">
               <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1">
                 <Tag className="h-3 w-3" /> Etiquetas
               </span>
