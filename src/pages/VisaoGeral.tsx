@@ -1428,7 +1428,7 @@ const VisaoGeral = () => {
               chamadosPorClienteMap={chamadosPorClienteMap}
               getCidadeNome={getCidadeNome}
               onSelectCliente={setSelectedClienteRisco}
-              onNavigate={() => navigate("/clientes-em-risco")}
+              onNavigate={() => navigate("/crm")}
             />
           </>
         )}
