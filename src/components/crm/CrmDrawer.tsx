@@ -337,7 +337,7 @@ export function CrmDrawer({
     <Dialog open={!!cliente} onOpenChange={() => onClose()}>
       <DialogContent className="max-w-3xl w-[95vw] max-h-[90vh] p-0 flex flex-col overflow-hidden">
         {/* ── HEADER ── */}
-        <DialogHeader className="px-6 pt-5 pb-6 border-b bg-muted/30 shrink-0 space-y-0 my-[15px] py-[15px]">
+        <DialogHeader className="px-6 pt-5 pb-6 border-b bg-muted/30 shrink-0 space-y-0 my-[15px] py-[2px]">
           <DialogDescription className="sr-only">Detalhes do cliente em risco</DialogDescription>
 
           {/* Header core: actions/name on left + all badges on right */}
@@ -512,7 +512,7 @@ export function CrmDrawer({
 
           {/* ── Bloco E: Etiquetas ── */}
           {workflow &&
-          <div className="mt-5 pt-4 border-t space-y-3 my-[10px] py-0">
+          <div className="mt-5 pt-4 border-t space-y-3 my-0 py-0">
               <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1 my-[10px]">
                 <Tag className="h-3 w-3" /> Etiquetas
               </span>
@@ -568,7 +568,7 @@ export function CrmDrawer({
 
         {/* ── TABBED CONTENT ── */}
         <div className="flex-1 overflow-hidden">
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col h-full py-[5px]">
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col h-full py-0">
             <TabsList className="mx-5 mt-3 w-fit bg-muted/50 p-1">
               <TabsTrigger value="acompanhamento" className="text-xs gap-1.5 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
                 <MessageSquare className="h-3.5 w-3.5" />Acompanhamento
@@ -587,7 +587,7 @@ export function CrmDrawer({
             {/* ── TAB: Acompanhamento ── */}
             <TabsContent value="acompanhamento" className="flex-1 overflow-hidden m-0">
               <ScrollArea className="h-[calc(90vh-520px)]">
-                <div className="p-5 space-y-4">
+                <div className="p-5 space-y-4 py-0">
                   {!workflow &&
                   <Button className="w-full h-10 gap-2" onClick={onStartTreatment}>
                       <PlayCircle className="h-4 w-4" />Enviar para Tratamento
