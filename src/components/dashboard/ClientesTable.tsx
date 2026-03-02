@@ -377,6 +377,7 @@ export const ClientesTable = memo(({ chamados, onClienteClick, churnMap }: Clien
               clientId={clienteId}
               clientName={chamado.Solicitante || `Cliente ${clienteId}`}
               variant="suporte"
+              onOpenProfile={() => onClienteClick(chamado)}
             />
             <TooltipProvider>
               <Tooltip>

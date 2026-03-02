@@ -250,10 +250,11 @@ export function CrmDrawer({
   };
 
   const handleWhatsApp = () => {
-    const phone = clienteCelular.replace(/\D/g, "");
-    if (phone) {
-      const fullPhone = phone.startsWith("55") ? phone : `55${phone}`;
-      const link = `https://api.whatsapp.com/send/?phone=${fullPhone}&text=Oi&type=phone_number`;
+    const sanitizedPhone = clienteCelular.replace(/\D/g, "");
+    if (sanitizedPhone) {
+      const fullPhone = sanitizedPhone.startsWith("55") ? sanitizedPhone : `55${sanitizedPhone}`;
+      const encodedMessage = encodeURIComponent("Oi");
+      const link = `https://wa.me/${fullPhone}?text=${encodedMessage}`;
       window.open(link, "_blank", "noopener,noreferrer");
     } else {
       toast({ title: "Telefone indisponível", description: "Este cliente não possui celular cadastrado.", variant: "destructive" });
@@ -310,84 +311,92 @@ export function CrmDrawer({
         <DialogHeader className="px-6 pt-5 pb-5 border-b bg-muted/30 shrink-0 space-y-0">
           <DialogDescription className="sr-only">Detalhes do cliente em risco</DialogDescription>
 
-          {/* Row 1: Action buttons + Churn badge — same line */}
-          <div className="flex items-center justify-between gap-3 mb-5">
-            <div className="flex items-center gap-2">
-              {workflow ? (
-                <Select value={workflow.status_workflow} onValueChange={(v) => handleStatusChange(v as WorkflowStatus)}>
-                  <SelectTrigger className="h-9 text-xs w-[180px] font-semibold border-primary/30"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="em_tratamento"><span className="flex items-center gap-1.5"><PlayCircle className="h-3.5 w-3.5 text-yellow-600" />Em Tratamento</span></SelectItem>
-                    <SelectItem value="resolvido"><span className="flex items-center gap-1.5"><CheckCircle2 className="h-3.5 w-3.5 text-green-600" />Resolvido</span></SelectItem>
-                    <SelectItem value="perdido"><span className="flex items-center gap-1.5"><XCircle className="h-3.5 w-3.5 text-destructive" />Perdido</span></SelectItem>
-                  </SelectContent>
-                </Select>
-              ) : (
-                <Button size="sm" className="h-9 text-xs gap-1.5 px-5 font-semibold" onClick={onStartTreatment}>
-                  <PlayCircle className="h-4 w-4" />Iniciar Tratamento
+          {/* Header core: actions/name on left + all badges on right */}
+          <div className="flex items-start justify-between gap-5">
+            <div className="flex-1 min-w-0 space-y-4">
+              <div className="flex flex-wrap items-center gap-2.5 pb-1">
+                {workflow ? (
+                  <Select value={workflow.status_workflow} onValueChange={(v) => handleStatusChange(v as WorkflowStatus)}>
+                    <SelectTrigger className="h-9 text-xs w-[180px] font-semibold border-primary/30"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="em_tratamento"><span className="flex items-center gap-1.5"><PlayCircle className="h-3.5 w-3.5 text-yellow-600" />Em Tratamento</span></SelectItem>
+                      <SelectItem value="resolvido"><span className="flex items-center gap-1.5"><CheckCircle2 className="h-3.5 w-3.5 text-green-600" />Resolvido</span></SelectItem>
+                      <SelectItem value="perdido"><span className="flex items-center gap-1.5"><XCircle className="h-3.5 w-3.5 text-destructive" />Perdido</span></SelectItem>
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <Button size="sm" className="h-9 text-xs gap-1.5 px-5 font-semibold" onClick={onStartTreatment}>
+                    <PlayCircle className="h-4 w-4" />Iniciar Tratamento
+                  </Button>
+                )}
+                <Button size="sm" variant="outline" className="h-9 text-xs gap-1.5 font-semibold" onClick={handleAssumirOwner}>
+                  <UserCheck className="h-3.5 w-3.5" />
+                  {workflow?.owner_user_id === user?.id ? "Você é o responsável" : "Assumir Atendimento"}
                 </Button>
-              )}
-              <Button size="sm" variant="outline" className="h-9 text-xs gap-1.5 font-semibold" onClick={handleAssumirOwner}>
-                <UserCheck className="h-3.5 w-3.5" />
-                {workflow?.owner_user_id === user?.id ? "Você é o responsável" : "Assumir Atendimento"}
-              </Button>
-            </div>
-            <Badge className={`${BUCKET_COLORS[bucket]} border text-sm font-mono px-3 py-1 shrink-0`}>
-              {score} · {bucket}
-            </Badge>
-          </div>
-
-          {/* Row 2: Client name */}
-          <DialogTitle className="text-xl font-bold leading-tight truncate">
-            {cliente.cliente_nome || `Cliente #${cliente.cliente_id}`}
-          </DialogTitle>
-
-          {/* Row 3: Plan + inline badges */}
-          <div className="flex items-center gap-2 flex-wrap mt-1.5">
-            {cliente.plano_nome && (
-              <div className="flex items-center gap-1.5">
-                <Package className="h-4 w-4 text-primary" />
-                <span className="text-base font-semibold text-primary">{cliente.plano_nome}</span>
               </div>
-            )}
-            {statusContrato && (
-              <Badge variant="outline" className={`text-xs ${statusContrato === "Ativo" ? "border-green-300 bg-green-50 text-green-700" : "border-yellow-300 bg-yellow-50 text-yellow-700"}`}>
-                {statusContrato}
+
+              <div className="space-y-2.5">
+                <DialogTitle className="text-xl font-bold leading-tight truncate">
+                  {cliente.cliente_nome || `Cliente #${cliente.cliente_id}`}
+                </DialogTitle>
+
+                {cliente.plano_nome && (
+                  <div className="flex items-center gap-1.5">
+                    <Package className="h-4 w-4 text-primary" />
+                    <span className="text-base font-semibold text-primary leading-tight">{cliente.plano_nome}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="shrink-0 flex flex-col items-end gap-2.5 max-w-[300px]">
+              <Badge className={`${BUCKET_COLORS[bucket]} border text-sm font-mono px-3 py-1 shrink-0`}>
+                {score} · {bucket}
               </Badge>
-            )}
-            {metodoCobranca && (
-              <Badge variant="outline" className="text-xs capitalize">{metodoCobranca}</Badge>
-            )}
-            {(tipoServico || tipoConexao) && (
-              <Badge variant="outline" className="text-xs">
-                {[tipoServico, tipoConexao].filter(Boolean).join(" · ")}
-              </Badge>
-            )}
+
+              {(statusContrato || metodoCobranca || tipoServico || tipoConexao) && (
+                <div className="flex flex-wrap justify-end gap-1.5">
+                  {statusContrato && (
+                    <Badge variant="outline" className={`text-xs ${statusContrato === "Ativo" ? "border-green-300 bg-green-50 text-green-700" : "border-yellow-300 bg-yellow-50 text-yellow-700"}`}>
+                      {statusContrato}
+                    </Badge>
+                  )}
+                  {metodoCobranca && (
+                    <Badge variant="outline" className="text-xs capitalize">{metodoCobranca}</Badge>
+                  )}
+                  {(tipoServico || tipoConexao) && (
+                    <Badge variant="outline" className="text-xs">
+                      {[tipoServico, tipoConexao].filter(Boolean).join(" · ")}
+                    </Badge>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
 
-          {/* Row 4: Client data fields */}
-          <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2.5">
-            <div className="flex items-center gap-2 text-sm">
+          {/* Client data fields */}
+          <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
+            <div className="flex items-center gap-2 text-sm leading-6">
               <Hash className="h-4 w-4 text-muted-foreground shrink-0" />
               <span className="font-semibold text-foreground">ID:</span>
               <span className="text-muted-foreground">{cliente.cliente_id}</span>
               <CopyButton value={String(cliente.cliente_id)} label="ID" />
             </div>
             {clienteDocumento && (
-              <div className="flex items-center gap-2 text-sm">
+              <div className="flex items-center gap-2 text-sm leading-6">
                 <IdCard className="h-4 w-4 text-muted-foreground shrink-0" />
                 <span className="font-semibold text-foreground">Documento:</span>
                 <span className="text-muted-foreground">{clienteDocumento}</span>
                 <CopyButton value={clienteDocumento} label="Documento" />
               </div>
             )}
-            <div className="flex items-center gap-2 text-sm">
+            <div className="flex items-center gap-2 text-sm leading-6">
               <User className="h-4 w-4 text-muted-foreground shrink-0" />
               <span className="font-semibold text-foreground">Pessoa:</span>
               <span className="text-muted-foreground">{tipoPessoaLabel}</span>
             </div>
             {clienteEmail && (
-              <div className="flex items-center gap-2 text-sm min-w-0">
+              <div className="flex items-center gap-2 text-sm min-w-0 leading-6">
                 <Mail className="h-4 w-4 text-muted-foreground shrink-0" />
                 <span className="font-semibold text-foreground">E-mail:</span>
                 <span className="text-muted-foreground truncate">{clienteEmail}</span>
@@ -395,7 +404,7 @@ export function CrmDrawer({
               </div>
             )}
             {clienteCelular && (
-              <div className="flex items-center gap-2 text-sm">
+              <div className="flex items-center gap-2 text-sm leading-6">
                 <Phone className="h-4 w-4 text-muted-foreground shrink-0" />
                 <span className="font-semibold text-foreground">Telefone:</span>
                 <span className="text-muted-foreground">{clienteCelular}</span>
@@ -403,7 +412,7 @@ export function CrmDrawer({
               </div>
             )}
             {diaVencimento != null && (
-              <div className="flex items-center gap-2 text-sm">
+              <div className="flex items-center gap-2 text-sm leading-6">
                 <Calendar className="h-4 w-4 text-muted-foreground shrink-0" />
                 <span className="font-semibold text-foreground">Vencimento:</span>
                 <span className="text-muted-foreground">Dia {diaVencimento}</span>
@@ -412,7 +421,7 @@ export function CrmDrawer({
           </div>
 
           {/* Row 4: Metric boxes */}
-          <div className="mt-5 grid grid-cols-4 sm:grid-cols-7 gap-2 text-center">
+          <div className="mt-6 grid grid-cols-4 sm:grid-cols-7 gap-2 text-center">
             <div className="rounded-lg border bg-card p-2 shadow-sm">
               <Activity className="h-3.5 w-3.5 mx-auto text-primary mb-0.5" />
               <div className="text-xs font-bold">{driverPrincipal}</div>
@@ -461,7 +470,7 @@ export function CrmDrawer({
           </div>
 
           {/* Row 5: Score breakdown */}
-          <div className="mt-4 flex items-center gap-1.5 flex-wrap">
+          <div className="mt-5 flex items-center gap-1.5 flex-wrap">
             {scores.map(s => (
               <Badge key={s.name} variant="outline" className={`text-[10px] font-mono ${s.val > 0 ? 'border-yellow-300 bg-yellow-50 text-yellow-800' : ''}`}>
                 {s.name}: {s.val}
@@ -471,7 +480,7 @@ export function CrmDrawer({
 
           {/* Row 6: Tags */}
           {workflow && (
-            <div className="mt-4 space-y-1.5">
+            <div className="mt-5 space-y-2">
               <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1">
                 <Tag className="h-3 w-3" /> Etiquetas
               </span>

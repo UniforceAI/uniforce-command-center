@@ -604,6 +604,7 @@ const ClientesEmRisco = () => {
                                   clientName={c.cliente_nome || `Cliente ${c.cliente_id}`}
                                   variant="risco"
                                   onSendToTreatment={() => handleStartTreatment(c)}
+                                  onOpenProfile={() => setSelectedCliente(c)}
                                 />
                               </div>
                             </TableCell>
