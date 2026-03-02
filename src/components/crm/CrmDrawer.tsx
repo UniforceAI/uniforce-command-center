@@ -337,7 +337,7 @@ export function CrmDrawer({
     <Dialog open={!!cliente} onOpenChange={() => onClose()}>
       <DialogContent className="max-w-3xl w-[95vw] max-h-[90vh] p-0 flex flex-col overflow-hidden">
         {/* ── HEADER ── */}
-        <DialogHeader className="px-6 pt-5 pb-6 border-b bg-muted/30 shrink-0 space-y-0">
+        <DialogHeader className="px-6 pt-5 pb-8 border-b bg-muted/30 shrink-0 space-y-0">
           <DialogDescription className="sr-only">Detalhes do cliente em risco</DialogDescription>
 
           {/* Header core: actions/name on left + all badges on right */}
@@ -404,8 +404,8 @@ export function CrmDrawer({
           </div>
 
           {/* ── Bloco B: Dados cadastrais ── */}
-          <Separator className="mt-6" />
-          <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
+          <Separator className="my-6" />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
             <div className="flex items-center gap-2 text-sm leading-relaxed">
               <Hash className="h-4 w-4 text-muted-foreground shrink-0" />
               <span className="font-semibold text-foreground">ID:</span>
@@ -451,8 +451,8 @@ export function CrmDrawer({
           </div>
 
           {/* ── Bloco C: Métricas rápidas ── */}
-          <Separator className="mt-5" />
-          <div className="mt-5 grid grid-cols-4 sm:grid-cols-7 gap-3 text-center">
+          <Separator className="my-6" />
+          <div className="grid grid-cols-4 sm:grid-cols-7 gap-3 text-center">
             <div className="rounded-lg border bg-card p-2 shadow-sm">
               <Activity className="h-3.5 w-3.5 mx-auto text-primary mb-0.5" />
               <div className="text-xs font-bold">{driverPrincipal}</div>
@@ -501,8 +501,8 @@ export function CrmDrawer({
           </div>
 
           {/* ── Bloco D: Score breakdown ── */}
-          <Separator className="mt-5" />
-          <div className="mt-4 flex items-center gap-2 flex-wrap">
+          <Separator className="my-6" />
+          <div className="flex items-center gap-2 flex-wrap">
             {scores.map(s => (
               <Badge key={s.name} variant="outline" className={`text-[10px] font-mono ${s.val > 0 ? 'border-yellow-300 bg-yellow-50 text-yellow-800' : ''}`}>
                 {s.name}: {s.val}
@@ -512,7 +512,7 @@ export function CrmDrawer({
 
           {/* ── Bloco E: Etiquetas ── */}
           {workflow && (
-            <div className="mt-5 pt-4 border-t space-y-3">
+            <div className="mt-6 pt-6 border-t space-y-3">
               <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1">
                 <Tag className="h-3 w-3" /> Etiquetas
               </span>
