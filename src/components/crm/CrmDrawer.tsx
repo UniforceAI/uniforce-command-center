@@ -26,7 +26,7 @@ import {
   ThumbsDown, ThumbsUp, Minus, X, Plus, Clock, DollarSign,
   AlertTriangle, TrendingDown, Activity, FileText, Calendar,
   Trash2, Pencil, Save, Palette, Copy, CreditCard, ArrowRight,
-  QrCode, Package,
+  QrCode, Package, Mail, User, Hash, IdCard,
 } from "lucide-react";
 import { getCategoriaDisplay } from "@/lib/categoriasMap";
 
@@ -65,6 +65,21 @@ const TAG_COLORS = [
   "#3b82f6", "#6366f1", "#8b5cf6", "#ec4899", "#64748b",
 ];
 
+interface ClienteExtraData {
+  pix_codigo?: string;
+  linha_digitavel?: string;
+  pix_qrcode_img?: string;
+  cliente_documento?: string;
+  cliente_tipo_pessoa?: string;
+  cliente_email?: string;
+  cliente_celular?: string;
+  dia_vencimento?: number;
+  metodo_cobranca?: string;
+  status_contrato?: string;
+  tipo_servico?: string;
+  tipo_conexao?: string;
+}
+
 interface CrmDrawerProps {
   cliente: ChurnStatus | null;
   score: number;
@@ -78,6 +93,19 @@ interface CrmDrawerProps {
   onUpdateStatus: (status: WorkflowStatus) => Promise<void>;
   onUpdateTags: (tags: string[]) => Promise<void>;
   onUpdateOwner: (ownerId: string | null) => Promise<void>;
+}
+
+/** Small helper to copy text and show toast */
+function CopyButton({ value, label }: { value: string; label: string }) {
+  const { toast } = useToast();
+  return (
+    <button
+      onClick={() => { navigator.clipboard.writeText(value); toast({ title: `${label} copiado!` }); }}
+      className="p-0.5 hover:text-primary transition-colors" title={`Copiar ${label}`}
+    >
+      <Copy className="h-3 w-3" />
+    </button>
+  );
 }
 
 export function CrmDrawer({
@@ -99,8 +127,8 @@ export function CrmDrawer({
   const [showTagPicker, setShowTagPicker] = useState(false);
   const [activeTab, setActiveTab] = useState("acompanhamento");
 
-  // Payment data from eventos table
-  const [paymentData, setPaymentData] = useState<{ pix_codigo?: string; linha_digitavel?: string; pix_qrcode_img?: string } | null>(null);
+  // Extended client data from eventos table
+  const [extraData, setExtraData] = useState<ClienteExtraData | null>(null);
 
   useEffect(() => {
     if (!clienteId || !ispId) return;
@@ -108,12 +136,12 @@ export function CrmDrawer({
       try {
         const { data } = await externalSupabase
           .from("eventos")
-          .select("pix_codigo, linha_digitavel, pix_qrcode_img")
+          .select("pix_codigo, linha_digitavel, pix_qrcode_img, cliente_documento, cliente_tipo_pessoa, cliente_email, cliente_celular, dia_vencimento, metodo_cobranca, status_contrato, tipo_servico, tipo_conexao")
           .eq("isp_id", ispId)
           .eq("cliente_id", clienteId)
           .order("event_datetime", { ascending: false })
           .limit(1);
-        if (data && data.length > 0) setPaymentData(data[0]);
+        if (data && data.length > 0) setExtraData(data[0]);
       } catch { /* silent */ }
     })();
   }, [clienteId, ispId]);
@@ -144,6 +172,22 @@ export function CrmDrawer({
   if (!cliente) return null;
 
   const clienteTags = workflow?.tags || [];
+
+  // Derived payment availability
+  const hasPix = !!extraData?.pix_codigo;
+  const hasBoleto = !!extraData?.linha_digitavel;
+  const hasQrCode = !!extraData?.pix_qrcode_img;
+
+  // Derived client info
+  const clienteDocumento = extraData?.cliente_documento || (cliente as any).cliente_documento || "";
+  const clienteTipoPessoa = extraData?.cliente_tipo_pessoa || (cliente as any).cliente_tipo_pessoa || "";
+  const clienteEmail = extraData?.cliente_email || (cliente as any).cliente_email || "";
+  const clienteCelular = extraData?.cliente_celular || (cliente as any).cliente_celular || (cliente as any).telefone || "";
+  const diaVencimento = extraData?.dia_vencimento ?? (cliente as any).dia_vencimento ?? null;
+  const metodoCobranca = extraData?.metodo_cobranca || (cliente as any).metodo_cobranca || "";
+  const statusContrato = extraData?.status_contrato || (cliente as any).status_contrato || "";
+  const tipoServico = extraData?.tipo_servico || (cliente as any).tipo_servico || "";
+  const tipoConexao = extraData?.tipo_conexao || (cliente as any).tipo_conexao || "";
 
   const handleAddTag = async (tag: string) => {
     if (!tag || clienteTags.includes(tag)) return;
@@ -211,42 +255,37 @@ export function CrmDrawer({
   };
 
   const handleWhatsApp = () => {
-    const phone = (cliente as any).telefone?.replace(/\D/g, "") || (cliente as any).cliente_celular?.replace(/\D/g, "") || "";
+    const phone = clienteCelular.replace(/\D/g, "");
     const name = cliente.cliente_nome?.split(" ")[0] || "cliente";
-    const pixCode = paymentData?.pix_codigo || "";
+    const pixCode = extraData?.pix_codigo || "";
     const msg = encodeURIComponent(
       `Olá ${name}, tudo bem?\nPassando rapidinho para lembrar que sua fatura de internet está em aberto.\n\nQueremos garantir que você continue navegando, maratonando séries, estudando e trabalhando sem nenhuma interrupção!\n\n🔑 PIX (copia e cola):\n\n${pixCode}\n\nSe precisar, estamos aqui para ajudar!`
     );
-    if (phone) window.open(`https://wa.me/55${phone}?text=${msg}`, "_blank");
+    if (phone) {
+      window.open(`https://wa.me/55${phone}?text=${msg}`, "_blank");
+    } else {
+      toast({ title: "Telefone indisponível", description: "Este cliente não possui celular cadastrado.", variant: "destructive" });
+    }
     handleQuickAction("whatsapp", "WhatsApp enviado");
   };
 
   const handleCopyPix = () => {
-    if (!paymentData?.pix_codigo) {
-      toast({ title: "PIX indisponível", description: "Este cliente não possui código PIX no cadastro.", variant: "destructive" });
-      return;
-    }
-    navigator.clipboard.writeText(paymentData.pix_codigo);
+    if (!extraData?.pix_codigo) return;
+    navigator.clipboard.writeText(extraData.pix_codigo);
     toast({ title: "PIX copiado!" });
     handleQuickAction("copy_pix", "PIX copiado");
   };
 
   const handleCopyBoleto = () => {
-    if (!paymentData?.linha_digitavel) {
-      toast({ title: "Boleto indisponível", description: "Este cliente não possui linha digitável no cadastro.", variant: "destructive" });
-      return;
-    }
-    navigator.clipboard.writeText(paymentData.linha_digitavel);
+    if (!extraData?.linha_digitavel) return;
+    navigator.clipboard.writeText(extraData.linha_digitavel);
     toast({ title: "Boleto copiado!" });
     handleQuickAction("copy_boleto", "Boleto copiado");
   };
 
   const handleCopyPixQrCode = () => {
-    if (!paymentData?.pix_qrcode_img) {
-      toast({ title: "QR Code indisponível", description: "Este cliente não possui QR Code PIX no cadastro.", variant: "destructive" });
-      return;
-    }
-    navigator.clipboard.writeText(paymentData.pix_qrcode_img);
+    if (!extraData?.pix_qrcode_img) return;
+    navigator.clipboard.writeText(extraData.pix_qrcode_img);
     toast({ title: "QR Code PIX copiado!" });
     handleQuickAction("copy_pix_qrcode", "QR Code PIX copiado");
   };
@@ -273,6 +312,8 @@ export function CrmDrawer({
     } catch { return dateStr; }
   };
 
+  const tipoPessoaLabel = clienteTipoPessoa === "J" ? "Jurídica" : clienteTipoPessoa === "F" ? "Física" : clienteTipoPessoa || "—";
+
   return (
     <Dialog open={!!cliente} onOpenChange={() => onClose()}>
       <DialogContent className="max-w-3xl w-[95vw] max-h-[90vh] p-0 flex flex-col overflow-hidden">
@@ -286,14 +327,72 @@ export function CrmDrawer({
               <DialogDescription className="sr-only">Detalhes do cliente em risco</DialogDescription>
               {cliente.plano_nome && (
                 <div className="flex items-center gap-1.5 mt-1">
-                  <Package className="h-3.5 w-3.5 text-primary" />
-                  <span className="text-sm font-medium text-primary">{cliente.plano_nome}</span>
+                  <Package className="h-4 w-4 text-primary" />
+                  <span className="text-sm font-semibold text-primary">{cliente.plano_nome}</span>
                 </div>
               )}
             </div>
             <Badge className={`${BUCKET_COLORS[bucket]} border text-sm font-mono px-3 py-1 shrink-0`}>
               {score} · {bucket}
             </Badge>
+          </div>
+
+          {/* Client detail row */}
+          <div className="mt-3 grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-1.5 text-xs text-muted-foreground">
+            <div className="flex items-center gap-1.5">
+              <Hash className="h-3 w-3 shrink-0" />
+              <span className="font-medium text-foreground">ID:</span> {cliente.cliente_id}
+              <CopyButton value={String(cliente.cliente_id)} label="ID" />
+            </div>
+            {clienteDocumento && (
+              <div className="flex items-center gap-1.5">
+                <IdCard className="h-3 w-3 shrink-0" />
+                <span className="font-medium text-foreground">Doc:</span> {clienteDocumento}
+                <CopyButton value={clienteDocumento} label="Documento" />
+              </div>
+            )}
+            <div className="flex items-center gap-1.5">
+              <User className="h-3 w-3 shrink-0" />
+              <span className="font-medium text-foreground">Pessoa:</span> {tipoPessoaLabel}
+            </div>
+            {clienteEmail && (
+              <div className="flex items-center gap-1.5 truncate">
+                <Mail className="h-3 w-3 shrink-0" />
+                <span className="font-medium text-foreground">Email:</span>
+                <span className="truncate">{clienteEmail}</span>
+                <CopyButton value={clienteEmail} label="E-mail" />
+              </div>
+            )}
+            {clienteCelular && (
+              <div className="flex items-center gap-1.5">
+                <Phone className="h-3 w-3 shrink-0" />
+                <span className="font-medium text-foreground">Tel:</span> {clienteCelular}
+                <CopyButton value={clienteCelular} label="Telefone" />
+              </div>
+            )}
+            {diaVencimento != null && (
+              <div className="flex items-center gap-1.5">
+                <Calendar className="h-3 w-3 shrink-0" />
+                <span className="font-medium text-foreground">Vencimento:</span> Dia {diaVencimento}
+              </div>
+            )}
+          </div>
+
+          {/* Badges row */}
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {metodoCobranca && (
+              <Badge variant="outline" className="text-[10px] capitalize">{metodoCobranca}</Badge>
+            )}
+            {statusContrato && (
+              <Badge variant="outline" className={`text-[10px] ${statusContrato === "Ativo" ? "border-green-300 bg-green-50 text-green-700" : "border-yellow-300 bg-yellow-50 text-yellow-700"}`}>
+                {statusContrato}
+              </Badge>
+            )}
+            {(tipoServico || tipoConexao) && (
+              <Badge variant="outline" className="text-[10px]">
+                {[tipoServico, tipoConexao].filter(Boolean).join(" · ")}
+              </Badge>
+            )}
           </div>
 
           {/* Status + Owner row */}
@@ -398,7 +497,6 @@ export function CrmDrawer({
               <div className="text-xs font-bold">{cliente.qtd_chamados_30d || 0}</div>
               <div className="text-[9px] text-muted-foreground">Chamados 30d</div>
             </div>
-            {/* NPS de Contrato */}
             {npsData?.nota != null && (
               <div className="rounded-lg border bg-card p-2 shadow-sm">
                 {npsData.classificacao === "DETRATOR" ? <ThumbsDown className="h-3.5 w-3.5 mx-auto text-destructive mb-0.5" /> :
@@ -408,7 +506,6 @@ export function CrmDrawer({
                 <div className="text-[9px] text-muted-foreground">NPS</div>
               </div>
             )}
-            {/* Tempo de Contrato */}
             {tempoContrato && (
               <div className="rounded-lg border bg-card p-2 shadow-sm">
                 <Calendar className="h-3.5 w-3.5 mx-auto text-muted-foreground mb-0.5" />
@@ -416,7 +513,6 @@ export function CrmDrawer({
                 <div className="text-[9px] text-muted-foreground">Contrato</div>
               </div>
             )}
-            {/* LTV */}
             {ltv != null && ltv > 0 && (
               <div className="rounded-lg border bg-card p-2 shadow-sm">
                 <DollarSign className="h-3.5 w-3.5 mx-auto text-primary mb-0.5" />
@@ -456,7 +552,7 @@ export function CrmDrawer({
 
             {/* ── TAB: Acompanhamento ── */}
             <TabsContent value="acompanhamento" className="flex-1 overflow-hidden m-0">
-              <ScrollArea className="h-[calc(90vh-420px)]">
+              <ScrollArea className="h-[calc(90vh-480px)]">
                 <div className="p-5 space-y-4">
                   {!workflow && (
                     <Button className="w-full h-10 gap-2" onClick={onStartTreatment}>
@@ -465,6 +561,9 @@ export function CrmDrawer({
                   )}
 
                   <div className="space-y-2">
+                    <span className="text-xs font-semibold uppercase text-muted-foreground flex items-center gap-1.5">
+                      <Pencil className="h-3 w-3" /> Inserir Nota
+                    </span>
                     <Textarea placeholder="Escreva uma observação, nota interna ou próxima ação..." value={noteText}
                       onChange={(e) => setNoteText(e.target.value)} className="min-h-[80px] text-sm resize-none" />
                     <div className="flex gap-2">
@@ -534,20 +633,26 @@ export function CrmDrawer({
 
             {/* ── TAB: Atendimento ── */}
             <TabsContent value="atendimento" className="flex-1 overflow-hidden m-0">
-              <ScrollArea className="h-[calc(90vh-420px)]">
+              <ScrollArea className="h-[calc(90vh-480px)]">
                 <div className="p-5 space-y-4">
                   <div className="grid grid-cols-2 gap-2">
                     <Button variant="outline" className="h-11 text-xs gap-2 justify-start font-medium hover:bg-primary/5 hover:border-primary/30" onClick={handleWhatsApp}>
                       <Send className="h-4 w-4 shrink-0" />Enviar WhatsApp
                     </Button>
-                    <Button variant="outline" className="h-11 text-xs gap-2 justify-start font-medium hover:bg-primary/5 hover:border-primary/30" onClick={handleCopyPix}>
+                    <Button variant="outline" className={`h-11 text-xs gap-2 justify-start font-medium ${hasPix ? "hover:bg-primary/5 hover:border-primary/30" : "opacity-40 cursor-not-allowed"}`}
+                      onClick={handleCopyPix} disabled={!hasPix}>
                       <Copy className="h-4 w-4 shrink-0" />Copiar PIX
+                      {!hasPix && <span className="text-[9px] text-muted-foreground ml-auto">indisponível</span>}
                     </Button>
-                    <Button variant="outline" className="h-11 text-xs gap-2 justify-start font-medium hover:bg-primary/5 hover:border-primary/30" onClick={handleCopyBoleto}>
+                    <Button variant="outline" className={`h-11 text-xs gap-2 justify-start font-medium ${hasBoleto ? "hover:bg-primary/5 hover:border-primary/30" : "opacity-40 cursor-not-allowed"}`}
+                      onClick={handleCopyBoleto} disabled={!hasBoleto}>
                       <CreditCard className="h-4 w-4 shrink-0" />Copiar Boleto
+                      {!hasBoleto && <span className="text-[9px] text-muted-foreground ml-auto">indisponível</span>}
                     </Button>
-                    <Button variant="outline" className="h-11 text-xs gap-2 justify-start font-medium hover:bg-primary/5 hover:border-primary/30" onClick={handleCopyPixQrCode}>
+                    <Button variant="outline" className={`h-11 text-xs gap-2 justify-start font-medium ${hasQrCode ? "hover:bg-primary/5 hover:border-primary/30" : "opacity-40 cursor-not-allowed"}`}
+                      onClick={handleCopyPixQrCode} disabled={!hasQrCode}>
                       <QrCode className="h-4 w-4 shrink-0" />Copiar PIX QR Code
+                      {!hasQrCode && <span className="text-[9px] text-muted-foreground ml-auto">indisponível</span>}
                     </Button>
                     <Button variant="outline" className="h-11 text-xs gap-2 justify-start font-medium hover:bg-primary/5 hover:border-primary/30"
                       onClick={() => handleQuickAction("ligacao", "Ligação realizada")}>
@@ -579,7 +684,7 @@ export function CrmDrawer({
 
             {/* ── TAB: Abrir Chamado ── */}
             <TabsContent value="chamado" className="flex-1 overflow-hidden m-0">
-              <ScrollArea className="h-[calc(90vh-420px)]">
+              <ScrollArea className="h-[calc(90vh-480px)]">
                 <div className="p-5 space-y-4">
                   <div className="text-center py-8 space-y-3">
                     <Wrench className="h-10 w-10 mx-auto text-muted-foreground/40" />
@@ -599,7 +704,7 @@ export function CrmDrawer({
 
             {/* ── TAB: Mapa de Churn ── */}
             <TabsContent value="mapa" className="flex-1 overflow-hidden m-0">
-              <ScrollArea className="h-[calc(90vh-420px)]">
+              <ScrollArea className="h-[calc(90vh-480px)]">
                 <div className="p-5 space-y-3">
                   <h4 className="text-sm font-semibold flex items-center gap-2">
                     <TrendingDown className="h-4 w-4 text-destructive" />
