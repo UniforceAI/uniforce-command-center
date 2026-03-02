@@ -1,147 +1,66 @@
 
-## Diagnóstico consolidado (com base no código atual)
+# Correção definitiva: Espaçamento do Card, Ações na Tabela de Chamados, e Ordenação Global por Churn Score
 
-Você está certo: os 3 problemas têm causa técnica concreta e hoje não estão “fechados” de forma robusta.
+## 1. Espaçamento do Card CRM (CrmDrawer.tsx)
 
-### 1) Card do cliente: por que o espaçamento “não parece mudar”
-No `CrmDrawer.tsx` os espaçamentos foram alterados, mas o ganho visual ficou pequeno porque:
-- o aumento foi incremental (`mt-6`→`mt-8`, `gap-y-4`→`gap-y-5`);
-- não houve separação estrutural entre blocos (infos, métricas, score, etiquetas);
-- o header continua muito denso visualmente para a quantidade de informação.
+**Causa raiz identificada:** O `DialogHeader` usa `space-y-0`, anulando qualquer espaçamento automático entre filhos. Os `Separator` e blocos usam margens pequenas (`mt-5`, `mt-6`) que se acumulam visualmente como "colados".
 
-Resultado: tecnicamente mudou, mas perceptivamente ainda parece “colado”.
+**Correção:**
+- Remover `space-y-0` do `DialogHeader` e substituir por um wrapper interno com `space-y-6` envolvendo todos os blocos (A ate E)
+- Remover as margens manuais (`mt-5`, `mt-6`) dos `Separator` e dos blocos de conteudo
+- Cada `Separator` fica naturalmente espaçado pelo `space-y-6` do wrapper pai (24px antes e depois)
+- Aumentar o padding inferior do header de `pb-6` para `pb-8`
 
-### 2) WhatsApp: por que ainda falha mesmo com `wa.me`
-A documentação oficial foi seguida parcialmente (formato `wa.me`, número sem símbolos, `text` codificado), porém há um ponto de execução:
-- em contexto de iframe/navegador, `window.open` pode ser bloqueado por política de popup;
-- o fallback atual (`window.location.assign`) pode não resolver no preview em alguns cenários de navegação embutida;
-- ainda falta estratégia de abertura “browser-safe” mais resiliente.
+Resultado: separacao visual forte e uniforme entre TODOS os blocos sem depender de micro-ajustes de margem.
 
-Ou seja: o problema não é só URL, é **mecânica de abertura do link** no ambiente real.
+## 2. Icones de Acao na Tabela "Clientes em Risco" (pagina Chamados)
 
-### 3) Mapa com poucos quadrantes (2 células com milhares de registros)
-No `AlertasMapa.tsx`:
-- a grade só renderiza células **ocupadas**;
-- muitos clientes compartilham coordenadas iguais (ou quase iguais), então mesmo com `gridCount=40` colapsa em poucas células;
-- quando a origem não tem geocoordenada, usa fallback por bairro (coordenadas centrais), o que também concentra.
+**Problema:** Na coluna "Acoes" da `ClientesTable.tsx`, tanto o icone de perfil (User via ActionMenu) quanto o icone do olho (Eye) chamam `onClienteClick(chamado)`, que abre o `ClienteDetailsSheet` (side panel de detalhes do chamado). Nenhum dos dois abre o CrmDrawer (card de perfil CRM).
 
-Conclusão: aumentar apenas `gridCount` não garante 10x mais quadrantes se os pontos de origem são repetidos.
+**Correção:**
+- O icone **User** (perfil) deve abrir o **CrmDrawer** (card do cliente CRM). Para isso, a pagina `Index.tsx` precisa integrar o CrmDrawer e passar um handler diferente para o ActionMenu.
+- O icone **Eye** (olho) continua abrindo o **ClienteDetailsSheet** (side panel lateral de detalhes do chamado), como ja faz.
 
----
+**Implementacao tecnica:**
+- Em `Index.tsx`, importar e montar o `CrmDrawer` (como ja feito em VisaoGeral, Financeiro, etc.)
+- Criar estado para `selectedCrmCliente` separado do `selectedCliente` (sheet)
+- Passar para `ClientesTable` dois callbacks: `onOpenProfile` (abre CrmDrawer) e `onClienteClick` (abre Sheet)
+- Na `ClientesTable`, o `ActionMenu.onOpenProfile` chama o callback de perfil CRM, e o `Eye` chama o callback de detalhes do chamado
 
-## Confirmação sobre “feature única” do card
+## 3. Ordenacao padrao por Churn Score (todas as tabelas)
 
-Sim: o **card principal de perfil CRM** é único (`CrmDrawer`) e é reutilizado em:
-- `VisaoGeral`
-- `Financeiro`
-- `ClientesEmRisco`
-- `Cancelamentos`
-- `NPS`
+**Problema:** Cada tabela tem ordenacao padrao diferente (Data de Abertura, atraso, etc.). O objetivo do dashboard e deixar problemas visiveis, entao o Churn Score deve ser o criterio primario.
 
-Portanto, corrigindo `CrmDrawer`, corrige para essas áreas.  
-(`Index`/`Chamados` ainda usa um `ClienteDetailsSheet` separado, que não é o mesmo componente.)
+**Tabelas a ajustar:**
+- `ClientesTable.tsx` (Chamados): mudar de `{ id: 'Data de Abertura', desc: true }` para `{ id: 'score-risco', desc: true }` - porem essa coluna tem `enableSorting: false`, entao precisa habilitar sorting nela tambem com accessorFn que retorna o score do churnMap
+- `RiskClientsTable.tsx` (Visao Geral): ja usa `score` como default `desc` - OK
+- `ExpandableCobrancaTable.tsx` (Financeiro): mudar default de `"atraso"` para `"score"` (campo de churn score)
+- `NPSTable.tsx` (NPS): mudar de `[]` (sem sort) para sort por score desc
+- `DataTable.tsx` (Churn/Retencao): verificar se aceita default sort, ajustar se necessario
 
----
+**Detalhes tecnicos por arquivo:**
 
-## Plano de implementação (correção definitiva)
+### ClientesTable.tsx
+- Adicionar `accessorFn` na coluna `score-risco` que retorna `churnMap.get(clienteId)?.score ?? -1`
+- Habilitar `enableSorting: true`
+- Mudar sorting inicial para `[{ id: 'score-risco', desc: true }]`
 
-## Etapa 1 — Espaçamento do card com mudança visual clara (não incremental)
-**Arquivo:** `src/components/crm/CrmDrawer.tsx`
+### ExpandableCobrancaTable.tsx
+- Verificar se ha coluna de score e ajustar `sortField` default
 
-1. Reestruturar header em blocos com wrappers dedicados:
-- Bloco A: identidade do cliente
-- Bloco B: dados cadastrais
-- Bloco C: métricas rápidas
-- Bloco D: score breakdown
-- Bloco E: etiquetas
+### NPSTable.tsx
+- Verificar se ha coluna de churn score, adicionar se necessario, e definir como sort default
 
-2. Substituir apenas `mt-*` por separação forte:
-- `space-y-6` / `space-y-7` por bloco
-- inserir `Separator` entre blocos principais
-- aumentar paddings internos dos cards de métrica (`p-2` → `p-3`)
-- manter responsividade sem “estourar” mobile
+## Arquivos a editar
+1. `src/components/crm/CrmDrawer.tsx` - espacamento
+2. `src/components/dashboard/ClientesTable.tsx` - acoes + sort
+3. `src/pages/Index.tsx` - integrar CrmDrawer + separar callbacks
+4. `src/components/dashboard/RiskClientsTable.tsx` - ja OK (sort por score)
+5. `src/components/shared/ExpandableCobrancaTable.tsx` - sort default
+6. `src/components/nps/NPSTable.tsx` - sort default
+7. `src/components/shared/DataTable.tsx` - sort default
 
-3. Ajustar densidade de texto:
-- labels com `leading-relaxed`
-- badges com `py-1` e `gap-2` consistentes
-
-**Resultado esperado:** diferença visual evidente e consistente em todas as páginas que usam `CrmDrawer`.
-
----
-
-## Etapa 2 — WhatsApp robusto (alinhado à documentação oficial + anti-bloqueio real)
-**Arquivo:** `src/components/crm/CrmDrawer.tsx`
-
-1. Normalização final do telefone:
-- remover não dígitos
-- remover zeros à esquerda
-- prefixar `55` quando necessário
-- validar formato final (12–13 dígitos)
-
-2. Link oficial:
-- `https://wa.me/<numero>?text=<urlencoded>`
-
-3. Estratégia de abertura em camadas (mais robusta que atual):
-- tentativa A: abrir via elemento `<a target="_blank" rel="noopener noreferrer">` com clique programático no gesto do usuário;
-- tentativa B: `window.open` tradicional;
-- tentativa C: `window.top.location.href` (quando permitido) / `window.location.href` como fallback final.
-
-4. Instrumentação de erro:
-- `toast` específico para cada falha (número inválido, bloqueio, navegação impedida)
-- log técnico para facilitar diagnóstico se ainda bloquear em ambiente específico
-
-**Resultado esperado:** sai do ciclo “aba bloqueada” em preview e produção com fallback previsível.
-
----
-
-## Etapa 3 — Quadrantes 10x mais granulares para cidades pequenas
-**Arquivo:** `src/components/map/AlertasMapa.tsx`  
-**Ajuste complementar:** `src/pages/VisaoGeral.tsx`
-
-1. Tornar a grade configurável:
-- adicionar prop `gridDensity` (ex.: 40 padrão, 120/160 para alta resolução).
-
-2. Implementar subdivisão adaptativa por densidade:
-- para células com alta concentração, subdividir internamente (subgrid local) ao invés de manter célula única.
-
-3. Tratar coordenadas idênticas (causa principal do colapso):
-- aplicar jitter determinístico mínimo por `cliente_id` (somente para renderização de grid, sem alterar dado base),
-- evita “milhares de registros no mesmo pixel”.
-
-4. Controle na UI:
-- seletor “Granularidade do mapa”: Normal / Alta / Muito Alta
-- manter performance com limite de células renderizadas e simplificação progressiva.
-
-**Resultado esperado:** mapa deixa de mostrar 2 quadrados e passa a exibir distribuição útil para operação local.
-
----
-
-## Sequência recomendada (para reduzir retrabalho)
-
-1. Corrigir WhatsApp (impacto direto em operação diária)  
-2. Corrigir espaçamento estrutural do card (visível em todo CRM)  
-3. Entregar granularidade do mapa com controle de densidade
-
----
-
-## Verificação objetiva (aceite)
-
-1. **Card CRM**
-- Abrir perfil em `/visao-geral`, `/financeiro`, `/clientes-em-risco`.
-- Confirmar separação visível entre blocos (não só micro-ajuste).
-
-2. **WhatsApp**
-- Testar com telefone em formatos diferentes: `(47) 99999-9999`, `5547999999999`, `047999999999`.
-- Confirmar abertura em pelo menos uma das estratégias sem “aba bloqueada”.
-
-3. **Mapa**
-- Em IGP Telecom, alternar granularidade para “Muito Alta”.
-- Confirmar aumento real de quadrantes e melhor leitura espacial (sem concentrar tudo em 2 células).
-
----
-
-## Riscos e mitigação
-
-- **Bloqueio de navegação externa no ambiente embutido:** fallback em múltiplas camadas + mensagens claras.
-- **Mapa pesado em densidade alta:** teto de renderização + modo progressivo.
-- **Jitter mascarar precisão:** jitter mínimo, determinístico e apenas para visualização agregada.
+## Sequencia
+1. Espacamento do card (correcao visual imediata)
+2. Acoes da tabela de chamados (funcionalidade correta)
+3. Ordenacao global por churn score (consistencia)
