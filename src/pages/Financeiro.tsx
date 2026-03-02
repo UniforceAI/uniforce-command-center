@@ -166,37 +166,41 @@ const Financeiro = () => {
 
   // ---- KPIs ----
   const kpis = useMemo(() => {
-    const clientesUnicos = new Set(filteredEventos.map(e => e.cliente_id)).size;
-    const vencidos = filteredEventos.filter(e => e.dias_atraso > 0);
-    const aVencer = filteredEventos.filter(e => e.cobranca_status === "A Vencer" && !(e.dias_atraso > 0));
-    
-    // Clientes únicos vencidos
-    const clientesVencidosSet = new Set(vencidos.map(e => e.cliente_id));
-    const clientesVencidos = clientesVencidosSet.size;
-    
-    // Clientes únicos a vencer
-    const clientesAVencerSet = new Set(aVencer.map(e => e.cliente_id));
-    const clientesAVencer = clientesAVencerSet.size;
-    
+    // Deduplicar por cliente_id mantendo evento mais recente — idêntico à Visão Geral
+    const clientesFinMap = new Map<number, typeof filteredEventos[0]>();
+    filteredEventos.forEach(e => {
+      if (!clientesFinMap.has(e.cliente_id) ||
+        new Date(e.event_datetime) > new Date(clientesFinMap.get(e.cliente_id)!.event_datetime)) {
+        clientesFinMap.set(e.cliente_id, e);
+      }
+    });
+    const clientesFinUnicos = Array.from(clientesFinMap.values());
+    const totalClientesFin = clientesFinMap.size;
+
+    const vencidos = clientesFinUnicos.filter(e => e.dias_atraso > 0);
+    const aVencer = clientesFinUnicos.filter(e => e.cobranca_status === "A Vencer" && !(e.dias_atraso > 0));
+
+    const clientesVencidos = vencidos.length;
+    const clientesAVencer = aVencer.length;
+
     const valorVencido = vencidos.reduce((acc, e) => acc + (e.valor_cobranca || e.valor_mensalidade || 0), 0);
     const valorAVencer = aVencer.reduce((acc, e) => acc + (e.valor_cobranca || e.valor_mensalidade || 0), 0);
-    
-    const taxaInadimplencia = clientesUnicos > 0 
-      ? ((clientesVencidos / clientesUnicos) * 100).toFixed(1) 
+
+    const taxaInadimplencia = totalClientesFin > 0 
+      ? ((clientesVencidos / totalClientesFin) * 100).toFixed(1) 
       : "0";
-    
-    const ticketMedio = filteredEventos.length > 0 
-      ? filteredEventos.reduce((acc, e) => acc + (e.valor_cobranca || e.valor_mensalidade || 0), 0) / filteredEventos.length 
+
+    const ticketMedio = totalClientesFin > 0 
+      ? clientesFinUnicos.reduce((acc, e) => acc + (e.valor_cobranca || e.valor_mensalidade || 0), 0) / totalClientesFin 
       : 0;
 
-    // Atraso Médio: média de dias_atraso para quem está vencido
     const diasAtrasoArr = vencidos.map(e => e.dias_atraso || 0).filter(d => d > 0);
     const atrasoMedio = diasAtrasoArr.length > 0
       ? Math.round(diasAtrasoArr.reduce((a, b) => a + b, 0) / diasAtrasoArr.length)
       : 0;
 
     return {
-      clientesUnicos,
+      clientesUnicos: totalClientesFin,
       clientesVencidos,
       cobrancasVencidas: vencidos.length,
       clientesAVencer,
