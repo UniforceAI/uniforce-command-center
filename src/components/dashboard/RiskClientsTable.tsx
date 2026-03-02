@@ -192,8 +192,9 @@ export function RiskClientsTable({
                         <ActionMenu
                           clientId={c.cliente_id}
                           clientName={c.cliente_nome || `Cliente ${c.cliente_id}`}
-                          clientPhone={c.ultimo_atendimento_data ? undefined : undefined}
+                          clientPhone={(c as any).cliente_celular || (c as any).telefone}
                           variant="risco"
+                          onOpenProfile={() => onSelectCliente(c)}
                         />
                       </TableCell>
                     </TableRow>

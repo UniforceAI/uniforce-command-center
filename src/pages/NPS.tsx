@@ -3,6 +3,12 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useActiveIsp } from "@/hooks/useActiveIsp";
 import { externalSupabase } from "@/integrations/supabase/external-client";
+import { useChurnData } from "@/hooks/useChurnData";
+import { useChurnScore } from "@/hooks/useChurnScore";
+import { useRiskBucketConfig } from "@/hooks/useRiskBucketConfig";
+import { useCrmWorkflow } from "@/hooks/useCrmWorkflow";
+import { useChamados } from "@/hooks/useChamados";
+import { CrmDrawer } from "@/components/crm/CrmDrawer";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -28,6 +34,32 @@ const NPS = () => {
   const [respostasNPS, setRespostasNPS] = useState<RespostaNPS[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [importOpen, setImportOpen] = useState(false);
+  const [selectedClienteId, setSelectedClienteId] = useState<number | null>(null);
+
+  // CRM hooks for profile drawer
+  const { churnStatus, churnEvents } = useChurnData();
+  const { getScoreTotalReal } = useChurnScore();
+  const { getBucket } = useRiskBucketConfig();
+  const { workflowMap, addToWorkflow, updateStatus, updateTags, updateOwner } = useCrmWorkflow();
+  const { chamados } = useChamados();
+
+  const selectedCliente = useMemo(() => {
+    if (!selectedClienteId) return null;
+    return churnStatus.find(c => c.cliente_id === selectedClienteId) || null;
+  }, [selectedClienteId, churnStatus]);
+
+  const selectedEvents = useMemo(() => {
+    if (!selectedClienteId) return [];
+    return churnEvents.filter(e => e.cliente_id === selectedClienteId);
+  }, [selectedClienteId, churnEvents]);
+
+  const selectedChamados = useMemo(() => {
+    if (!selectedClienteId) return [];
+    return chamados.filter(c => {
+      const id = typeof c.id_cliente === "string" ? parseInt(c.id_cliente as any) : c.id_cliente;
+      return id === selectedClienteId;
+    });
+  }, [selectedClienteId, chamados]);
 
   // Filtros
   const [periodo, setPeriodo] = useState("30");
@@ -317,10 +349,27 @@ const NPS = () => {
             <NPSInsightsPanel respostas={filteredRespostas} />
 
             {/* Table */}
-            <NPSTable respostas={filteredRespostas} />
+            <NPSTable respostas={filteredRespostas} onOpenProfile={(id) => setSelectedClienteId(id)} />
           </>
         )}
         <NPSImportDialog open={importOpen} onOpenChange={setImportOpen} onSuccess={fetchNPSData} />
+
+        {/* CRM Profile Drawer */}
+        {selectedCliente && (
+          <CrmDrawer
+            cliente={selectedCliente}
+            score={getScoreTotalReal(selectedCliente)}
+            bucket={getBucket(getScoreTotalReal(selectedCliente))}
+            workflow={workflowMap.get(selectedCliente.cliente_id)}
+            events={selectedEvents}
+            chamadosCliente={selectedChamados}
+            onClose={() => setSelectedClienteId(null)}
+            onStartTreatment={() => addToWorkflow(selectedCliente.cliente_id)}
+            onUpdateStatus={(s) => updateStatus(selectedCliente.cliente_id, s)}
+            onUpdateTags={(t) => updateTags(selectedCliente.cliente_id, t)}
+            onUpdateOwner={(o) => updateOwner(selectedCliente.cliente_id, o || "")}
+          />
+        )}
       </main>
     </div>
   );

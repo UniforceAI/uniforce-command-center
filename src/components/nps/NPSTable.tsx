@@ -25,6 +25,7 @@ import { cn } from "@/lib/utils";
 
 interface NPSTableProps {
   respostas: RespostaNPS[];
+  onOpenProfile?: (clienteId: number) => void;
 }
 
 const tipoNPSLabels: Record<string, string> = {
@@ -32,7 +33,7 @@ const tipoNPSLabels: Record<string, string> = {
   os: "Pós-O.S",
 };
 
-export const NPSTable = memo(({ respostas }: NPSTableProps) => {
+export const NPSTable = memo(({ respostas, onOpenProfile }: NPSTableProps) => {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [globalFilter, setGlobalFilter] = useState("");
   const { addToWorkflow } = useCrmWorkflow();
@@ -126,6 +127,7 @@ export const NPSTable = memo(({ respostas }: NPSTableProps) => {
             clientPhone={(row.original as any).celular}
             variant="nps"
             onSendToTreatment={() => addToWorkflow(row.original.cliente_id)}
+            onOpenProfile={() => onOpenProfile?.(row.original.cliente_id)}
           />
         </div>
       ),
