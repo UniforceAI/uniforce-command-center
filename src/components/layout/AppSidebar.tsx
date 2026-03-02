@@ -25,7 +25,7 @@ const menuItems = [
   { title: "Visão Geral", url: "/", icon: LayoutDashboard },
   { title: "Financeiro", url: "/financeiro", icon: DollarSign },
   { title: "Chamados Frequentes", url: "/chamados", icon: AlertTriangle },
-  { title: "Clientes em Risco", url: "/clientes-em-risco", icon: UserX },
+  { title: "Clientes em Risco", url: "/crm", icon: UserX },
   { title: "Cancelamentos", url: "/cancelamentos", icon: XCircle },
   { title: "NPS", url: "/nps", icon: ThumbsUp },
 ];

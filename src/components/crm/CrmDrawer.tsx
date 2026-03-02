@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { ChurnStatus, ChurnEvent } from "@/hooks/useChurnData";
 import { ChamadoData } from "@/hooks/useChamados";
 import { RiskBucket } from "@/hooks/useRiskBucketConfig";
@@ -7,6 +7,8 @@ import { useCrmComments } from "@/hooks/useCrmComments";
 import { useCrmTags } from "@/hooks/useCrmTags";
 import { useAuth } from "@/contexts/AuthContext";
 import { safeFormatDate } from "@/lib/safeDate";
+import { externalSupabase } from "@/integrations/supabase/external-client";
+import { useActiveIsp } from "@/hooks/useActiveIsp";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -20,13 +22,13 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { useToast } from "@/hooks/use-toast";
 import {
   PlayCircle, CheckCircle2, XCircle, Tag, UserCheck,
-  MessageSquare, Phone, Send, Handshake, Wrench,
+  MessageSquare, Phone, Send, Wrench,
   ThumbsDown, ThumbsUp, Minus, X, Plus, Clock, DollarSign,
   AlertTriangle, TrendingDown, Activity, FileText, Calendar,
   Trash2, Pencil, Save, Palette, Copy, CreditCard, ArrowRight,
+  QrCode, Package,
 } from "lucide-react";
 import { getCategoriaDisplay } from "@/lib/categoriasMap";
-import { useActiveIsp } from "@/hooks/useActiveIsp";
 
 const BUCKET_COLORS: Record<RiskBucket, string> = {
   OK: "bg-green-100 text-green-800 border-green-200",
@@ -97,10 +99,29 @@ export function CrmDrawer({
   const [showTagPicker, setShowTagPicker] = useState(false);
   const [activeTab, setActiveTab] = useState("acompanhamento");
 
+  // Payment data from eventos table
+  const [paymentData, setPaymentData] = useState<{ pix_codigo?: string; linha_digitavel?: string; pix_qrcode_img?: string } | null>(null);
+
+  useEffect(() => {
+    if (!clienteId || !ispId) return;
+    (async () => {
+      try {
+        const { data } = await externalSupabase
+          .from("eventos")
+          .select("pix_codigo, linha_digitavel, pix_qrcode_img")
+          .eq("isp_id", ispId)
+          .eq("cliente_id", clienteId)
+          .order("event_datetime", { ascending: false })
+          .limit(1);
+        if (data && data.length > 0) setPaymentData(data[0]);
+      } catch { /* silent */ }
+    })();
+  }, [clienteId, ispId]);
+
   // Tempo de contrato
   const tempoContrato = useMemo(() => {
     if (!cliente) return null;
-    const dtAtivacao = (cliente as any).data_ativacao;
+    const dtAtivacao = (cliente as any).data_ativacao || (cliente as any).data_instalacao;
     if (!dtAtivacao) return null;
     const d = new Date(dtAtivacao);
     if (isNaN(d.getTime())) return null;
@@ -108,6 +129,16 @@ export function CrmDrawer({
     const meses = Math.floor(diffMs / (1000 * 60 * 60 * 24 * 30));
     if (meses >= 12) return `${Math.floor(meses / 12)}a ${meses % 12}m`;
     return `${meses}m`;
+  }, [cliente]);
+
+  // LTV
+  const ltv = useMemo(() => {
+    if (!cliente) return null;
+    if ((cliente as any).ltv_estimado != null && (cliente as any).ltv_estimado > 0)
+      return (cliente as any).ltv_estimado;
+    if (cliente.valor_mensalidade && (cliente as any).tempo_cliente_meses)
+      return cliente.valor_mensalidade * (cliente as any).tempo_cliente_meses;
+    return null;
   }, [cliente]);
 
   if (!cliente) return null;
@@ -180,12 +211,44 @@ export function CrmDrawer({
   };
 
   const handleWhatsApp = () => {
-    const phone = (cliente as any).telefone?.replace(/\D/g, "") || "";
+    const phone = (cliente as any).telefone?.replace(/\D/g, "") || (cliente as any).cliente_celular?.replace(/\D/g, "") || "";
     const name = cliente.cliente_nome?.split(" ")[0] || "cliente";
-    const motivo = cliente.motivo_risco_principal || "seus serviços";
-    const msg = encodeURIComponent(`Olá ${name}, tudo bem?\nPassando rapidinho para lembrar que sua fatura de internet está em aberto.\n\nQueremos garantir que você continue navegando, maratonando séries, estudando e trabalhando sem nenhuma interrupção!\n\n🔑 PIX (copia e cola):\n\nSe precisar, estamos aqui para ajudar!`);
+    const pixCode = paymentData?.pix_codigo || "";
+    const msg = encodeURIComponent(
+      `Olá ${name}, tudo bem?\nPassando rapidinho para lembrar que sua fatura de internet está em aberto.\n\nQueremos garantir que você continue navegando, maratonando séries, estudando e trabalhando sem nenhuma interrupção!\n\n🔑 PIX (copia e cola):\n\n${pixCode}\n\nSe precisar, estamos aqui para ajudar!`
+    );
     if (phone) window.open(`https://wa.me/55${phone}?text=${msg}`, "_blank");
     handleQuickAction("whatsapp", "WhatsApp enviado");
+  };
+
+  const handleCopyPix = () => {
+    if (!paymentData?.pix_codigo) {
+      toast({ title: "PIX indisponível", description: "Este cliente não possui código PIX no cadastro.", variant: "destructive" });
+      return;
+    }
+    navigator.clipboard.writeText(paymentData.pix_codigo);
+    toast({ title: "PIX copiado!" });
+    handleQuickAction("copy_pix", "PIX copiado");
+  };
+
+  const handleCopyBoleto = () => {
+    if (!paymentData?.linha_digitavel) {
+      toast({ title: "Boleto indisponível", description: "Este cliente não possui linha digitável no cadastro.", variant: "destructive" });
+      return;
+    }
+    navigator.clipboard.writeText(paymentData.linha_digitavel);
+    toast({ title: "Boleto copiado!" });
+    handleQuickAction("copy_boleto", "Boleto copiado");
+  };
+
+  const handleCopyPixQrCode = () => {
+    if (!paymentData?.pix_qrcode_img) {
+      toast({ title: "QR Code indisponível", description: "Este cliente não possui QR Code PIX no cadastro.", variant: "destructive" });
+      return;
+    }
+    navigator.clipboard.writeText(paymentData.pix_qrcode_img);
+    toast({ title: "QR Code PIX copiado!" });
+    handleQuickAction("copy_pix_qrcode", "QR Code PIX copiado");
   };
 
   // Score breakdown
@@ -210,8 +273,6 @@ export function CrmDrawer({
     } catch { return dateStr; }
   };
 
-  // tempoContrato already computed above hooks
-
   return (
     <Dialog open={!!cliente} onOpenChange={() => onClose()}>
       <DialogContent className="max-w-3xl w-[95vw] max-h-[90vh] p-0 flex flex-col overflow-hidden">
@@ -224,7 +285,10 @@ export function CrmDrawer({
               </DialogTitle>
               <DialogDescription className="sr-only">Detalhes do cliente em risco</DialogDescription>
               {cliente.plano_nome && (
-                <span className="text-xs text-muted-foreground mt-0.5 block">{cliente.plano_nome}</span>
+                <div className="flex items-center gap-1.5 mt-1">
+                  <Package className="h-3.5 w-3.5 text-primary" />
+                  <span className="text-sm font-medium text-primary">{cliente.plano_nome}</span>
+                </div>
               )}
             </div>
             <Badge className={`${BUCKET_COLORS[bucket]} border text-sm font-mono px-3 py-1 shrink-0`}>
@@ -310,8 +374,8 @@ export function CrmDrawer({
             </div>
           )}
 
-          {/* Data cards */}
-          <div className="mt-3 grid grid-cols-3 sm:grid-cols-5 gap-2 text-center">
+          {/* Data cards — 7 items */}
+          <div className="mt-3 grid grid-cols-4 sm:grid-cols-7 gap-2 text-center">
             <div className="rounded-lg border bg-card p-2 shadow-sm">
               <Activity className="h-3.5 w-3.5 mx-auto text-primary mb-0.5" />
               <div className="text-xs font-bold">{driverPrincipal}</div>
@@ -334,6 +398,7 @@ export function CrmDrawer({
               <div className="text-xs font-bold">{cliente.qtd_chamados_30d || 0}</div>
               <div className="text-[9px] text-muted-foreground">Chamados 30d</div>
             </div>
+            {/* NPS de Contrato */}
             {npsData?.nota != null && (
               <div className="rounded-lg border bg-card p-2 shadow-sm">
                 {npsData.classificacao === "DETRATOR" ? <ThumbsDown className="h-3.5 w-3.5 mx-auto text-destructive mb-0.5" /> :
@@ -343,11 +408,20 @@ export function CrmDrawer({
                 <div className="text-[9px] text-muted-foreground">NPS</div>
               </div>
             )}
+            {/* Tempo de Contrato */}
             {tempoContrato && (
               <div className="rounded-lg border bg-card p-2 shadow-sm">
                 <Calendar className="h-3.5 w-3.5 mx-auto text-muted-foreground mb-0.5" />
                 <div className="text-xs font-bold">{tempoContrato}</div>
                 <div className="text-[9px] text-muted-foreground">Contrato</div>
+              </div>
+            )}
+            {/* LTV */}
+            {ltv != null && ltv > 0 && (
+              <div className="rounded-lg border bg-card p-2 shadow-sm">
+                <DollarSign className="h-3.5 w-3.5 mx-auto text-primary mb-0.5" />
+                <div className="text-xs font-bold">R${Math.round(ltv).toLocaleString("pt-BR")}</div>
+                <div className="text-[9px] text-muted-foreground">LTV</div>
               </div>
             )}
           </div>
@@ -362,27 +436,34 @@ export function CrmDrawer({
           </div>
         </DialogHeader>
 
-        {/* ── TABBED CONTENT ── */}
+        {/* ── TABBED CONTENT with blue active tab ── */}
         <div className="flex-1 overflow-hidden">
           <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col h-full">
-            <TabsList className="mx-5 mt-3 w-fit">
-              <TabsTrigger value="acompanhamento" className="text-xs gap-1.5"><MessageSquare className="h-3.5 w-3.5" />Acompanhamento</TabsTrigger>
-              <TabsTrigger value="atendimento" className="text-xs gap-1.5"><Phone className="h-3.5 w-3.5" />Atendimento</TabsTrigger>
-              <TabsTrigger value="mapa" className="text-xs gap-1.5"><TrendingDown className="h-3.5 w-3.5" />Mapa de Churn</TabsTrigger>
+            <TabsList className="mx-5 mt-3 w-fit bg-muted/50 p-1">
+              <TabsTrigger value="acompanhamento" className="text-xs gap-1.5 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+                <MessageSquare className="h-3.5 w-3.5" />Acompanhamento
+              </TabsTrigger>
+              <TabsTrigger value="atendimento" className="text-xs gap-1.5 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+                <Phone className="h-3.5 w-3.5" />Atendimento
+              </TabsTrigger>
+              <TabsTrigger value="chamado" className="text-xs gap-1.5 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+                <Wrench className="h-3.5 w-3.5" />Abrir Chamado
+              </TabsTrigger>
+              <TabsTrigger value="mapa" className="text-xs gap-1.5 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+                <TrendingDown className="h-3.5 w-3.5" />Mapa de Churn
+              </TabsTrigger>
             </TabsList>
 
             {/* ── TAB: Acompanhamento ── */}
             <TabsContent value="acompanhamento" className="flex-1 overflow-hidden m-0">
-              <ScrollArea className="h-[calc(90vh-380px)]">
+              <ScrollArea className="h-[calc(90vh-420px)]">
                 <div className="p-5 space-y-4">
-                  {/* Enviar para Tratamento */}
                   {!workflow && (
                     <Button className="w-full h-10 gap-2" onClick={onStartTreatment}>
                       <PlayCircle className="h-4 w-4" />Enviar para Tratamento
                     </Button>
                   )}
 
-                  {/* Notes */}
                   <div className="space-y-2">
                     <Textarea placeholder="Escreva uma observação, nota interna ou próxima ação..." value={noteText}
                       onChange={(e) => setNoteText(e.target.value)} className="min-h-[80px] text-sm resize-none" />
@@ -398,7 +479,6 @@ export function CrmDrawer({
 
                   <Separator />
 
-                  {/* Histórico de Interações */}
                   <div className="space-y-2">
                     <span className="text-xs font-semibold uppercase text-muted-foreground flex items-center gap-1.5">
                       <Clock className="h-3 w-3" /> Histórico de Interações ({comments.length})
@@ -445,8 +525,6 @@ export function CrmDrawer({
                   </div>
 
                   <Separator />
-
-                  {/* Notas — link to Mapa de Churn */}
                   <Button variant="outline" size="sm" className="w-full h-8 text-xs gap-1.5" onClick={() => setActiveTab("mapa")}>
                     <TrendingDown className="h-3.5 w-3.5" />Ver Mapa de Churn
                   </Button>
@@ -456,20 +534,20 @@ export function CrmDrawer({
 
             {/* ── TAB: Atendimento ── */}
             <TabsContent value="atendimento" className="flex-1 overflow-hidden m-0">
-              <ScrollArea className="h-[calc(90vh-380px)]">
+              <ScrollArea className="h-[calc(90vh-420px)]">
                 <div className="p-5 space-y-4">
-                  {/* Action buttons */}
                   <div className="grid grid-cols-2 gap-2">
                     <Button variant="outline" className="h-11 text-xs gap-2 justify-start font-medium hover:bg-primary/5 hover:border-primary/30" onClick={handleWhatsApp}>
                       <Send className="h-4 w-4 shrink-0" />Enviar WhatsApp
                     </Button>
-                    <Button variant="outline" className="h-11 text-xs gap-2 justify-start font-medium hover:bg-primary/5 hover:border-primary/30"
-                      onClick={() => { toast({ title: "PIX copiado" }); handleQuickAction("copy_pix", "PIX copiado"); }}>
+                    <Button variant="outline" className="h-11 text-xs gap-2 justify-start font-medium hover:bg-primary/5 hover:border-primary/30" onClick={handleCopyPix}>
                       <Copy className="h-4 w-4 shrink-0" />Copiar PIX
                     </Button>
-                    <Button variant="outline" className="h-11 text-xs gap-2 justify-start font-medium hover:bg-primary/5 hover:border-primary/30"
-                      onClick={() => { toast({ title: "Boleto copiado" }); handleQuickAction("copy_boleto", "Boleto copiado"); }}>
+                    <Button variant="outline" className="h-11 text-xs gap-2 justify-start font-medium hover:bg-primary/5 hover:border-primary/30" onClick={handleCopyBoleto}>
                       <CreditCard className="h-4 w-4 shrink-0" />Copiar Boleto
+                    </Button>
+                    <Button variant="outline" className="h-11 text-xs gap-2 justify-start font-medium hover:bg-primary/5 hover:border-primary/30" onClick={handleCopyPixQrCode}>
+                      <QrCode className="h-4 w-4 shrink-0" />Copiar PIX QR Code
                     </Button>
                     <Button variant="outline" className="h-11 text-xs gap-2 justify-start font-medium hover:bg-primary/5 hover:border-primary/30"
                       onClick={() => handleQuickAction("ligacao", "Ligação realizada")}>
@@ -479,7 +557,6 @@ export function CrmDrawer({
 
                   <Separator />
 
-                  {/* Status actions */}
                   <div className="grid grid-cols-2 gap-2">
                     <Button variant="outline" className="h-11 text-xs gap-2 justify-start bg-green-50 hover:bg-green-100 border-green-200 text-green-700"
                       onClick={() => handleStatusChange("resolvido")}>
@@ -493,12 +570,6 @@ export function CrmDrawer({
 
                   <Separator />
 
-                  {/* Abrir Chamado (OS) */}
-                  <Button variant="outline" className="w-full h-11 text-xs gap-2 font-medium hover:bg-primary/5 hover:border-primary/30"
-                    onClick={() => { toast({ title: "Chamado aberto", description: "Ordem de serviço criada via ERP." }); handleQuickAction("os_opened", "OS aberta no ERP"); }}>
-                    <Wrench className="h-4 w-4" />Abrir Chamado (OS)
-                  </Button>
-
                   <Button variant="outline" size="sm" className="w-full h-8 text-xs gap-1.5" onClick={() => setActiveTab("acompanhamento")}>
                     <ArrowRight className="h-3.5 w-3.5" />Ir para Acompanhamento
                   </Button>
@@ -506,9 +577,29 @@ export function CrmDrawer({
               </ScrollArea>
             </TabsContent>
 
+            {/* ── TAB: Abrir Chamado ── */}
+            <TabsContent value="chamado" className="flex-1 overflow-hidden m-0">
+              <ScrollArea className="h-[calc(90vh-420px)]">
+                <div className="p-5 space-y-4">
+                  <div className="text-center py-8 space-y-3">
+                    <Wrench className="h-10 w-10 mx-auto text-muted-foreground/40" />
+                    <h3 className="font-semibold text-muted-foreground">Abrir Chamado (OS)</h3>
+                    <p className="text-xs text-muted-foreground max-w-sm mx-auto">
+                      Esta funcionalidade permitirá abrir ordens de serviço diretamente no ERP do provedor.
+                      Em breve você poderá criar chamados de forma integrada.
+                    </p>
+                    <Button variant="outline" className="h-11 text-xs gap-2 font-medium"
+                      onClick={() => { toast({ title: "Chamado aberto", description: "Ordem de serviço criada via ERP." }); handleQuickAction("os_opened", "OS aberta no ERP"); }}>
+                      <Wrench className="h-4 w-4" />Abrir Chamado (OS)
+                    </Button>
+                  </div>
+                </div>
+              </ScrollArea>
+            </TabsContent>
+
             {/* ── TAB: Mapa de Churn ── */}
             <TabsContent value="mapa" className="flex-1 overflow-hidden m-0">
-              <ScrollArea className="h-[calc(90vh-380px)]">
+              <ScrollArea className="h-[calc(90vh-420px)]">
                 <div className="p-5 space-y-3">
                   <h4 className="text-sm font-semibold flex items-center gap-2">
                     <TrendingDown className="h-4 w-4 text-destructive" />

@@ -88,6 +88,16 @@ const App = () => (
             />
             {/* churn-analytics removed — metrics moved to Cancelamentos */}
             <Route
+              path="/crm"
+              element={
+                <ProtectedRoute>
+                  <MainLayout>
+                    <ClientesEmRisco />
+                  </MainLayout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
               path="/clientes-em-risco"
               element={
                 <ProtectedRoute>

@@ -39,6 +39,7 @@ import {
   Loader2,
   Copy,
   Kanban,
+  QrCode,
 } from "lucide-react";
 
 export type ActionType =
@@ -51,6 +52,7 @@ export type ActionType =
   | "os_opened"
   | "copy_pix"
   | "copy_boleto"
+  | "copy_pix_qrcode"
   | "send_treatment";
 
 interface ActionMenuProps {
@@ -61,6 +63,7 @@ interface ActionMenuProps {
   variant?: "cobranca" | "risco" | "suporte" | "cancelamento" | "nps";
   onActionLogged?: (action: ActionType) => void;
   onSendToTreatment?: () => void;
+  onOpenProfile?: () => void;
 }
 
 const actionConfig: Record<
@@ -76,6 +79,7 @@ const actionConfig: Record<
   os_opened: { label: "Abrir OS (ERP)", icon: FileText, channel: "system" },
   copy_pix: { label: "Copiar PIX", icon: Copy, channel: "system" },
   copy_boleto: { label: "Copiar Boleto", icon: Copy, channel: "system" },
+  copy_pix_qrcode: { label: "Copiar PIX QR Code", icon: QrCode, channel: "system" },
   send_treatment: { label: "Enviar para Tratamento", icon: Kanban, channel: "system" },
 };
 
@@ -87,6 +91,7 @@ export function ActionMenu({
   variant = "cobranca",
   onActionLogged,
   onSendToTreatment,
+  onOpenProfile,
 }: ActionMenuProps) {
   const { toast } = useToast();
   const { ispId } = useActiveIsp();
@@ -191,6 +196,10 @@ export function ActionMenu({
         toast({ title: "Boleto copiado", description: "Link do boleto copiado para a área de transferência." });
         await logAction(actionType);
         break;
+      case "copy_pix_qrcode":
+        toast({ title: "QR Code PIX copiado", description: "QR Code PIX copiado para a área de transferência." });
+        await logAction(actionType);
+        break;
       case "send_treatment":
         onSendToTreatment?.();
         await logAction(actionType);
@@ -217,7 +226,7 @@ export function ActionMenu({
   const getActionsForVariant = (): ActionType[] => {
     switch (variant) {
       case "cobranca":
-        return ["call", "whatsapp", "pix_sent", "copy_pix", "copy_boleto", "payment_promise", "manual_note"];
+        return ["call", "whatsapp", "pix_sent", "copy_pix", "copy_boleto", "copy_pix_qrcode", "payment_promise", "manual_note"];
       case "risco":
         return ["call", "whatsapp", "send_treatment", "os_opened", "copy_pix", "copy_boleto", "manual_note"];
       case "suporte":
@@ -236,10 +245,15 @@ export function ActionMenu({
   return (
     <>
       <div className="flex items-center gap-0.5">
-        {/* Profile button */}
+        {/* Profile button - now optionally clickable if onOpenProfile is provided */}
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 text-muted-foreground hover:text-foreground"
+              onClick={onOpenProfile}
+            >
               <User className="h-3.5 w-3.5" />
             </Button>
           </TooltipTrigger>
