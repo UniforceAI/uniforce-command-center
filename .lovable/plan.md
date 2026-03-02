@@ -1,64 +1,128 @@
+## Diagnóstico objetivo do que está acontecendo
 
+Você está certo em cobrar: os dois pontos que você citou (espaçamento do card e WhatsApp) ainda não estão robustos no código atual.
 
-# Unificar Calculo de Inadimplencia em Todo o Produto
+### 1) Espaçamento do card “sem efeito”
 
-## Problema
+No arquivo `src/components/crm/CrmDrawer.tsx`, os espaçamentos ainda estão com valores curtos nos pontos críticos:
 
-A taxa de inadimplencia aparece diferente entre Visao Geral e Financeiro porque usam logicas de calculo distintas, apesar de ambas respeitarem o filtro de periodo.
+- infos do cliente: `mt-6` + `gap-y-4`
+- boxes de informação: `mt-8` + `gap-2`
+- badges de score: `mt-7`
+- etiquetas: `mt-7`
 
-**Visao Geral** (correto):
-1. Filtra eventos pelo periodo selecionado
-2. Filtra apenas eventos financeiros (COBRANCA ou SNAPSHOT financeiro)
-3. Deduplica por cliente_id (mantém evento mais recente por cliente)
-4. Conta quantos desses clientes tem dias_atraso > 0
-5. Taxa = vencidos / total_clientes_financeiros
+Ou seja, a lógica de espaçamento “mais respirada” não foi aplicada de forma consistente no bloco inteiro do header. Por isso visualmente continua “grudado”.
 
-**Financeiro** (incorreto):
-1. Filtra eventos pelo periodo selecionado
-2. Conta clientesUnicos de TODOS os eventos filtrados (inclusive nao-financeiros)
-3. Conta vencidos (dias_atraso > 0) sem deduplicar por cliente
-4. Taxa = clientes_vencidos / clientesUnicos (denominador inflado)
+### 2) Botão WhatsApp “aba bloqueada”
 
-O denominador do Financeiro inclui clientes que so aparecem em eventos nao-financeiros, inflando a base e reduzindo a taxa artificialmente.
+Você confirmou que o erro é **aba bloqueada**.  
+No código atual, o handler usa:
 
-## Solucao
+- `window.open(link, "_blank", "noopener,noreferrer")`
 
-Aplicar no Financeiro a mesma logica da Visao Geral:
+Mesmo estando correto em vários cenários, em algumas combinações de navegador + iframe + política de popup, isso pode ser bloqueado.
 
-```text
-// Dentro do useMemo de kpis em Financeiro.tsx (linhas 168-210)
-// ANTES: usa filteredEventos generico e Set simples
-// DEPOIS: deduplica por cliente_id, pega evento mais recente
+Também há fragilidades no número:
 
-const clientesFinMap = new Map();
-filteredEventos.forEach(e => {
-  if (!clientesFinMap.has(e.cliente_id) ||
-    new Date(e.event_datetime) > new Date(clientesFinMap.get(e.cliente_id).event_datetime)) {
-    clientesFinMap.set(e.cliente_id, e);
-  }
-});
-const clientesFinUnicos = Array.from(clientesFinMap.values());
-const totalClientesFin = clientesFinMap.size;
-const vencidosFin = clientesFinUnicos.filter(e => e.dias_atraso > 0);
-const clientesVencidos = vencidosFin.length;
-const taxaInadimplencia = totalClientesFin > 0
-  ? ((clientesVencidos / totalClientesFin) * 100).toFixed(1)
-  : "0";
-```
+- sanitiza `\D`, mas não remove zeros à esquerda
+- não valida tamanho mínimo/máximo antes de abrir
+- pode montar URL inválida em casos específicos do dado
 
-Isso garante:
-- O filtro de periodo continua sendo respeitado (igual a todas as outras metricas)
-- A deduplicacao por cliente e identica a da Visao Geral
-- O denominador usa apenas clientes financeiros (nao infla com outros tipos de evento)
+---
 
-## Arquivo a editar
+## Conferência com a documentação oficial (clique para conversa)
 
-**src/pages/Financeiro.tsx** - Substituir o bloco de calculo de KPIs (linhas 168-210) para usar deduplicacao por cliente_id identica a da Visao Geral, mantendo `filteredEventos` como base (respeita periodo e demais filtros).
+Com base na doc oficial que você enviou, as regras corretas são:
 
-## Verificacao
+1. Formato: `https://wa.me/<numero>`
+2. Número em formato internacional completo, só dígitos
+3. Sem `+`, `()`, `-`, espaços
+4. Mensagem em `?text=` com `encodeURIComponent`
+5. No seu caso: se não começar com `55`, prefixar `55`
 
-Apos a mudanca, ambas as paginas com o mesmo filtro de periodo devem exibir a mesma taxa de inadimplencia, pois usarao:
-- Mesma base: eventos financeiros filtrados pelo periodo
-- Mesma deduplicacao: Map por cliente_id, evento mais recente
-- Mesmo criterio: dias_atraso > 0
+### Situação atual vs doc
 
+- **Correto no código atual:** usa `wa.me`, remove não-numéricos, usa `encodeURIComponent`.
+- **Incompleto:** não trata zeros à esquerda e não tem fallback anti-bloqueio de popup.
+- **Resultado prático:** comportamento intermitente (aba bloqueada), exatamente o que você está vendo.
+
+---
+
+## Do I know what the issue is?
+
+Sim.  
+O problema principal do WhatsApp não é “URL errada”, e sim **abertura da aba em contexto bloqueável + normalização incompleta do telefone**.  
+No card, o problema é **escala de spacing aplicada parcialmente**, não de forma sistêmica no header inteiro.
+
+---
+
+## Plano de implementação (correção definitiva)
+
+### Etapa 1 — Corrigir espaçamento do card de forma uniforme
+
+**Arquivo:** `src/components/crm/CrmDrawer.tsx`
+
+Aplicar uma escala única de espaçamento vertical para todas as seções do topo do card:
+
+- Bloco infos cliente: subir para `mt-8` e `gap-y-5`
+- Bloco boxes: `mt-10` e `gap-3` (ou `gap-4` se necessário após teste)
+- Bloco badges de score: `mt-8` com `gap-2`
+- Bloco etiquetas: `mt-8`, título com `mb-2` explícito para não “colar”
+- Garantir `pb` no header para não encostar nas tabs
+
+Objetivo: o mesmo “respiro” da última linha de infos (telefone/vencimento) replicado para boxes, badges e etiquetas.
+
+---
+
+### Etapa 2 — Corrigir WhatsApp com robustez anti-bloqueio
+
+**Arquivo:** `src/components/crm/CrmDrawer.tsx`
+
+Refatorar `handleWhatsApp` com 3 camadas:
+
+1. **Normalização forte do número**
+  - converter para string
+  - remover não-numéricos
+  - remover zeros à esquerda
+  - prefixar `55` quando necessário
+  - validar comprimento esperado antes de abrir
+2. **Montagem do link oficial**
+  - `https://wa.me/${numero}?text=${encodeURIComponent(mensagem)}`
+  - mensagem padrão configurável (mantendo padrão comercial definido)
+3. **Abertura com fallback anti-popup**
+  - abrir `about:blank` imediatamente no clique do usuário
+  - setar `popup.location.href = waMeUrl`
+  - se `popup` vier nulo (bloqueio), fallback para `window.location.assign(waMeUrl)` (mesma aba)
+
+Também registrar ação no CRM somente após tentar abrir, e exibir toast claro em caso de número inválido.
+
+---
+
+### Etapa 3 — Evitar novo retrabalho (validação guiada)
+
+Após implementar:
+
+1. Testar com número formatado `(11) 97691-9401` e com número já internacional
+2. Validar em preview que não ocorre “aba bloqueada”
+3. Conferir visual do topo do card com foco em:
+  - distância entre infos → boxes
+  - distância boxes → badges churn score
+  - distância badges → título “Etiquetas”
+4. Testar o mesmo card nas páginas principais que o usam (`/`, `/financeiro`, `/chamados`, `/cancelamentos`, `/nps`) para garantir consistência visual global
+
+---
+
+## Arquivos impactados
+
+- `src/components/crm/CrmDrawer.tsx` (único arquivo necessário para os dois problemas relatados)
+
+---
+
+## Riscos e mitigação
+
+- **Risco:** popup continuar bloqueado em algum navegador muito restritivo  
+**Mitigação:** abrir eu uma nova aba.
+- **Risco:** dados de celular com qualidade ruim no backend  
+**Mitigação:** validação forte + toast explicativo (não tentar abrir URL quebrada).
+- **Risco:** espaçamento ficar excessivo em telas menores  
+**Mitigação:** ajustar com classes responsivas (`sm:`) após validação visual.
