@@ -1,5 +1,6 @@
 import { useState, useMemo, useCallback } from "react";
 import { FAIXAS_AGING } from "@/types/evento";
+import { safeParse } from "@/lib/safeDate";
 import { useChurnData, ChurnStatus, ChurnEvent } from "@/hooks/useChurnData";
 import { useEventos } from "@/hooks/useEventos";
 import { buildUnifiedCancelados, getTotalClientesBase, getMaxCancelDate } from "@/lib/churnUnified";
@@ -141,8 +142,8 @@ const Cancelamentos = () => {
       const dias = parseInt(periodo);
       const limite = new Date(maxDate.getTime() - dias * 24 * 60 * 60 * 1000);
       f = f.filter((c) => {
-        if (!c.data_cancelamento) return false;
-        return new Date(c.data_cancelamento + "T00:00:00") >= limite;
+        const d = safeParse(c.data_cancelamento);
+        return d ? d >= limite : false;
       });
     }
 
@@ -151,8 +152,8 @@ const Cancelamentos = () => {
       switch (sortField) {
         case "cliente_nome": valA = a.cliente_nome || ""; valB = b.cliente_nome || ""; break;
         case "data_cancelamento":
-          valA = a.data_cancelamento ? new Date(a.data_cancelamento + "T00:00:00").getTime() : 0;
-          valB = b.data_cancelamento ? new Date(b.data_cancelamento + "T00:00:00").getTime() : 0;
+          valA = safeParse(a.data_cancelamento)?.getTime() ?? 0;
+          valB = safeParse(b.data_cancelamento)?.getTime() ?? 0;
           break;
         case "churn_risk_score": valA = a.churn_risk_score; valB = b.churn_risk_score; break;
         case "valor_mensalidade": valA = a.valor_mensalidade ?? 0; valB = b.valor_mensalidade ?? 0; break;
@@ -185,10 +186,9 @@ const Cancelamentos = () => {
     const tickets = filtered.filter((c) => c.valor_mensalidade != null).map((c) => c.valor_mensalidade!);
     const ticketMedio = tickets.length > 0 ? tickets.reduce((a, b) => a + b, 0) / tickets.length : 0;
     const tempos = filtered.filter(c => {
-      // Use multiple sources for tempo_cliente_meses to avoid 0 for tenants without this field
       const meses = c.tempo_cliente_meses
         ?? (c.data_instalacao ? Math.max(0, Math.round(
-            ((c.data_cancelamento ? new Date(c.data_cancelamento + "T00:00:00").getTime() : Date.now()) - new Date(c.data_instalacao + "T00:00:00").getTime()) / (1000 * 60 * 60 * 24 * 30.44)
+            ((safeParse(c.data_cancelamento)?.getTime() ?? Date.now()) - (safeParse(c.data_instalacao)?.getTime() ?? Date.now())) / (1000 * 60 * 60 * 24 * 30.44)
           )) : null)
         ?? c.ltv_meses_estimado
         ?? null;
@@ -196,16 +196,16 @@ const Cancelamentos = () => {
     }).map(c => {
       if (c.tempo_cliente_meses != null && c.tempo_cliente_meses > 0) return c.tempo_cliente_meses;
       if (c.data_instalacao) {
-        const inst = new Date(c.data_instalacao + "T00:00:00");
-        const end = c.data_cancelamento ? new Date(c.data_cancelamento + "T00:00:00") : new Date();
-        if (!isNaN(inst.getTime()) && !isNaN(end.getTime())) {
+        const inst = safeParse(c.data_instalacao);
+        const end = safeParse(c.data_cancelamento) ?? new Date();
+        if (inst) {
           return Math.max(0, Math.round((end.getTime() - inst.getTime()) / (1000 * 60 * 60 * 24 * 30.44)));
         }
       }
       return c.ltv_meses_estimado ?? 0;
     });
     const tempoMedio = tempos.length > 0 ? Math.round(tempos.reduce((a, b) => a + b, 0) / tempos.length) : 0;
-    const datas = filtered.filter((c) => c.data_cancelamento).map((c) => new Date(c.data_cancelamento! + "T00:00:00"));
+    const datas = filtered.map((c) => safeParse(c.data_cancelamento)).filter((d): d is Date => d !== null);
     const ultimoCancelamento = datas.length > 0
       ? new Date(Math.max(...datas.map((d) => d.getTime()))).toLocaleDateString("pt-BR")
       : null;
@@ -228,27 +228,19 @@ const Cancelamentos = () => {
   const cohortTempo = useMemo(() => {
     // Helper: derive months — for canceled clients, prefer date diff for accuracy
     const getMeses = (c: ChurnStatus): number | null => {
-      // 1. Para cancelados: priorizar cálculo data_cancelamento - data_instalacao
       if (c.status_churn === "cancelado" && c.data_instalacao) {
-        const inst = new Date(c.data_instalacao + "T00:00:00");
-        if (!isNaN(inst.getTime())) {
-          const end = c.data_cancelamento
-            ? new Date(c.data_cancelamento + "T00:00:00")
-            : new Date();
-          if (!isNaN(end.getTime())) {
-            const diff = (end.getTime() - inst.getTime()) / (1000 * 60 * 60 * 24 * 30.44);
-            return Math.max(0, Math.round(diff));
-          }
+        const inst = safeParse(c.data_instalacao);
+        if (inst) {
+          const end = safeParse(c.data_cancelamento) ?? new Date();
+          const diff = (end.getTime() - inst.getTime()) / (1000 * 60 * 60 * 24 * 30.44);
+          return Math.max(0, Math.round(diff));
         }
       }
-      // 2. Campo direto
       if (c.tempo_cliente_meses != null && c.tempo_cliente_meses > 0) return c.tempo_cliente_meses;
-      // 3. LTV meses (proxy calculado pelo backend)
       if (c.ltv_meses_estimado != null && c.ltv_meses_estimado > 0) return c.ltv_meses_estimado;
-      // 4. Cálculo genérico por datas
       if (c.data_instalacao) {
-        const inst = new Date(c.data_instalacao + "T00:00:00");
-        if (!isNaN(inst.getTime())) {
+        const inst = safeParse(c.data_instalacao);
+        if (inst) {
           const diff = (new Date().getTime() - inst.getTime()) / (1000 * 60 * 60 * 24 * 30.44);
           return Math.max(0, Math.round(diff));
         }
@@ -309,15 +301,9 @@ const Cancelamentos = () => {
       totalByKey[c_key] = (totalByKey[c_key] || 0) + 1;
     });
 
-    // Cancelados per dimension from unified dataset
-    let f = [...cancelados];
-    if (plano !== "todos") f = f.filter((c) => c.plano_nome === plano);
-    if (cidade !== "todos") f = f.filter((c) => c.cliente_cidade === cidade);
-    if (bairro !== "todos") f = f.filter((c) => c.cliente_bairro === bairro);
-    if (bucket !== "todos") f = f.filter((c) => getBucket(c.churn_risk_score) === bucket);
-
+    // Cancelados per dimension from filtered dataset (respects periodo)
     const map: Record<string, { cancelados: number; total: number; mrr: number }> = {};
-    f.forEach((c) => {
+    filtered.forEach((c) => {
       const key = getKey(c);
       if (!key) return;
       if (!map[key]) map[key] = { cancelados: 0, total: totalByKey[key] || 0, mrr: 0 };
@@ -344,7 +330,7 @@ const Cancelamentos = () => {
       .filter((d) => d.total >= 3 && d.cancelados > 0)
       .sort((a, b) => b.pct - a.pct)
       .slice(0, 10);
-  }, [churnStatus, plano, cidade, bairro, bucket, getBucket, churnDimension]);
+  }, [filtered, eventos, plano, cidade, bairro, bucket, getBucket, churnDimension]);
   
 
   // ─── Top Motivos (enriched: events + status + score pillars) ───

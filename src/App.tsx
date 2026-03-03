@@ -46,7 +46,7 @@ const persister = createLocalStoragePersister();
 const persistOptions = {
   persister,
   maxAge: TWENTY_FOUR_HOURS,
-  buster: "v2", // bump to invalidate all caches
+  buster: "v3", // bump to invalidate all caches
 };
 
 const App = () => (
