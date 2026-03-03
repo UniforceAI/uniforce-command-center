@@ -78,33 +78,40 @@ export function buildUnifiedCancelados(
     }
   });
 
+  // ALL-OR-NOTHING logic (same as Visão Geral):
+  // If eventos has ANY data_cancelamento → use ONLY eventos
+  // Otherwise → use ONLY churn_status
+  const hasEventosCancelamento = eventos.some(e => !!e.data_cancelamento);
+
   const canceladosMap = new Map<number, ChurnStatus>();
 
-  // 1. Primary: eventos with data_cancelamento (deduplicated by cliente_id)
-  eventos.forEach(e => {
-    if (!e.data_cancelamento) return;
-    if (canceladosMap.has(e.cliente_id)) return;
+  if (hasEventosCancelamento) {
+    // Primary source: eventos only (deduplicated by cliente_id)
+    eventos.forEach(e => {
+      if (!e.data_cancelamento) return;
+      if (canceladosMap.has(e.cliente_id)) return;
 
-    const cs = csMap.get(e.cliente_id);
-    if (cs) {
-      // Enrich with churn_status data but use eventos date
-      canceladosMap.set(e.cliente_id, {
-        ...cs,
-        data_cancelamento: e.data_cancelamento,
-        status_churn: "cancelado",
-      });
-    } else {
-      // No churn_status record — create synthetic from evento
-      canceladosMap.set(e.cliente_id, eventoToChurnStatus(e));
-    }
-  });
-
-  // 2. Fallback: churn_status cancelados not found in eventos
-  churnStatus.forEach(cs => {
-    if (cs.status_churn !== "cancelado") return;
-    if (canceladosMap.has(cs.cliente_id)) return;
-    canceladosMap.set(cs.cliente_id, cs);
-  });
+      const cs = csMap.get(e.cliente_id);
+      if (cs) {
+        // Enrich with churn_status data but use eventos date
+        canceladosMap.set(e.cliente_id, {
+          ...cs,
+          data_cancelamento: e.data_cancelamento,
+          status_churn: "cancelado",
+        });
+      } else {
+        // No churn_status record — create synthetic from evento
+        canceladosMap.set(e.cliente_id, eventoToChurnStatus(e));
+      }
+    });
+  } else {
+    // Fallback: use ONLY churn_status cancelados
+    churnStatus.forEach(cs => {
+      if (cs.status_churn !== "cancelado") return;
+      if (canceladosMap.has(cs.cliente_id)) return;
+      canceladosMap.set(cs.cliente_id, cs);
+    });
+  }
 
   return Array.from(canceladosMap.values());
 }
