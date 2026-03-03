@@ -24,7 +24,19 @@ import PerfilISP from "./pages/PerfilISP";
 import ContasAcesso from "./pages/ContasAcesso";
 import SetupChamados from "./pages/SetupChamados";
 
-const queryClient = new QueryClient();
+const TWENTY_FOUR_HOURS = 1000 * 60 * 60 * 24;
+
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: TWENTY_FOUR_HOURS,
+      gcTime: TWENTY_FOUR_HOURS,
+      refetchOnWindowFocus: false,
+      refetchOnMount: false,
+      retry: 1,
+    },
+  },
+});
 
 const App = () => (
   <QueryClientProvider client={queryClient}>

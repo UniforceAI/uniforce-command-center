@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback } from "react";
+import { useCallback } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useActiveIsp } from "@/hooks/useActiveIsp";
 
@@ -27,121 +28,87 @@ async function callCrmApi(payload: Record<string, any>) {
 
 export function useCrmWorkflow() {
   const { ispId } = useActiveIsp();
-  const [records, setRecords] = useState<CrmWorkflowRecord[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const queryClient = useQueryClient();
+  const queryKey = ["crm-workflow", ispId];
 
-  const fetchRecords = useCallback(async () => {
-    if (!ispId) return;
-    setIsLoading(true);
-    try {
+  const { data: records = [], isLoading } = useQuery({
+    queryKey,
+    queryFn: async () => {
       const data = await callCrmApi({ action: "fetch_workflow", isp_id: ispId });
-      setRecords((data as CrmWorkflowRecord[]) || []);
-    } catch (err: any) {
-      console.error("❌ useCrmWorkflow fetch error:", err.message);
-    }
-    setIsLoading(false);
-  }, [ispId]);
+      return (data as CrmWorkflowRecord[]) || [];
+    },
+    enabled: !!ispId,
+  });
 
-  useEffect(() => {
-    fetchRecords();
-  }, [fetchRecords]);
+  const upsertMutation = useMutation({
+    mutationFn: (payload: Record<string, any>) => callCrmApi({ ...payload, isp_id: ispId }),
+    onSuccess: (newRecord: any) => {
+      queryClient.setQueryData<CrmWorkflowRecord[]>(queryKey, (old = []) => {
+        const idx = old.findIndex((r) => r.cliente_id === newRecord.cliente_id);
+        if (idx >= 0) {
+          const copy = [...old];
+          copy[idx] = newRecord as CrmWorkflowRecord;
+          return copy;
+        }
+        return [newRecord as CrmWorkflowRecord, ...old];
+      });
+    },
+  });
 
-  /** Adiciona cliente ao workflow (idempotent — INSERT se novo, UPDATE se existente) */
   const addToWorkflow = useCallback(
     async (clienteId: number, tags?: string[]) => {
       if (!ispId) throw new Error("No ISP");
-
-      const payload: Record<string, any> = {
+      return upsertMutation.mutateAsync({
         action: "upsert_workflow",
-        isp_id: ispId,
         cliente_id: clienteId,
         status_workflow: "em_tratamento" as WorkflowStatus,
         tags: tags || [],
-      };
-
-      const data = await callCrmApi(payload);
-      setRecords((prev) => {
-        const idx = prev.findIndex((r) => r.cliente_id === clienteId);
-        if (idx >= 0) {
-          const copy = [...prev];
-          copy[idx] = data as CrmWorkflowRecord;
-          return copy;
-        }
-        return [data as CrmWorkflowRecord, ...prev];
       });
-      return data;
     },
-    [ispId]
+    [ispId, upsertMutation]
   );
 
-  /** Atualiza status — apenas UPDATE, nunca delete */
   const updateStatus = useCallback(
     async (clienteId: number, status: WorkflowStatus) => {
       if (!ispId) throw new Error("No ISP");
-
-      const data = await callCrmApi({
+      return upsertMutation.mutateAsync({
         action: "upsert_workflow",
-        isp_id: ispId,
         cliente_id: clienteId,
         status_workflow: status,
       });
-      setRecords((prev) => {
-        const idx = prev.findIndex((r) => r.cliente_id === clienteId);
-        if (idx >= 0) {
-          const copy = [...prev];
-          copy[idx] = data as CrmWorkflowRecord;
-          return copy;
-        }
-        return [data as CrmWorkflowRecord, ...prev];
-      });
-      return data;
     },
-    [ispId]
+    [ispId, upsertMutation]
   );
 
-  /** Atualiza tags */
   const updateTags = useCallback(
     async (clienteId: number, tags: string[]) => {
       if (!ispId) throw new Error("No ISP");
-
-      const data = await callCrmApi({
+      return upsertMutation.mutateAsync({
         action: "upsert_workflow",
-        isp_id: ispId,
         cliente_id: clienteId,
         tags,
       });
-      setRecords((prev) =>
-        prev.map((r) =>
-          r.cliente_id === clienteId ? (data as CrmWorkflowRecord) : r
-        )
-      );
-      return data;
     },
-    [ispId]
+    [ispId, upsertMutation]
   );
 
-  /** Atualiza owner */
   const updateOwner = useCallback(
     async (clienteId: number, ownerUserId: string | null) => {
       if (!ispId) throw new Error("No ISP");
-
-      const data = await callCrmApi({
+      return upsertMutation.mutateAsync({
         action: "upsert_workflow",
-        isp_id: ispId,
         cliente_id: clienteId,
         owner_user_id: ownerUserId,
       });
-      setRecords((prev) =>
-        prev.map((r) =>
-          r.cliente_id === clienteId ? (data as CrmWorkflowRecord) : r
-        )
-      );
-      return data;
     },
-    [ispId]
+    [ispId, upsertMutation]
   );
 
   const workflowMap = new Map(records.map((r) => [r.cliente_id, r]));
+
+  const refetch = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey });
+  }, [queryClient, queryKey]);
 
   return {
     records,
@@ -151,6 +118,6 @@ export function useCrmWorkflow() {
     updateTags,
     updateOwner,
     workflowMap,
-    refetch: fetchRecords,
+    refetch,
   };
 }

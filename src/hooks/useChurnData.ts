@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { externalSupabase } from "@/integrations/supabase/external-client";
 import { useActiveIsp } from "@/hooks/useActiveIsp";
 
@@ -8,7 +8,6 @@ export interface ChurnStatus {
   instancia_isp: string;
   cliente_id: number;
   id_contrato: string | null;
-  // Cliente
   cliente_nome: string | null;
   cliente_cidade: string | null;
   cliente_bairro: string | null;
@@ -18,37 +17,30 @@ export interface ChurnStatus {
   ltv_meses_estimado: number | null;
   tempo_cliente_meses: number | null;
   data_instalacao: string | null;
-  // Status e risco
   status_churn: "ativo" | "risco" | "cancelado";
   churn_risk_score: number;
   churn_risk_bucket: string | null;
   dias_em_risco: number;
   motivo_risco_principal: string | null;
   data_cancelamento: string | null;
-  // Status do contrato (IXC)
   status_internet: string | null;
   status_contrato: string | null;
   fidelidade: string | null;
   fidelidade_expiracao: string | null;
   desbloqueio_confianca: string | null;
-  // Financeiro
   dias_atraso: number | null;
   faixa_atraso: string | null;
   ultimo_pagamento_data: string | null;
-  // Suporte
   qtd_chamados_30d: number;
   qtd_chamados_90d: number;
   ultimo_atendimento_data: string | null;
-  // NPS
   nps_ultimo_score: number | null;
   nps_classificacao: string | null;
-  // Scores
   score_financeiro: number;
   score_suporte: number;
   score_qualidade: number;
   score_nps: number;
   score_comportamental: number;
-  // Timestamps
   created_at: string;
   updated_at: string;
 }
@@ -67,69 +59,68 @@ export interface ChurnEvent {
   created_at: string;
 }
 
+const BATCH_SIZE = 1000;
+const MAX_BATCHES = 10;
+
+async function fetchChurnStatus(ispId: string): Promise<ChurnStatus[]> {
+  let allStatus: any[] = [];
+  let page = 0;
+  while (true) {
+    const { data, error } = await externalSupabase
+      .from("churn_status")
+      .select("*")
+      .eq("isp_id", ispId)
+      .order("churn_risk_score", { ascending: false })
+      .range(page * BATCH_SIZE, (page + 1) * BATCH_SIZE - 1);
+
+    if (error) throw error;
+    if (!data || data.length === 0) break;
+    allStatus = allStatus.concat(data);
+    if (data.length < BATCH_SIZE) break;
+    page++;
+    if (page >= MAX_BATCHES) break;
+  }
+  console.log(`✅ useChurnData: ${allStatus.length} registros de churn_status`);
+  return allStatus as ChurnStatus[];
+}
+
+async function fetchChurnEvents(ispId: string): Promise<ChurnEvent[]> {
+  const since = new Date();
+  since.setDate(since.getDate() - 90);
+  const { data, error } = await externalSupabase
+    .from("churn_events")
+    .select("*")
+    .eq("isp_id", ispId)
+    .gte("data_evento", since.toISOString())
+    .order("data_evento", { ascending: false })
+    .limit(1000);
+
+  if (error) {
+    console.warn("⚠️ Erro ao carregar churn_events:", error.message);
+    return [];
+  }
+  return (data as ChurnEvent[]) || [];
+}
+
 export function useChurnData() {
   const { ispId } = useActiveIsp();
-  const [churnStatus, setChurnStatus] = useState<ChurnStatus[]>([]);
-  const [churnEvents, setChurnEvents] = useState<ChurnEvent[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!ispId) return;
+  const statusQuery = useQuery({
+    queryKey: ["churn-status", ispId],
+    queryFn: () => fetchChurnStatus(ispId),
+    enabled: !!ispId,
+  });
 
-    const fetchAll = async () => {
-      setIsLoading(true);
-      setError(null);
-      try {
-        // Fetch churn_status with pagination to get all records
-        let allStatus: any[] = [];
-        let page = 0;
-        const pageSize = 1000;
-        while (true) {
-          const { data, error: statusErr } = await externalSupabase
-            .from("churn_status")
-            .select("*")
-            .eq("isp_id", ispId)
-            .order("churn_risk_score", { ascending: false })
-            .range(page * pageSize, (page + 1) * pageSize - 1);
+  const eventsQuery = useQuery({
+    queryKey: ["churn-events", ispId],
+    queryFn: () => fetchChurnEvents(ispId),
+    enabled: !!ispId,
+  });
 
-          if (statusErr) throw statusErr;
-          if (!data || data.length === 0) break;
-          allStatus = allStatus.concat(data);
-          if (data.length < pageSize) break;
-          page++;
-        }
-
-        console.log(`✅ useChurnData: ${allStatus.length} registros de churn_status para ${ispId}`);
-        setChurnStatus(allStatus as ChurnStatus[]);
-
-        // Fetch churn_events (últimos 90 dias)
-        const since = new Date();
-        since.setDate(since.getDate() - 90);
-        const { data: eventsData, error: eventsErr } = await externalSupabase
-          .from("churn_events")
-          .select("*")
-          .eq("isp_id", ispId)
-          .gte("data_evento", since.toISOString())
-          .order("data_evento", { ascending: false })
-          .limit(1000);
-
-        if (eventsErr) {
-          console.warn("⚠️ Erro ao carregar churn_events:", eventsErr.message);
-          // Não bloqueia — eventos são opcionais
-        } else {
-          setChurnEvents((eventsData as ChurnEvent[]) || []);
-        }
-      } catch (e: any) {
-        console.error("❌ useChurnData error:", e);
-        setError(e.message || "Erro ao carregar dados de churn");
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    fetchAll();
-  }, [ispId]);
-
-  return { churnStatus, churnEvents, isLoading, error };
+  return {
+    churnStatus: statusQuery.data ?? [],
+    churnEvents: eventsQuery.data ?? [],
+    isLoading: statusQuery.isLoading || eventsQuery.isLoading,
+    error: statusQuery.error?.message ?? eventsQuery.error?.message ?? null,
+  };
 }

@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback } from "react";
+import { useCallback } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useActiveIsp } from "@/hooks/useActiveIsp";
 
@@ -22,58 +23,57 @@ export type RiskBucket = "OK" | "ALERTA" | "CRÍTICO";
 
 export function useRiskBucketConfig() {
   const { ispId } = useActiveIsp();
-  const [config, setConfig] = useState<RiskBucketConfig>({ ...DEFAULTS, isp_id: ispId });
-  const [isLoading, setIsLoading] = useState(true);
+  const queryClient = useQueryClient();
+  const queryKey = ["risk-bucket-config", ispId];
 
-  useEffect(() => {
-    if (!ispId) return;
+  const { data: config, isLoading } = useQuery({
+    queryKey,
+    queryFn: async () => {
+      const { data, error } = await supabase.functions.invoke("crm-api", {
+        body: { action: "fetch_risk_bucket_config", isp_id: ispId },
+      });
+      if (error) console.warn("⚠️ useRiskBucketConfig fetch error:", error.message);
+      return data ? (data as RiskBucketConfig) : { ...DEFAULTS, isp_id: ispId };
+    },
+    enabled: !!ispId,
+  });
 
-    const fetchConfig = async () => {
-      setIsLoading(true);
-      try {
-        const { data, error } = await supabase.functions.invoke("crm-api", {
-          body: { action: "fetch_risk_bucket_config", isp_id: ispId },
-        });
-        if (error) {
-          console.warn("⚠️ useRiskBucketConfig fetch error:", error.message);
-        }
-        setConfig(data ? (data as RiskBucketConfig) : { ...DEFAULTS, isp_id: ispId });
-      } catch (e: any) {
-        console.warn("⚠️ useRiskBucketConfig fetch error:", e.message);
-        setConfig({ ...DEFAULTS, isp_id: ispId });
-      }
-      setIsLoading(false);
-    };
+  const currentConfig = config ?? { ...DEFAULTS, isp_id: ispId };
 
-    fetchConfig();
-  }, [ispId]);
+  const saveMutation = useMutation({
+    mutationFn: async (updates: Partial<Omit<RiskBucketConfig, "isp_id" | "id">>) => {
+      const merged = { ...currentConfig, ...updates };
+      const { data, error } = await supabase.functions.invoke("crm-api", {
+        body: {
+          action: "save_risk_bucket_config",
+          isp_id: ispId,
+          ok_max: merged.ok_max,
+          alert_min: merged.alert_min,
+          alert_max: merged.alert_max,
+          critical_min: merged.critical_min,
+        },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      return data as RiskBucketConfig;
+    },
+    onSuccess: (newData) => {
+      queryClient.setQueryData(queryKey, newData);
+    },
+  });
 
-  const saveConfig = useCallback(async (updates: Partial<Omit<RiskBucketConfig, "isp_id" | "id">>) => {
-    const merged = { ...config, ...updates };
+  const saveConfig = useCallback(
+    async (updates: Partial<Omit<RiskBucketConfig, "isp_id" | "id">>) => {
+      return saveMutation.mutateAsync(updates);
+    },
+    [saveMutation]
+  );
 
-    const { data, error } = await supabase.functions.invoke("crm-api", {
-      body: {
-        action: "save_risk_bucket_config",
-        isp_id: ispId,
-        ok_max: merged.ok_max,
-        alert_min: merged.alert_min,
-        alert_max: merged.alert_max,
-        critical_min: merged.critical_min,
-      },
-    });
-
-    if (error) throw error;
-    if (data?.error) throw new Error(data.error);
-    setConfig(data as RiskBucketConfig);
-    return data;
-  }, [config, ispId]);
-
-  /** Classifica um score no bucket correto */
   const getBucket = useCallback((score: number): RiskBucket => {
-    if (score >= config.critical_min) return "CRÍTICO";
-    if (score >= config.alert_min) return "ALERTA";
+    if (score >= currentConfig.critical_min) return "CRÍTICO";
+    if (score >= currentConfig.alert_min) return "ALERTA";
     return "OK";
-  }, [config]);
+  }, [currentConfig]);
 
-  return { config, isLoading, saveConfig, getBucket };
+  return { config: currentConfig, isLoading, saveConfig, getBucket };
 }
