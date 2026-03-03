@@ -1,6 +1,7 @@
 import { useState, useMemo, useCallback } from "react";
 import { FAIXAS_AGING } from "@/types/evento";
 import { useChurnData, ChurnStatus, ChurnEvent } from "@/hooks/useChurnData";
+import { useEventos } from "@/hooks/useEventos";
 import { useChamados } from "@/hooks/useChamados";
 import { useRiskBucketConfig, RiskBucket } from "@/hooks/useRiskBucketConfig";
 import { useCrmWorkflow } from "@/hooks/useCrmWorkflow";
@@ -62,6 +63,7 @@ const fmtBRL = (v: number) => `R$ ${v.toLocaleString("pt-BR", { minimumFractionD
 
 const Cancelamentos = () => {
   const { churnStatus, churnEvents, isLoading, error } = useChurnData();
+  const { eventos } = useEventos();
   const { getChamadosPorCliente, chamados: allChamados } = useChamados();
   const { getBucket } = useRiskBucketConfig();
   const { workflowMap, addToWorkflow, updateStatus, updateTags, updateOwner } = useCrmWorkflow();
@@ -101,10 +103,14 @@ const Cancelamentos = () => {
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [selectedCliente, setSelectedCliente] = useState<ChurnStatus | null>(null);
 
-  const totalAtivos = useMemo(
-    () => churnStatus.filter((c) => c.status_churn !== "cancelado").length,
-    [churnStatus]
-  );
+  // Total de clientes únicos da base de eventos (mesma lógica da Visão Geral)
+  const totalClientesBase = useMemo(() => {
+    const clienteIds = new Set<number>();
+    eventos.forEach(e => clienteIds.add(e.cliente_id));
+    // Also include churn_status clients for completeness
+    churnStatus.forEach(c => clienteIds.add(c.cliente_id));
+    return clienteIds.size;
+  }, [eventos, churnStatus]);
 
   const maxDate = useMemo(() => {
     let max = new Date(0);
@@ -177,8 +183,8 @@ const Cancelamentos = () => {
   // ─── KPIs ───
   const kpis = useMemo(() => {
     const totalCancelados = filtered.length;
-    const totalBase = totalCancelados + totalAtivos;
-    const taxaChurn = totalBase > 0 ? ((totalCancelados / totalBase) * 100).toFixed(2) : "0";
+    // Use total de clientes da base (mesma lógica da Visão Geral: cancelados/totalClientes)
+    const taxaChurn = totalClientesBase > 0 ? ((totalCancelados / totalClientesBase) * 100).toFixed(2) : "0";
     const mrrPerdido = filtered.reduce((acc, c) => acc + (c.valor_mensalidade || 0), 0);
     const ltvPerdido = filtered.reduce((acc, c) => {
       if (c.ltv_estimado != null && c.ltv_estimado > 0) return acc + c.ltv_estimado;
@@ -187,14 +193,33 @@ const Cancelamentos = () => {
     }, 0);
     const tickets = filtered.filter((c) => c.valor_mensalidade != null).map((c) => c.valor_mensalidade!);
     const ticketMedio = tickets.length > 0 ? tickets.reduce((a, b) => a + b, 0) / tickets.length : 0;
-    const tempos = filtered.filter(c => c.tempo_cliente_meses != null).map(c => c.tempo_cliente_meses!);
+    const tempos = filtered.filter(c => {
+      // Use multiple sources for tempo_cliente_meses to avoid 0 for tenants without this field
+      const meses = c.tempo_cliente_meses
+        ?? (c.data_instalacao ? Math.max(0, Math.round(
+            ((c.data_cancelamento ? new Date(c.data_cancelamento + "T00:00:00").getTime() : Date.now()) - new Date(c.data_instalacao + "T00:00:00").getTime()) / (1000 * 60 * 60 * 24 * 30.44)
+          )) : null)
+        ?? c.ltv_meses_estimado
+        ?? null;
+      return meses != null && meses > 0;
+    }).map(c => {
+      if (c.tempo_cliente_meses != null && c.tempo_cliente_meses > 0) return c.tempo_cliente_meses;
+      if (c.data_instalacao) {
+        const inst = new Date(c.data_instalacao + "T00:00:00");
+        const end = c.data_cancelamento ? new Date(c.data_cancelamento + "T00:00:00") : new Date();
+        if (!isNaN(inst.getTime()) && !isNaN(end.getTime())) {
+          return Math.max(0, Math.round((end.getTime() - inst.getTime()) / (1000 * 60 * 60 * 24 * 30.44)));
+        }
+      }
+      return c.ltv_meses_estimado ?? 0;
+    });
     const tempoMedio = tempos.length > 0 ? Math.round(tempos.reduce((a, b) => a + b, 0) / tempos.length) : 0;
     const datas = filtered.filter((c) => c.data_cancelamento).map((c) => new Date(c.data_cancelamento! + "T00:00:00"));
     const ultimoCancelamento = datas.length > 0
       ? new Date(Math.max(...datas.map((d) => d.getTime()))).toLocaleDateString("pt-BR")
       : null;
     return { totalCancelados, taxaChurn, mrrPerdido, ltvPerdido, ticketMedio, tempoMedio, ultimoCancelamento };
-  }, [filtered, totalAtivos]);
+  }, [filtered, totalClientesBase]);
 
   // ─── Distribuição por Bucket ───
   const bucketDistribuicao = useMemo(() => {
@@ -503,11 +528,12 @@ const Cancelamentos = () => {
     {
       id: "periodo", label: "Período", value: periodo, onChange: setPeriodo,
       options: [
-        { value: "todos", label: "Tudo" },
+        { value: "7", label: "Últimos 7 dias" },
         { value: "30", label: "Últimos 30 dias" },
         { value: "90", label: "Últimos 90 dias" },
         { value: "180", label: "Últimos 180 dias" },
         { value: "365", label: "Último ano" },
+        { value: "todos", label: "Tudo" },
       ],
     },
     {
@@ -603,7 +629,7 @@ const Cancelamentos = () => {
                     <div>
                       <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Taxa Churn</p>
                       <p className="text-3xl font-bold mt-1">{kpis.taxaChurn}%</p>
-                      <p className="text-[10px] text-muted-foreground mt-0.5">Cancelados / Base total</p>
+                      <p className="text-[10px] text-muted-foreground mt-0.5">{kpis.totalCancelados} de {totalClientesBase.toLocaleString()} clientes</p>
                     </div>
                     <div className="p-2.5 rounded-lg bg-destructive/10"><TrendingDown className="h-5 w-5 text-destructive" /></div>
                   </div>
