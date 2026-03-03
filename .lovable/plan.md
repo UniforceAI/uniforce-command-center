@@ -1,87 +1,34 @@
 
-Diagnóstico aprofundado feito no código atual aponta que o problema **não está mais** no card/subtítulo em si (ambos já usam `filtered.length`), e sim em inconsistências de base temporal + cache que podem fazer o ambiente parecer “travado” no comportamento antigo.
 
-## O que está acontecendo (explicação direta)
+## Diagnóstico
 
-1) O plano anterior corrigiu a unificação principal (all-or-nothing), mas ainda restaram pontos de inconsistência no fluxo de Cancelamentos.
+A raiz do problema é simples: a correção de `maxDate` para usar `new Date()` foi aplicada **apenas** em `Cancelamentos.tsx`. A página `VisaoGeral.tsx` (linha 245-247) ainda usa `getMaxCancelDate()`, que calcula a data de referência com base no registro mais recente do dataset.
 
-2) Há sinais de **cache persistido com versão já “consumida”**:
-- O app hoje está com `buster: "v2"`.
-- Se o navegador já hidratou dados incorretos dentro da versão v2, novas alterações sem novo versionamento podem continuar mostrando comportamento inesperado por até 24h.
-- O `CACHE_KEY` ainda está fixo em `"uf-cache-v1"` no persister, o que dificulta controle operacional do ciclo de invalidação.
+Como todos os tenants (igp-fibra, zen-telecom, d-kiros) compartilham o mesmo código, a discrepância não é "por tenant" — é "por página". Cancelamentos agora usa `new Date()`, Visão Geral usa `getMaxCancelDate()`. Por isso os números divergem.
 
-3) Há inconsistências técnicas na própria página:
-- `churnPorDimensao` não aplica `periodo` (usa `cancelados`, não `filtered`).
-- Dependências de `useMemo` de `churnPorDimensao` estão incompletas (faltam `cancelados`, `eventos`, `churnDimension`, `periodo`), causando risco de dado “stale” em UI.
-- Filtro de período usa parsing `new Date(c.data_cancelamento + "T00:00:00")`, que pode ser frágil se o campo já vier como timestamp completo.
+## Plano de correção
 
-Isso explica o cenário “antes funcionava / agora não”: parte da correção entrou, parte não, e o cache persistente mascara mudanças.
+### 1. Unificar VisaoGeral.tsx para usar `new Date()`
 
-## Correção definitiva proposta (produção-safe)
+**Arquivo:** `src/pages/VisaoGeral.tsx`
 
-### Etapa 1 — Fechar inconsistência de cálculo na página de Cancelamentos
-- Garantir que **todo bloco analítico sensível a período** derive de `filtered` (não de `cancelados` bruto).
-- Ajustar `churnPorDimensao` para respeitar `periodo`.
-- Corrigir dependências do `useMemo` de `churnPorDimensao` para evitar stale render.
+- Linha 245-247: substituir `getMaxCancelDate(filteredEventos, churnStatus)` por `new Date()`.
+- Remover import de `getMaxCancelDate` (linha 13), já que não será mais usado nesta página.
+- Ajustar `dataLimiteChurn` (linha 249-252) — já deriva de `maxCancelamentoDate`, então funcionará automaticamente após a troca.
 
-Resultado esperado: troca 7d/30d/90d reflete imediatamente em KPI e blocos correlatos.
+### 2. Limpar export morto de `getMaxCancelDate`
 
-### Etapa 2 — Normalização robusta de datas de cancelamento
-- Criar helper único de parse seguro para `data_cancelamento` (date-only e datetime).
-- Remover concatenações ad-hoc de `"T00:00:00"` onde já houver timestamp completo.
-- Aplicar helper em:
-  - filtro de período;
-  - ordenação por data;
-  - cálculo de séries temporais.
+**Arquivo:** `src/lib/churnUnified.ts`
 
-Resultado esperado: janela temporal consistente para qualquer formato retornado pelo backend.
+- Após a remoção do uso em ambas as páginas, a função `getMaxCancelDate` fica sem consumidores. Removê-la (ou mantê-la comentada para referência futura).
 
-### Etapa 3 — Estratégia de invalidação de cache “à prova de regressão”
-- Introduzir `QUERY_CACHE_VERSION` centralizada (ex.: `"v3"`).
-- Usar essa versão tanto no `buster` quanto no `CACHE_KEY` (ex.: `uf-cache-v3`).
-- Implementar limpeza de chaves legadas (`uf-cache-v1`, `uf-cache-v2`) na inicialização.
-- Manter TTL 24h (compatível com refresh diário), mas com invalidação explícita por versão de release.
+**Arquivo:** `src/pages/Cancelamentos.tsx`
 
-Resultado esperado: produção não reaproveita snapshot incompatível após mudanças de lógica.
+- Remover `getMaxCancelDate` do import (linha 6), já que não é mais usado após a correção anterior.
 
-### Etapa 4 — Telemetria de validação controlada (temporária)
-- Adicionar logs estruturados (guardados por flag debug) para:
-  - `periodo`, `maxDate`, `limite`;
-  - `cancelados.length`, `filtered.length`;
-  - contagem por origem (eventos/churn_status) após unificação.
-- Remover automaticamente no final da validação.
+### 3. Resultado esperado
 
-Resultado esperado: rastreabilidade objetiva sem poluir produção permanentemente.
+- Ambas as páginas (Visão Geral e Cancelamentos) usam `new Date()` como referência temporal.
+- Todos os tenants (igp-fibra, zen-telecom, d-kiros) exibem números consistentes entre si e entre páginas.
+- Filtros 7d/30d/90d significam literalmente "últimos N dias a partir de hoje".
 
-### Etapa 5 — Protocolo de validação final em produção
-Checklist obrigatório por tenant (igp-fibra, zen-telecom, d-kiros):
-1. Abrir Cancelamentos e validar 7d/30d/90d.
-2. Confirmar igualdade entre subtítulo e KPI “Total Cancelados”.
-3. Confirmar coerência com Visão Geral no mesmo período/filtros.
-4. Hard reload + nova sessão para validar hidratação de cache após version bump.
-5. Repetir em janela anônima (garante ausência de estado residual).
-
-## Ordem de implementação (sequenciamento)
-
-1. Ajustes de cálculo e dependências (Etapa 1).
-2. Normalização de data (Etapa 2).
-3. Versionamento/invalidação cache (Etapa 3).
-4. Instrumentação de validação (Etapa 4).
-5. Teste cruzado e aceite de produção (Etapa 5).
-
-## Critério de aceite (definitivo)
-
-- KPI “Total Cancelados” varia corretamente em 7d/30d/90d.
-- Subtítulo = KPI em todos os períodos.
-- Números de Cancelamentos e Visão Geral permanecem consistentes para o mesmo tenant/período/filtros.
-- Sem regressão em d-kiros.
-- Sem efeito de cache antigo após deploy (nova versão limpa e hidrata corretamente).
-
-## Seção técnica (resumo das causas prováveis remanescentes)
-
-- Inconsistência residual de derivação (`cancelados` vs `filtered`) em blocos da página.
-- `useMemo` com dependências incompletas (estado antigo reutilizado).
-- Parsing de data não padronizado.
-- Política de cache sem rotação robusta por release de lógica.
-
-Com isso, a correção deixa de ser pontual e passa a ser **estrutural**, cobrindo cálculo, temporalidade e persistência de dados em produção.
