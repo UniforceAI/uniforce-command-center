@@ -26,7 +26,7 @@ const ESSENTIAL_COLUMNS = [
 ].join(",");
 
 const BATCH_SIZE = 1000;
-const MAX_BATCHES = 10;
+const MAX_BATCHES = 50; // Increased from 10 to prevent silent truncation
 
 async function fetchEventos(ispId: string): Promise<Evento[]> {
   // Batch 1: recent events
