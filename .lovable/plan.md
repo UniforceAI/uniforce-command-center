@@ -1,71 +1,87 @@
 
+Diagnóstico aprofundado feito no código atual aponta que o problema **não está mais** no card/subtítulo em si (ambos já usam `filtered.length`), e sim em inconsistências de base temporal + cache que podem fazer o ambiente parecer “travado” no comportamento antigo.
 
-# Correcao Definitiva: Cancelamentos igp-fibra
+## O que está acontecendo (explicação direta)
 
-## Causa Raiz Identificada (3 camadas)
+1) O plano anterior corrigiu a unificação principal (all-or-nothing), mas ainda restaram pontos de inconsistência no fluxo de Cancelamentos.
 
-### Camada 1: Subtitulo mostra contagem errada
+2) Há sinais de **cache persistido com versão já “consumida”**:
+- O app hoje está com `buster: "v2"`.
+- Se o navegador já hidratou dados incorretos dentro da versão v2, novas alterações sem novo versionamento podem continuar mostrando comportamento inesperado por até 24h.
+- O `CACHE_KEY` ainda está fixo em `"uf-cache-v1"` no persister, o que dificulta controle operacional do ciclo de invalidação.
 
-Na linha 599 de `Cancelamentos.tsx`, o subtitulo da pagina mostra `cancelados.length` (TODOS os cancelados, sem filtro de periodo = 562). O correto e mostrar `filtered.length` (cancelados filtrados pelo periodo selecionado).
+3) Há inconsistências técnicas na própria página:
+- `churnPorDimensao` não aplica `periodo` (usa `cancelados`, não `filtered`).
+- Dependências de `useMemo` de `churnPorDimensao` estão incompletas (faltam `cancelados`, `eventos`, `churnDimension`, `periodo`), causando risco de dado “stale” em UI.
+- Filtro de período usa parsing `new Date(c.data_cancelamento + "T00:00:00")`, que pode ser frágil se o campo já vier como timestamp completo.
 
-```text
-ERRADO (linha 599):
-  {cancelados.length.toLocaleString()} cancelamentos
-  → Sempre 562, ignora filtro de periodo
+Isso explica o cenário “antes funcionava / agora não”: parte da correção entrou, parte não, e o cache persistente mascara mudanças.
 
-CORRETO:
-  {filtered.length.toLocaleString()} cancelamentos
-  → Respeita o periodo selecionado (ex: 154 nos ultimos 7 dias)
-```
+## Correção definitiva proposta (produção-safe)
 
-### Camada 2: Volume de dados cresceu (comportamento CORRETO)
+### Etapa 1 — Fechar inconsistência de cálculo na página de Cancelamentos
+- Garantir que **todo bloco analítico sensível a período** derive de `filtered` (não de `cancelados` bruto).
+- Ajustar `churnPorDimensao` para respeitar `periodo`.
+- Corrigir dependências do `useMemo` de `churnPorDimensao` para evitar stale render.
 
-O `MAX_BATCHES` foi aumentado de 10 para 50 no `useEventos.ts`, permitindo buscar ate 50.000 eventos em vez de 10.000. Para igp-fibra com 29.668 eventos, o limite antigo truncava silenciosamente os dados historicos. Agora todos os 639 eventos com `data_cancelamento` sao buscados, resultando em 562 clientes unicos cancelados no historico completo.
+Resultado esperado: troca 7d/30d/90d reflete imediatamente em KPI e blocos correlatos.
 
-O numero 154 que aparecia antes era resultado de dados truncados em cache, NAO o numero real. 562 e o total correto para TODOS os periodos. Com filtro de 7 dias, o numero volta a ~154.
+### Etapa 2 — Normalização robusta de datas de cancelamento
+- Criar helper único de parse seguro para `data_cancelamento` (date-only e datetime).
+- Remover concatenações ad-hoc de `"T00:00:00"` onde já houver timestamp completo.
+- Aplicar helper em:
+  - filtro de período;
+  - ordenação por data;
+  - cálculo de séries temporais.
 
-### Camada 3: Cache de producao desatualizado
+Resultado esperado: janela temporal consistente para qualquer formato retornado pelo backend.
 
-O cache persistente (`localStorage`, TTL 24h) em producao precisa ser invalidado para que os navegadores busquem dados com a logica corrigida. O buster precisa ser incrementado para v2.
+### Etapa 3 — Estratégia de invalidação de cache “à prova de regressão”
+- Introduzir `QUERY_CACHE_VERSION` centralizada (ex.: `"v3"`).
+- Usar essa versão tanto no `buster` quanto no `CACHE_KEY` (ex.: `uf-cache-v3`).
+- Implementar limpeza de chaves legadas (`uf-cache-v1`, `uf-cache-v2`) na inicialização.
+- Manter TTL 24h (compatível com refresh diário), mas com invalidação explícita por versão de release.
 
-## Plano de Correcao
+Resultado esperado: produção não reaproveita snapshot incompatível após mudanças de lógica.
 
-### 1. Corrigir subtitulo em `src/pages/Cancelamentos.tsx` (linha 599)
+### Etapa 4 — Telemetria de validação controlada (temporária)
+- Adicionar logs estruturados (guardados por flag debug) para:
+  - `periodo`, `maxDate`, `limite`;
+  - `cancelados.length`, `filtered.length`;
+  - contagem por origem (eventos/churn_status) após unificação.
+- Remover automaticamente no final da validação.
 
-Trocar `cancelados.length` por `filtered.length` para que o subtitulo reflita o periodo selecionado.
+Resultado esperado: rastreabilidade objetiva sem poluir produção permanentemente.
 
-### 2. Bump cache buster em `src/App.tsx` (linha 49)
+### Etapa 5 — Protocolo de validação final em produção
+Checklist obrigatório por tenant (igp-fibra, zen-telecom, d-kiros):
+1. Abrir Cancelamentos e validar 7d/30d/90d.
+2. Confirmar igualdade entre subtítulo e KPI “Total Cancelados”.
+3. Confirmar coerência com Visão Geral no mesmo período/filtros.
+4. Hard reload + nova sessão para validar hidratação de cache após version bump.
+5. Repetir em janela anônima (garante ausência de estado residual).
 
-Alterar buster de `"v1"` para `"v2"` para forcar invalidacao do cache em producao. Desta vez o buster e necessario porque:
-- A logica do subtitulo esta sendo corrigida
-- Producao precisa descartar dados stale
+## Ordem de implementação (sequenciamento)
 
-### 3. Remover logs de diagnostico
+1. Ajustes de cálculo e dependências (Etapa 1).
+2. Normalização de data (Etapa 2).
+3. Versionamento/invalidação cache (Etapa 3).
+4. Instrumentação de validação (Etapa 4).
+5. Teste cruzado e aceite de produção (Etapa 5).
 
-Remover os `console.log` de diagnostico adicionados em:
-- `src/lib/churnUnified.ts` (6 logs)
-- `src/pages/Cancelamentos.tsx` (2 logs)
-- `src/pages/VisaoGeral.tsx` (1 log)
+## Critério de aceite (definitivo)
 
-Estes logs poluem o console e nao sao necessarios em producao.
+- KPI “Total Cancelados” varia corretamente em 7d/30d/90d.
+- Subtítulo = KPI em todos os períodos.
+- Números de Cancelamentos e Visão Geral permanecem consistentes para o mesmo tenant/período/filtros.
+- Sem regressão em d-kiros.
+- Sem efeito de cache antigo após deploy (nova versão limpa e hidrata corretamente).
 
-## Arquivos a Alterar
+## Seção técnica (resumo das causas prováveis remanescentes)
 
-1. `src/pages/Cancelamentos.tsx` linha 599: `cancelados.length` → `filtered.length`
-2. `src/App.tsx` linha 49: buster `"v1"` → `"v2"`
-3. `src/lib/churnUnified.ts`: remover 6 console.logs de diagnostico
-4. `src/pages/Cancelamentos.tsx`: remover 2 console.logs de diagnostico
-5. `src/pages/VisaoGeral.tsx`: remover 1 console.log de diagnostico
+- Inconsistência residual de derivação (`cancelados` vs `filtered`) em blocos da página.
+- `useMemo` com dependências incompletas (estado antigo reutilizado).
+- Parsing de data não padronizado.
+- Política de cache sem rotação robusta por release de lógica.
 
-## Resultado Esperado
-
-- Subtitulo mostra contagem filtrada por periodo (ex: ~154 para 7 dias)
-- KPI "Total Cancelados" ja estava correto (usa `filtered.length`)
-- Producao invalida cache e busca dados frescos
-- Todos os tenants funcionam normalmente (d-kiros, zen-telecom, igp-fibra)
-- Console limpo sem logs de debug
-
-## Por que funciona para d-kiros e zen-telecom?
-
-Esses tenants tem menos de 10.000 eventos, entao o aumento do MAX_BATCHES nao alterou o volume de dados buscados. Para igp-fibra, com 29.668 eventos, o aumento revelou cancelamentos historicos que antes eram truncados.
-
+Com isso, a correção deixa de ser pontual e passa a ser **estrutural**, cobrindo cálculo, temporalidade e persistência de dados em produção.
