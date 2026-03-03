@@ -10,6 +10,7 @@ import { useEventos } from "@/hooks/useEventos";
 import { useChamados } from "@/hooks/useChamados";
 import { useNPSData } from "@/hooks/useNPSData";
 import { useChurnData, ChurnStatus } from "@/hooks/useChurnData";
+import { getMaxCancelDate } from "@/lib/churnUnified";
 import { useRiskBucketConfig, RiskBucket } from "@/hooks/useRiskBucketConfig";
 import { useChurnScore } from "@/hooks/useChurnScore";
 import { useCrmWorkflow, WorkflowStatus } from "@/hooks/useCrmWorkflow";
@@ -240,27 +241,9 @@ const VisaoGeral = () => {
     return Math.max(0, Math.ceil((maxDate.getTime() - minDate.getTime()) / (1000 * 60 * 60 * 24)));
   }, [eventos, churnStatus]);
 
-  // Max dates for relative period calculation
+  // Max cancellation date — unified logic (same as Cancelamentos)
   const maxCancelamentoDate = useMemo(() => {
-    let maxDate = new Date(0);
-    // Check eventos data_cancelamento first
-    filteredEventos.forEach(e => {
-      const dataCancelamento = (e as any).data_cancelamento;
-      if (dataCancelamento) {
-        const d = new Date(dataCancelamento);
-        if (!isNaN(d.getTime()) && d > maxDate) maxDate = d;
-      }
-    });
-    // Fallback to churn_status
-    if (maxDate.getTime() === 0) {
-      churnStatus.forEach(cs => {
-        if (cs.status_churn === "cancelado" && cs.data_cancelamento) {
-          const d = new Date(cs.data_cancelamento);
-          if (!isNaN(d.getTime()) && d > maxDate) maxDate = d;
-        }
-      });
-    }
-    return maxDate.getTime() > 0 ? maxDate : new Date();
+    return getMaxCancelDate(filteredEventos, churnStatus);
   }, [filteredEventos, churnStatus]);
 
   const dataLimiteChurn = useMemo(() => {

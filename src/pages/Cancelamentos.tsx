@@ -2,6 +2,7 @@ import { useState, useMemo, useCallback } from "react";
 import { FAIXAS_AGING } from "@/types/evento";
 import { useChurnData, ChurnStatus, ChurnEvent } from "@/hooks/useChurnData";
 import { useEventos } from "@/hooks/useEventos";
+import { buildUnifiedCancelados, getTotalClientesBase, getMaxCancelDate } from "@/lib/churnUnified";
 import { useChamados } from "@/hooks/useChamados";
 import { useRiskBucketConfig, RiskBucket } from "@/hooks/useRiskBucketConfig";
 import { useCrmWorkflow } from "@/hooks/useCrmWorkflow";
@@ -73,24 +74,24 @@ const Cancelamentos = () => {
   const chamadosMap30d = useMemo(() => getChamadosPorCliente(30), [getChamadosPorCliente]);
   const chamadosMap90d = useMemo(() => getChamadosPorCliente(90), [getChamadosPorCliente]);
 
-  // Cancelados com score recalculado centralizado
+  // Cancelados unificados: eventos (primary) + churn_status (fallback/enrichment)
+  // Single Source of Truth — mesma lógica da Visão Geral
   const cancelados = useMemo(() => {
-    return churnStatus
-      .filter((c) => c.status_churn === "cancelado")
-      .map((c) => {
-        const ch30 = chamadosMap30d.get(c.cliente_id)?.chamados_periodo ?? c.qtd_chamados_30d ?? 0;
-        const ch90 = chamadosMap90d.get(c.cliente_id)?.chamados_periodo ?? c.qtd_chamados_90d ?? 0;
-        const newScoreSuporte = calcScoreSuporteConfiguravel(ch30, ch90, config);
-        const newTotalScore = getScoreTotalReal(c);
-        return {
-          ...c,
-          qtd_chamados_30d: ch30,
-          qtd_chamados_90d: ch90,
-          score_suporte: newScoreSuporte,
-          churn_risk_score: newTotalScore,
-        };
-      });
-  }, [churnStatus, chamadosMap30d, chamadosMap90d, config, getScoreTotalReal]);
+    const unified = buildUnifiedCancelados(eventos, churnStatus);
+    return unified.map((c) => {
+      const ch30 = chamadosMap30d.get(c.cliente_id)?.chamados_periodo ?? c.qtd_chamados_30d ?? 0;
+      const ch90 = chamadosMap90d.get(c.cliente_id)?.chamados_periodo ?? c.qtd_chamados_90d ?? 0;
+      const newScoreSuporte = calcScoreSuporteConfiguravel(ch30, ch90, config);
+      const newTotalScore = getScoreTotalReal(c);
+      return {
+        ...c,
+        qtd_chamados_30d: ch30,
+        qtd_chamados_90d: ch90,
+        score_suporte: newScoreSuporte,
+        churn_risk_score: newTotalScore,
+      };
+    });
+  }, [eventos, churnStatus, chamadosMap30d, chamadosMap90d, config, getScoreTotalReal]);
 
   const [plano, setPlano] = useState("todos");
   const [cidade, setCidade] = useState("todos");
@@ -103,25 +104,15 @@ const Cancelamentos = () => {
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [selectedCliente, setSelectedCliente] = useState<ChurnStatus | null>(null);
 
-  // Total de clientes únicos da base de eventos (mesma lógica da Visão Geral)
+  // Total de clientes únicos — mesma lógica da Visão Geral (somente eventos, filtrado)
   const totalClientesBase = useMemo(() => {
-    const clienteIds = new Set<number>();
-    eventos.forEach(e => clienteIds.add(e.cliente_id));
-    // Also include churn_status clients for completeness
-    churnStatus.forEach(c => clienteIds.add(c.cliente_id));
-    return clienteIds.size;
-  }, [eventos, churnStatus]);
+    return getTotalClientesBase(eventos, { cidade, bairro, plano });
+  }, [eventos, cidade, bairro, plano]);
 
+  // Max date considerando ambas fontes (eventos + churn_status)
   const maxDate = useMemo(() => {
-    let max = new Date(0);
-    cancelados.forEach((c) => {
-      if (c.data_cancelamento) {
-        const d = new Date(c.data_cancelamento + "T00:00:00");
-        if (!isNaN(d.getTime()) && d > max) max = d;
-      }
-    });
-    return max.getTime() > 0 ? max : new Date();
-  }, [cancelados]);
+    return getMaxCancelDate(eventos, churnStatus);
+  }, [eventos, churnStatus]);
 
   const filterOptions = useMemo(() => {
     const planos = new Set<string>();

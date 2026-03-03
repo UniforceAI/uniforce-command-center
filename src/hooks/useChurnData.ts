@@ -60,17 +60,17 @@ export interface ChurnEvent {
 }
 
 const BATCH_SIZE = 1000;
-const MAX_BATCHES = 10;
+const MAX_BATCHES = 50; // Increased from 10 to prevent silent truncation (supports up to 50k records)
 
 async function fetchChurnStatus(ispId: string): Promise<ChurnStatus[]> {
   let allStatus: any[] = [];
   let page = 0;
-  while (true) {
+  while (page < MAX_BATCHES) {
     const { data, error } = await externalSupabase
       .from("churn_status")
       .select("*")
       .eq("isp_id", ispId)
-      .order("churn_risk_score", { ascending: false })
+      .order("created_at", { ascending: false }) // Order by date instead of score to avoid temporal bias
       .range(page * BATCH_SIZE, (page + 1) * BATCH_SIZE - 1);
 
     if (error) throw error;
@@ -78,9 +78,8 @@ async function fetchChurnStatus(ispId: string): Promise<ChurnStatus[]> {
     allStatus = allStatus.concat(data);
     if (data.length < BATCH_SIZE) break;
     page++;
-    if (page >= MAX_BATCHES) break;
   }
-  console.log(`✅ useChurnData: ${allStatus.length} registros de churn_status`);
+  console.log(`✅ useChurnData: ${allStatus.length} registros de churn_status (${page + 1} páginas)`);
   return allStatus as ChurnStatus[];
 }
 
