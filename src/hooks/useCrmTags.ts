@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
-import { supabase } from "@/integrations/supabase/client";
 import { useActiveIsp } from "@/hooks/useActiveIsp";
+import { callCrmApi } from "@/lib/crmApi";
 
 export interface CrmTag {
   id: string;
@@ -8,14 +8,6 @@ export interface CrmTag {
   name: string;
   color: string;
   created_at: string;
-}
-
-async function callCrmApi(payload: Record<string, any>) {
-  const { data, error } = await supabase.functions.invoke("crm-api", {
-    body: payload,
-  });
-  if (error) throw error;
-  return data;
 }
 
 export function useCrmTags() {

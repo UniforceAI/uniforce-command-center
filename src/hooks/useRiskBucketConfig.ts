@@ -1,7 +1,7 @@
 import { useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
 import { useActiveIsp } from "@/hooks/useActiveIsp";
+import { callCrmApi } from "@/lib/crmApi";
 
 export interface RiskBucketConfig {
   id?: string;
@@ -29,11 +29,13 @@ export function useRiskBucketConfig() {
   const { data: config, isLoading } = useQuery({
     queryKey,
     queryFn: async () => {
-      const { data, error } = await supabase.functions.invoke("crm-api", {
-        body: { action: "fetch_risk_bucket_config", isp_id: ispId },
-      });
-      if (error) console.warn("⚠️ useRiskBucketConfig fetch error:", error.message);
-      return data ? (data as RiskBucketConfig) : { ...DEFAULTS, isp_id: ispId };
+      try {
+        const data = await callCrmApi({ action: "fetch_risk_bucket_config", isp_id: ispId });
+        return data ? (data as RiskBucketConfig) : { ...DEFAULTS, isp_id: ispId };
+      } catch (err: any) {
+        console.warn("⚠️ useRiskBucketConfig fetch error:", err.message);
+        return { ...DEFAULTS, isp_id: ispId };
+      }
     },
     enabled: !!ispId,
   });
@@ -43,17 +45,14 @@ export function useRiskBucketConfig() {
   const saveMutation = useMutation({
     mutationFn: async (updates: Partial<Omit<RiskBucketConfig, "isp_id" | "id">>) => {
       const merged = { ...currentConfig, ...updates };
-      const { data, error } = await supabase.functions.invoke("crm-api", {
-        body: {
-          action: "save_risk_bucket_config",
-          isp_id: ispId,
-          ok_max: merged.ok_max,
-          alert_min: merged.alert_min,
-          alert_max: merged.alert_max,
-          critical_min: merged.critical_min,
-        },
+      const data = await callCrmApi({
+        action: "save_risk_bucket_config",
+        isp_id: ispId,
+        ok_max: merged.ok_max,
+        alert_min: merged.alert_min,
+        alert_max: merged.alert_max,
+        critical_min: merged.critical_min,
       });
-      if (error) throw error;
       if (data?.error) throw new Error(data.error);
       return data as RiskBucketConfig;
     },
