@@ -285,8 +285,32 @@ const Cancelamentos = () => {
       }
     };
 
-    // Apply filters to full dataset
-    let f = [...churnStatus];
+    // Use unified cancelados for dimensional chart (same source as KPIs)
+    // Total per dimension comes from eventos (same as Visão Geral denominator)
+    const totalByKey: Record<string, number> = {};
+    const seen = new Set<string>();
+    eventos.forEach(e => {
+      const c_key = (() => {
+        switch (churnDimension) {
+          case "plano": return e.plano_nome || null;
+          case "cidade": return e.cliente_cidade || null;
+          case "bairro": return e.cliente_bairro || null;
+        }
+      })();
+      if (!c_key) return;
+      // Apply same filters
+      if (plano !== "todos" && e.plano_nome !== plano) return;
+      if (cidade !== "todos" && e.cliente_cidade !== cidade) return;
+      if (bairro !== "todos" && e.cliente_bairro !== bairro) return;
+      // Deduplicate by cliente_id per key
+      const uid = `${c_key}::${e.cliente_id}`;
+      if (seen.has(uid)) return;
+      seen.add(uid);
+      totalByKey[c_key] = (totalByKey[c_key] || 0) + 1;
+    });
+
+    // Cancelados per dimension from unified dataset
+    let f = [...cancelados];
     if (plano !== "todos") f = f.filter((c) => c.plano_nome === plano);
     if (cidade !== "todos") f = f.filter((c) => c.cliente_cidade === cidade);
     if (bairro !== "todos") f = f.filter((c) => c.cliente_bairro === bairro);
@@ -296,12 +320,14 @@ const Cancelamentos = () => {
     f.forEach((c) => {
       const key = getKey(c);
       if (!key) return;
-      if (!map[key]) map[key] = { cancelados: 0, total: 0, mrr: 0 };
-      map[key].total++;
-      if (c.status_churn === "cancelado") {
-        map[key].cancelados++;
-        map[key].mrr += c.valor_mensalidade || 0;
-      }
+      if (!map[key]) map[key] = { cancelados: 0, total: totalByKey[key] || 0, mrr: 0 };
+      map[key].cancelados++;
+      map[key].mrr += c.valor_mensalidade || 0;
+    });
+    // Fill in dimensions that have total but no cancelados
+    Object.entries(totalByKey).forEach(([key, total]) => {
+      if (!map[key]) map[key] = { cancelados: 0, total, mrr: 0 };
+      else if (!map[key].total) map[key].total = total;
     });
 
     const truncate = (s: string, max: number) => s.length > max ? s.substring(0, max) + "…" : s;
