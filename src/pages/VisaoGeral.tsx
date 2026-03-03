@@ -155,7 +155,7 @@ const VisaoGeral = () => {
   const [fatoresMode, setFatoresMode] = useState<"risco" | "cancelados">("risco");
   const [selectedClienteRisco, setSelectedClienteRisco] = useState<ChurnStatus | null>(null);
   const [mapLightboxOpen, setMapLightboxOpen] = useState(false);
-  const [mapViewMode, setMapViewMode] = useState<"markers" | "grid">("grid");
+  const [mapViewMode, setMapViewMode] = useState<"markers" | "grid">("markers");
 
   // Mapeamento de IDs de cidade para nomes
   const cidadeIdMap: Record<string, string> = {

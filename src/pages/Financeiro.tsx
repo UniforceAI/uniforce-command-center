@@ -485,11 +485,10 @@ const Financeiro = () => {
                 icon={TrendingDown}
                 variant="danger"
               />
-              {/* Clientes a Vencer — mesmo formato de Clientes Vencidos */}
+              {/* Clientes a Vencer */}
               <KPICardNew
                 title="Clientes a Vencer"
                 value={kpis.clientesAVencer.toLocaleString()}
-                subtitle={`${kpis.cobrancasAVencer} cobranças`}
                 icon={Clock}
                 variant="warning"
               />
