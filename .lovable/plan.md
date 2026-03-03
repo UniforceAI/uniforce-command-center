@@ -1,66 +1,71 @@
 
-# Reverter Buster e Diagnosticar Discrepancia
 
-## Situacao Atual
+# Correcao Definitiva: Cancelamentos igp-fibra
 
-O codigo em `churnUnified.ts` ja implementa a logica all-or-nothing corretamente (verificado no codigo atual, linhas 81-114). A mudanca do buster de "v1" para "v2" forcou a invalidacao do cache no ambiente de desenvolvimento, causando um re-fetch dos dados. Se os numeros mudaram apos o re-fetch, isso indica que os **dados no banco externo mudaram** desde a ultima vez que foram cacheados, ou existe uma diferenca sutil entre como Visao Geral e Cancelamentos processam os mesmos dados.
+## Causa Raiz Identificada (3 camadas)
 
-## Plano de Acao
+### Camada 1: Subtitulo mostra contagem errada
 
-### 1. Reverter buster para "v1" (`src/App.tsx`, linha 49)
-
-Restaurar o buster para "v1" para que o ambiente de desenvolvimento volte a usar o cache existente (se ainda nao foi limpo pelo navegador). Isso restaura o estado anterior imediatamente.
+Na linha 599 de `Cancelamentos.tsx`, o subtitulo da pagina mostra `cancelados.length` (TODOS os cancelados, sem filtro de periodo = 562). O correto e mostrar `filtered.length` (cancelados filtrados pelo periodo selecionado).
 
 ```text
-ANTES: buster: "v2"
-DEPOIS: buster: "v1"
+ERRADO (linha 599):
+  {cancelados.length.toLocaleString()} cancelamentos
+  → Sempre 562, ignora filtro de periodo
+
+CORRETO:
+  {filtered.length.toLocaleString()} cancelamentos
+  → Respeita o periodo selecionado (ex: 154 nos ultimos 7 dias)
 ```
 
-### 2. Adicionar logs de diagnostico em `buildUnifiedCancelados` (`src/lib/churnUnified.ts`)
+### Camada 2: Volume de dados cresceu (comportamento CORRETO)
 
-Inserir console.logs estrategicos para comparar exatamente o que cada fonte retorna:
+O `MAX_BATCHES` foi aumentado de 10 para 50 no `useEventos.ts`, permitindo buscar ate 50.000 eventos em vez de 10.000. Para igp-fibra com 29.668 eventos, o limite antigo truncava silenciosamente os dados historicos. Agora todos os 639 eventos com `data_cancelamento` sao buscados, resultando em 562 clientes unicos cancelados no historico completo.
 
-```typescript
-// Dentro de buildUnifiedCancelados, apos linha 84:
-console.log(`[ChurnUnified] eventos total: ${eventos.length}`);
-console.log(`[ChurnUnified] eventos com data_cancelamento: ${eventos.filter(e => !!e.data_cancelamento).length}`);
-console.log(`[ChurnUnified] hasEventosCancelamento: ${hasEventosCancelamento}`);
-console.log(`[ChurnUnified] churnStatus total: ${churnStatus.length}`);
-console.log(`[ChurnUnified] churnStatus cancelados: ${churnStatus.filter(cs => cs.status_churn === "cancelado").length}`);
-// Apos construir canceladosMap:
-console.log(`[ChurnUnified] canceladosMap.size (resultado final): ${canceladosMap.size}`);
-```
+O numero 154 que aparecia antes era resultado de dados truncados em cache, NAO o numero real. 562 e o total correto para TODOS os periodos. Com filtro de 7 dias, o numero volta a ~154.
 
-### 3. Adicionar log equivalente na Visao Geral (`src/pages/VisaoGeral.tsx`, linha ~300)
+### Camada 3: Cache de producao desatualizado
 
-Inserir log apos a contagem de cancelados via eventos (linha 300) para comparar:
+O cache persistente (`localStorage`, TTL 24h) em producao precisa ser invalidado para que os navegadores busquem dados com a logica corrigida. O buster precisa ser incrementado para v2.
 
-```typescript
-console.log(`[VisaoGeral] canceladosViaEventos: ${canceladosViaEventos.size}, periodo: ${periodo}`);
-```
+## Plano de Correcao
 
-### 4. Comparar os logs entre as duas paginas
+### 1. Corrigir subtitulo em `src/pages/Cancelamentos.tsx` (linha 599)
 
-Com os logs, ao navegar entre Visao Geral e Cancelamentos para igp-fibra, sera possivel ver:
-- Se ambas as paginas recebem o mesmo volume de eventos
-- Quantos eventos tem `data_cancelamento`
-- Se o branch all-or-nothing esta sendo acionado corretamente
-- Onde exatamente a divergencia ocorre
+Trocar `cancelados.length` por `filtered.length` para que o subtitulo reflita o periodo selecionado.
 
-## Diferenca Sutil Identificada (Possivel Causa)
+### 2. Bump cache buster em `src/App.tsx` (linha 49)
 
-Existe uma diferenca importante entre as duas paginas que pode causar a discrepancia:
+Alterar buster de `"v1"` para `"v2"` para forcar invalidacao do cache em producao. Desta vez o buster e necessario porque:
+- A logica do subtitulo esta sendo corrigida
+- Producao precisa descartar dados stale
 
-- **Visao Geral** (linha 270): dedup por `cliente_id` usando `filteredEventos` (ja filtrado por cidade/bairro/plano)
-- **Cancelamentos** (linha 80): `buildUnifiedCancelados(eventos, churnStatus)` recebe `eventos` **sem filtro** de dimensao — o filtro e aplicado depois (linha 133)
+### 3. Remover logs de diagnostico
 
-Isso significa que `buildUnifiedCancelados` conta cancelados de TODOS os eventos antes de filtrar por periodo/dimensao, enquanto Visao Geral filtra primeiro e depois conta. Dependendo da distribuicao dos dados do igp-fibra, isso pode gerar numeros diferentes.
+Remover os `console.log` de diagnostico adicionados em:
+- `src/lib/churnUnified.ts` (6 logs)
+- `src/pages/Cancelamentos.tsx` (2 logs)
+- `src/pages/VisaoGeral.tsx` (1 log)
 
-Se confirmado, a correcao sera passar `filteredEventos` em vez de `eventos` para `buildUnifiedCancelados`, ou aplicar os filtros de dimensao dentro do agregador.
+Estes logs poluem o console e nao sao necessarios em producao.
 
 ## Arquivos a Alterar
 
-1. `src/App.tsx` (linha 49): reverter buster de "v2" para "v1"
-2. `src/lib/churnUnified.ts`: adicionar logs de diagnostico
-3. `src/pages/VisaoGeral.tsx` (~linha 300): adicionar log comparativo
-4. `src/pages/Cancelamentos.tsx` (~linha 80): adicionar log do resultado do agregador
+1. `src/pages/Cancelamentos.tsx` linha 599: `cancelados.length` → `filtered.length`
+2. `src/App.tsx` linha 49: buster `"v1"` → `"v2"`
+3. `src/lib/churnUnified.ts`: remover 6 console.logs de diagnostico
+4. `src/pages/Cancelamentos.tsx`: remover 2 console.logs de diagnostico
+5. `src/pages/VisaoGeral.tsx`: remover 1 console.log de diagnostico
+
+## Resultado Esperado
+
+- Subtitulo mostra contagem filtrada por periodo (ex: ~154 para 7 dias)
+- KPI "Total Cancelados" ja estava correto (usa `filtered.length`)
+- Producao invalida cache e busca dados frescos
+- Todos os tenants funcionam normalmente (d-kiros, zen-telecom, igp-fibra)
+- Console limpo sem logs de debug
+
+## Por que funciona para d-kiros e zen-telecom?
+
+Esses tenants tem menos de 10.000 eventos, entao o aumento do MAX_BATCHES nao alterou o volume de dados buscados. Para igp-fibra, com 29.668 eventos, o aumento revelou cancelamentos historicos que antes eram truncados.
+
