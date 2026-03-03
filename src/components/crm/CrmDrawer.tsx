@@ -263,29 +263,13 @@ export function CrmDrawer({
     }
 
     // 2. Montagem do link oficial
-    const mensagem = encodeURIComponent("Oi");
+    const mensagem = encodeURIComponent("Olá, gostaria de saber como está a qualidade do seu serviço. Os problemas foram resolvidos?");
     const waUrl = `https://wa.me/${phone}?text=${mensagem}`;
 
-    // 3. Abertura via <a> programático (mais resiliente contra bloqueio de popup)
-    try {
-      const anchor = document.createElement("a");
-      anchor.href = waUrl;
-      anchor.target = "_blank";
-      anchor.rel = "noopener noreferrer";
-      anchor.style.display = "none";
-      document.body.appendChild(anchor);
-      anchor.click();
-      document.body.removeChild(anchor);
-    } catch {
-      // Fallback: tenta window.open, depois mesma aba
-      const popup = window.open(waUrl, "_blank");
-      if (!popup) {
-        try {
-          window.top!.location.href = waUrl;
-        } catch {
-          window.location.href = waUrl;
-        }
-      }
+    // 3. Abertura resiliente: window.open com fallback para mesma aba
+    const popup = window.open(waUrl, "_blank");
+    if (!popup) {
+      window.location.href = waUrl;
     }
 
     handleQuickAction("whatsapp", "WhatsApp enviado");
@@ -727,9 +711,8 @@ export function CrmDrawer({
                       Esta funcionalidade permitirá abrir ordens de serviço diretamente no ERP do provedor.
                       Em breve você poderá criar chamados de forma integrada.
                     </p>
-                    <Button variant="outline" className="h-11 text-xs gap-2 font-medium"
-                    onClick={() => {toast({ title: "Chamado aberto", description: "Ordem de serviço criada via ERP." });handleQuickAction("os_opened", "OS aberta no ERP");}}>
-                      <Wrench className="h-4 w-4" />Abrir Chamado (OS)
+                    <Button variant="outline" className="h-11 text-xs gap-2 font-medium" disabled>
+                      <Wrench className="h-4 w-4" />Em Breve
                     </Button>
                   </div>
                 </div>

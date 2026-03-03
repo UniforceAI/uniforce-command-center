@@ -101,7 +101,7 @@ const Financeiro = () => {
   const [metodo, setMetodo] = useState("todos");
   const [filial, setFilial] = useState("todos");
   const [ordemPlanoDecrescente, setOrdemPlanoDecrescente] = useState(true);
-  const [sortColuna, setSortColuna] = useState<SortColumn>("diasAtraso");
+  const [sortColuna, setSortColuna] = useState<SortColumn>("churnScore");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
 
   const handleSortColuna = (col: SortColumn) => {
