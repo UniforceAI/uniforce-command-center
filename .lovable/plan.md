@@ -1,34 +1,64 @@
 
 
-## Diagnóstico
+## Plano: Migrar fonte de dados de Churn para tabelas dedicadas (churn_*)
 
-A raiz do problema é simples: a correção de `maxDate` para usar `new Date()` foi aplicada **apenas** em `Cancelamentos.tsx`. A página `VisaoGeral.tsx` (linha 245-247) ainda usa `getMaxCancelDate()`, que calcula a data de referência com base no registro mais recente do dataset.
+### Contexto
 
-Como todos os tenants (igp-fibra, zen-telecom, d-kiros) compartilham o mesmo código, a discrepância não é "por tenant" — é "por página". Cancelamentos agora usa `new Date()`, Visão Geral usa `getMaxCancelDate()`. Por isso os números divergem.
+Atualmente, a lógica de cancelamentos usa a tabela `eventos` como fonte primária de `data_cancelamento`, com fallback para `churn_status`. Isso causa inconsistências entre tenants (d-kiros sem dados, zen-telecom com datas fixas). Após a normalização feita via Claude Code, os dados corretos agora residem nas tabelas `churn_status`, `churn_history`, `churn_events` e `churn_ixc_confirmados` do Supabase externo.
 
-## Plano de correção
+O objetivo é simplificar: **dados de churn vêm sempre e exclusivamente das tabelas churn_***.
 
-### 1. Unificar VisaoGeral.tsx para usar `new Date()`
+### Mudanças necessárias
 
-**Arquivo:** `src/pages/VisaoGeral.tsx`
+#### 1. Refatorar `useChurnData.ts` — adicionar total de clientes da base
 
-- Linha 245-247: substituir `getMaxCancelDate(filteredEventos, churnStatus)` por `new Date()`.
-- Remover import de `getMaxCancelDate` (linha 13), já que não será mais usado nesta página.
-- Ajustar `dataLimiteChurn` (linha 249-252) — já deriva de `maxCancelamentoDate`, então funcionará automaticamente após a troca.
+O hook já busca `churn_status` e `churn_events`. Precisamos:
+- Adicionar query para contar o **total de clientes ativos** (denominador da taxa de churn) diretamente de `churn_status` (clientes com `status_churn != 'cancelado'` + cancelados = total)
+- Expor `totalClientesBase` como contagem de clientes únicos (deduplicated por `cliente_id`)
 
-### 2. Limpar export morto de `getMaxCancelDate`
+#### 2. Reescrever `churnUnified.ts` — eliminar dependência de `eventos`
 
-**Arquivo:** `src/lib/churnUnified.ts`
+- Remover import de `Evento`
+- Remover `eventoToChurnStatus()` 
+- Remover `buildUnifiedCancelados()` (não mais necessária — cancelados vêm direto de `churn_status` filtrado por `status_churn === 'cancelado'`)
+- Reescrever `getTotalClientesBase()` para receber `ChurnStatus[]` em vez de `Evento[]`
+- A nova lógica: cancelados = `churn_status.filter(s => s.status_churn === 'cancelado' && s.data_cancelamento != null)`
+- Total base = todos os clientes únicos em `churn_status` (deduplicated por `cliente_id`)
 
-- Após a remoção do uso em ambas as páginas, a função `getMaxCancelDate` fica sem consumidores. Removê-la (ou mantê-la comentada para referência futura).
+#### 3. Refatorar `Cancelamentos.tsx`
 
-**Arquivo:** `src/pages/Cancelamentos.tsx`
+- Remover `useEventos()` — não mais necessário para esta página
+- Remover `buildUnifiedCancelados(eventos, churnStatus)` 
+- Cancelados = `churnStatus.filter(c => c.status_churn === 'cancelado' && c.data_cancelamento)`
+- `totalClientesBase` = contagem de `cliente_id` únicos em `churnStatus`
+- Os filtros de período (7d/30d/90d) continuam usando `new Date()` como referência e `data_cancelamento` de `churn_status`
+- O cohort por dimensão usa `churnStatus` para o denominador total por plano/cidade/bairro em vez de `eventos`
 
-- Remover `getMaxCancelDate` do import (linha 6), já que não é mais usado após a correção anterior.
+#### 4. Refatorar `VisaoGeral.tsx` — bloco de Taxa de Churn
 
-### 3. Resultado esperado
+- No bloco `saudeAtual` (linhas ~280-315), substituir a lógica que itera `filteredEventos` buscando `data_cancelamento` por uma iteração direta em `churnStatus`
+- Remover o fallback condicional (if cancelados via eventos === 0, use churn_status) — agora é sempre `churn_status`
+- O denominador `totalClientes` pode continuar vindo de `eventos` (para os demais KPIs da Visão Geral), mas a taxa de churn usará `churnStatus` como numerador
 
-- Ambas as páginas (Visão Geral e Cancelamentos) usam `new Date()` como referência temporal.
-- Todos os tenants (igp-fibra, zen-telecom, d-kiros) exibem números consistentes entre si e entre páginas.
-- Filtros 7d/30d/90d significam literalmente "últimos N dias a partir de hoje".
+#### 5. Cleanup
+
+- Remover `eventoToChurnStatus` e `buildUnifiedCancelados` de `churnUnified.ts`
+- Remover import de `useEventos` em `Cancelamentos.tsx`
+- Atualizar imports em ambas as páginas
+
+### Resultado esperado
+
+- **Cancelamentos.tsx**: dados vêm 100% de `churn_status` (cancelados + scores + datas)
+- **VisaoGeral.tsx**: taxa de churn vem de `churn_status`, demais KPIs continuam via `eventos`
+- **Consistência total**: mesma fonte, mesma contagem, para todos os tenants (igp-fibra, zen-telecom, d-kiros)
+- **Sem divergências**: eliminada a lógica all-or-nothing de eventos vs churn_status
+
+### Arquivos afetados
+
+| Arquivo | Ação |
+|---|---|
+| `src/lib/churnUnified.ts` | Reescrita — remover lógica de eventos, simplificar para churn_status only |
+| `src/pages/Cancelamentos.tsx` | Refatorar — remover useEventos, usar churnStatus direto |
+| `src/pages/VisaoGeral.tsx` | Ajustar bloco saudeAtual — churn vem de churn_status |
+| `src/hooks/useChurnData.ts` | Opcional: expor contagem de base se necessário |
 
