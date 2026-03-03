@@ -1,7 +1,7 @@
 import { useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
 import { useActiveIsp } from "@/hooks/useActiveIsp";
+import { callCrmApi } from "@/lib/crmApi";
 
 export type WorkflowStatus = "em_tratamento" | "resolvido" | "perdido";
 
@@ -16,14 +16,6 @@ export interface CrmWorkflowRecord {
   last_action_at: string | null;
   created_at: string;
   updated_at: string;
-}
-
-async function callCrmApi(payload: Record<string, any>) {
-  const { data, error } = await supabase.functions.invoke("crm-api", {
-    body: payload,
-  });
-  if (error) throw error;
-  return data;
 }
 
 export function useCrmWorkflow() {

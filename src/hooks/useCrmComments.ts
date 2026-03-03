@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
-import { supabase } from "@/integrations/supabase/client";
 import { useActiveIsp } from "@/hooks/useActiveIsp";
 import { useAuth } from "@/contexts/AuthContext";
+import { callCrmApi } from "@/lib/crmApi";
 
 export interface CrmComment {
   id: string;
@@ -12,14 +12,6 @@ export interface CrmComment {
   body: string;
   type: string;
   meta: Record<string, any> | null;
-}
-
-async function callCrmApi(payload: Record<string, any>) {
-  const { data, error } = await supabase.functions.invoke("crm-api", {
-    body: payload,
-  });
-  if (error) throw error;
-  return data;
 }
 
 export function useCrmComments(clienteId: number | null) {
