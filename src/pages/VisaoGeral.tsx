@@ -10,7 +10,7 @@ import { useEventos } from "@/hooks/useEventos";
 import { useChamados } from "@/hooks/useChamados";
 import { useNPSData } from "@/hooks/useNPSData";
 import { useChurnData, ChurnStatus } from "@/hooks/useChurnData";
-import { getMaxCancelDate } from "@/lib/churnUnified";
+
 import { useRiskBucketConfig, RiskBucket } from "@/hooks/useRiskBucketConfig";
 import { useChurnScore } from "@/hooks/useChurnScore";
 import { useCrmWorkflow, WorkflowStatus } from "@/hooks/useCrmWorkflow";
@@ -241,10 +241,8 @@ const VisaoGeral = () => {
     return Math.max(0, Math.ceil((maxDate.getTime() - minDate.getTime()) / (1000 * 60 * 60 * 24)));
   }, [eventos, churnStatus]);
 
-  // Max cancellation date — unified logic (same as Cancelamentos)
-  const maxCancelamentoDate = useMemo(() => {
-    return getMaxCancelDate(filteredEventos, churnStatus);
-  }, [filteredEventos, churnStatus]);
+  // Usar data de hoje como referência para filtros de período (previsível e estável)
+  const maxCancelamentoDate = useMemo(() => new Date(), []);
 
   const dataLimiteChurn = useMemo(() => {
     if (periodo === "todos") return null;

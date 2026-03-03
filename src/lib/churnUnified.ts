@@ -143,28 +143,3 @@ export function getTotalClientesBase(
   return ids.size;
 }
 
-/**
- * Get max cancellation date from both sources for relative period calculation.
- */
-export function getMaxCancelDate(
-  eventos: Evento[],
-  churnStatus: ChurnStatus[]
-): Date {
-  let maxDate = new Date(0);
-
-  eventos.forEach(e => {
-    if (e.data_cancelamento) {
-      const d = new Date(e.data_cancelamento);
-      if (!isNaN(d.getTime()) && d > maxDate) maxDate = d;
-    }
-  });
-
-  churnStatus.forEach(cs => {
-    if (cs.status_churn === "cancelado" && cs.data_cancelamento) {
-      const d = new Date(cs.data_cancelamento);
-      if (!isNaN(d.getTime()) && d > maxDate) maxDate = d;
-    }
-  });
-
-  return maxDate.getTime() > 0 ? maxDate : new Date();
-}
