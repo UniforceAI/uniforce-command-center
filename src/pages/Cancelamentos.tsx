@@ -100,7 +100,7 @@ const Cancelamentos = () => {
   const [churnDimension, setChurnDimension] = useState<"plano" | "cidade" | "bairro">("plano");
   const [periodo, setPeriodo] = useState("7");
   const [cohortMetric, setCohortMetric] = useState<"qtd" | "mrr" | "ltv">("qtd");
-  const [sortField, setSortField] = useState<SortField>("data_cancelamento");
+  const [sortField, setSortField] = useState<SortField>("churn_risk_score");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [selectedCliente, setSelectedCliente] = useState<ChurnStatus | null>(null);
 
@@ -646,7 +646,7 @@ const Cancelamentos = () => {
                     <div>
                       <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Taxa Churn</p>
                       <p className="text-3xl font-bold mt-1">{kpis.taxaChurn}%</p>
-                      <p className="text-[10px] text-muted-foreground mt-0.5">{kpis.totalCancelados} de {totalClientesBase.toLocaleString()} clientes</p>
+                      
                     </div>
                     <div className="p-2.5 rounded-lg bg-destructive/10"><TrendingDown className="h-5 w-5 text-destructive" /></div>
                   </div>
