@@ -2,8 +2,7 @@ import { useState, useMemo, useCallback } from "react";
 import { FAIXAS_AGING } from "@/types/evento";
 import { safeParse } from "@/lib/safeDate";
 import { useChurnData, ChurnStatus, ChurnEvent } from "@/hooks/useChurnData";
-import { useEventos } from "@/hooks/useEventos";
-import { buildUnifiedCancelados, getTotalClientesBase } from "@/lib/churnUnified";
+import { getCancelados, getTotalClientesBase } from "@/lib/churnUnified";
 import { useChamados } from "@/hooks/useChamados";
 import { useRiskBucketConfig, RiskBucket } from "@/hooks/useRiskBucketConfig";
 import { useCrmWorkflow } from "@/hooks/useCrmWorkflow";
@@ -65,7 +64,6 @@ const fmtBRL = (v: number) => `R$ ${v.toLocaleString("pt-BR", { minimumFractionD
 
 const Cancelamentos = () => {
   const { churnStatus, churnEvents, isLoading, error } = useChurnData();
-  const { eventos } = useEventos();
   const { getChamadosPorCliente, chamados: allChamados } = useChamados();
   const { getBucket } = useRiskBucketConfig();
   const { workflowMap, addToWorkflow, updateStatus, updateTags, updateOwner } = useCrmWorkflow();
@@ -75,10 +73,9 @@ const Cancelamentos = () => {
   const chamadosMap30d = useMemo(() => getChamadosPorCliente(30), [getChamadosPorCliente]);
   const chamadosMap90d = useMemo(() => getChamadosPorCliente(90), [getChamadosPorCliente]);
 
-  // Cancelados unificados: eventos (primary) + churn_status (fallback/enrichment)
-  // Single Source of Truth — mesma lógica da Visão Geral
+  // Cancelados: 100% de churn_status (sem dependência de eventos)
   const cancelados = useMemo(() => {
-    const unified = buildUnifiedCancelados(eventos, churnStatus);
+    const unified = getCancelados(churnStatus);
     return unified.map((c) => {
       const ch30 = chamadosMap30d.get(c.cliente_id)?.chamados_periodo ?? c.qtd_chamados_30d ?? 0;
       const ch90 = chamadosMap90d.get(c.cliente_id)?.chamados_periodo ?? c.qtd_chamados_90d ?? 0;
@@ -92,7 +89,7 @@ const Cancelamentos = () => {
         churn_risk_score: newTotalScore,
       };
     });
-  }, [eventos, churnStatus, chamadosMap30d, chamadosMap90d, config, getScoreTotalReal]);
+  }, [churnStatus, chamadosMap30d, chamadosMap90d, config, getScoreTotalReal]);
 
   const [plano, setPlano] = useState("todos");
   const [cidade, setCidade] = useState("todos");
@@ -105,10 +102,10 @@ const Cancelamentos = () => {
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [selectedCliente, setSelectedCliente] = useState<ChurnStatus | null>(null);
 
-  // Total de clientes únicos — mesma lógica da Visão Geral (somente eventos, filtrado)
+  // Total de clientes únicos — agora vem de churn_status (mesma fonte dos cancelados)
   const totalClientesBase = useMemo(() => {
-    return getTotalClientesBase(eventos, { cidade, bairro, plano });
-  }, [eventos, cidade, bairro, plano]);
+    return getTotalClientesBase(churnStatus, { cidade, bairro, plano });
+  }, [churnStatus, cidade, bairro, plano]);
 
   // Usar data de hoje como referência para filtros de período (previsível e estável)
   const maxDate = useMemo(() => new Date(), []);
@@ -275,25 +272,24 @@ const Cancelamentos = () => {
       }
     };
 
-    // Use unified cancelados for dimensional chart (same source as KPIs)
-    // Total per dimension comes from eventos (same as Visão Geral denominator)
+    // Total per dimension comes from churn_status (all clients, not just cancelados)
     const totalByKey: Record<string, number> = {};
     const seen = new Set<string>();
-    eventos.forEach(e => {
+    churnStatus.forEach(cs => {
       const c_key = (() => {
         switch (churnDimension) {
-          case "plano": return e.plano_nome || null;
-          case "cidade": return e.cliente_cidade || null;
-          case "bairro": return e.cliente_bairro || null;
+          case "plano": return cs.plano_nome || null;
+          case "cidade": return cs.cliente_cidade || null;
+          case "bairro": return cs.cliente_bairro || null;
         }
       })();
       if (!c_key) return;
       // Apply same filters
-      if (plano !== "todos" && e.plano_nome !== plano) return;
-      if (cidade !== "todos" && e.cliente_cidade !== cidade) return;
-      if (bairro !== "todos" && e.cliente_bairro !== bairro) return;
+      if (plano !== "todos" && cs.plano_nome !== plano) return;
+      if (cidade !== "todos" && cs.cliente_cidade !== cidade) return;
+      if (bairro !== "todos" && cs.cliente_bairro !== bairro) return;
       // Deduplicate by cliente_id per key
-      const uid = `${c_key}::${e.cliente_id}`;
+      const uid = `${c_key}::${cs.cliente_id}`;
       if (seen.has(uid)) return;
       seen.add(uid);
       totalByKey[c_key] = (totalByKey[c_key] || 0) + 1;
@@ -328,7 +324,7 @@ const Cancelamentos = () => {
       .filter((d) => d.total >= 3 && d.cancelados > 0)
       .sort((a, b) => b.pct - a.pct)
       .slice(0, 10);
-  }, [filtered, eventos, plano, cidade, bairro, bucket, getBucket, churnDimension]);
+  }, [filtered, churnStatus, plano, cidade, bairro, bucket, getBucket, churnDimension]);
   
 
   // ─── Top Motivos (enriched: events + status + score pillars) ───
