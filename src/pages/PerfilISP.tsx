@@ -99,8 +99,14 @@ export default function PerfilISP() {
       setLoading(true);
       setNotFound(false);
       try {
+        // Refresh external session and send external JWT
+        const { data: sessData } = await externalSupabase.auth.refreshSession();
+        const extToken = sessData?.session?.access_token
+          ?? (await externalSupabase.auth.getSession()).data.session?.access_token;
+
         const { data, error } = await supabase.functions.invoke("notion-isp-profile", {
           body: { action: "read", isp_nome: ispNome },
+          headers: extToken ? { Authorization: `Bearer ${extToken}` } : {},
         });
         if (error) throw error;
         if (data?.data) {
@@ -160,8 +166,13 @@ export default function PerfilISP() {
   const handleSave = async () => {
     setSaving(true);
     try {
+      const { data: sessData } = await externalSupabase.auth.refreshSession();
+      const extToken = sessData?.session?.access_token
+        ?? (await externalSupabase.auth.getSession()).data.session?.access_token;
+
       const { data, error } = await supabase.functions.invoke("notion-isp-profile", {
         body: { action: "write", isp_nome: ispNome, data: form },
+        headers: extToken ? { Authorization: `Bearer ${extToken}` } : {},
       });
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
