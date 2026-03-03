@@ -496,7 +496,6 @@ const Financeiro = () => {
               <KPICardNew
                 title="Inadimplência"
                 value={`${kpis.taxaInadimplencia}%`}
-                subtitle={`${kpis.clientesVencidos} de ${kpis.clientesUnicos} clientes`}
                 icon={Percent}
                 variant="danger"
               />
