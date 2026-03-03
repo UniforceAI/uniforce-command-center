@@ -77,7 +77,9 @@ const Cancelamentos = () => {
   // Cancelados unificados: eventos (primary) + churn_status (fallback/enrichment)
   // Single Source of Truth — mesma lógica da Visão Geral
   const cancelados = useMemo(() => {
+    console.log(`[Cancelamentos] eventos recebidos: ${eventos.length}, churnStatus recebidos: ${churnStatus.length}`);
     const unified = buildUnifiedCancelados(eventos, churnStatus);
+    console.log(`[Cancelamentos] unified cancelados: ${unified.length}`);
     return unified.map((c) => {
       const ch30 = chamadosMap30d.get(c.cliente_id)?.chamados_periodo ?? c.qtd_chamados_30d ?? 0;
       const ch90 = chamadosMap90d.get(c.cliente_id)?.chamados_periodo ?? c.qtd_chamados_90d ?? 0;

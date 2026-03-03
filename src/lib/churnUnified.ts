@@ -83,6 +83,12 @@ export function buildUnifiedCancelados(
   // Otherwise → use ONLY churn_status
   const hasEventosCancelamento = eventos.some(e => !!e.data_cancelamento);
 
+  console.log(`[ChurnUnified] eventos total: ${eventos.length}`);
+  console.log(`[ChurnUnified] eventos com data_cancelamento: ${eventos.filter(e => !!e.data_cancelamento).length}`);
+  console.log(`[ChurnUnified] hasEventosCancelamento: ${hasEventosCancelamento}`);
+  console.log(`[ChurnUnified] churnStatus total: ${churnStatus.length}`);
+  console.log(`[ChurnUnified] churnStatus cancelados: ${churnStatus.filter(cs => cs.status_churn === "cancelado").length}`);
+
   const canceladosMap = new Map<number, ChurnStatus>();
 
   if (hasEventosCancelamento) {
@@ -113,6 +119,7 @@ export function buildUnifiedCancelados(
     });
   }
 
+  console.log(`[ChurnUnified] canceladosMap.size (resultado final): ${canceladosMap.size}`);
   return Array.from(canceladosMap.values());
 }
 

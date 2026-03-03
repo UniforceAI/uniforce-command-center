@@ -299,6 +299,7 @@ const VisaoGeral = () => {
       if (e.valor_mensalidade) ticketsPerdidos.push(e.valor_mensalidade);
     });
     
+    console.log(`[VisaoGeral] canceladosViaEventos: ${canceladosViaEventos.size}, periodo: ${periodo}, filteredEventos: ${filteredEventos.length}`);
     // Fallback: se eventos não retornou cancelamentos, usar churn_status
     if (canceladosPeriodo === 0) {
       churnStatus.forEach(cs => {
