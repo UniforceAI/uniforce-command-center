@@ -2,12 +2,14 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { ChurnScoreConfigProvider } from "@/contexts/ChurnScoreConfigContext";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { ErrorBoundary } from "@/components/shared/ErrorBoundary";
+import { createLocalStoragePersister } from "@/lib/queryPersister";
 import Index from "./pages/Index";
 import NPS from "./pages/NPS";
 import Auth from "./pages/Auth";
@@ -39,8 +41,16 @@ const queryClient = new QueryClient({
   },
 });
 
+const persister = createLocalStoragePersister();
+
+const persistOptions = {
+  persister,
+  maxAge: TWENTY_FOUR_HOURS,
+  buster: "v1", // bump to invalidate all caches
+};
+
 const App = () => (
-  <QueryClientProvider client={queryClient}>
+  <PersistQueryClientProvider client={queryClient} persistOptions={persistOptions}>
     <TooltipProvider>
       <Toaster />
       <Sonner />
@@ -188,7 +198,7 @@ const App = () => (
         </AuthProvider>
       </BrowserRouter>
     </TooltipProvider>
-  </QueryClientProvider>
+  </PersistQueryClientProvider>
 );
 
 export default App;
