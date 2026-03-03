@@ -431,7 +431,7 @@ const Financeiro = () => {
               <h1 className="text-2xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
                 Financeiro
               </h1>
-              <p className="text-muted-foreground text-sm mt-0.5">Inadimplência e Recuperação · {filteredEventos.length} eventos</p>
+              <p className="text-muted-foreground text-sm mt-0.5">Inadimplência e Recuperação</p>
             </div>
             <IspActions />
           </div>
