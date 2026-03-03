@@ -1,7 +1,13 @@
 import type { PersistedClient, Persister } from "@tanstack/react-query-persist-client";
 
-const CACHE_KEY = "uf-cache-v1";
+const CACHE_KEY = "uf-cache-v3";
 const MAX_AGE = 1000 * 60 * 60 * 24; // 24h
+
+// Clean legacy cache keys on module load
+try {
+  ["uf-cache-v1", "uf-cache-v2"].forEach(k => localStorage.removeItem(k));
+} catch {}
+
 
 /**
  * localStorage-based persister for React Query.
