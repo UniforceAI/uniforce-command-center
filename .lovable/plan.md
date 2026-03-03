@@ -1,151 +1,129 @@
 
-# Performance: Cache de Dados no Navegador + Correções de Segurança
+Objetivo: estabilizar o app (parar recarregamento/quebra em tela branca), eliminar refetch desnecessário entre páginas e fechar os principais riscos de segurança multi-tenant.
 
-## Diagnóstico da Lentidão
+Diagnóstico do que está acontecendo agora (confirmado no código atual):
+1) Cache 24h foi implementado parcialmente, não totalmente
+- Está ativo em `App.tsx` (staleTime/gcTime 24h) e em hooks como `useEventos`, `useChurnData`, `useChamados`, `useNPSData`, `useCrmWorkflow`, `useRiskBucketConfig`.
+- Porém duas páginas críticas ainda bypassam esse cache e fazem fetch manual pesado em `useEffect`:
+  - `src/pages/Index.tsx`: busca `chamados` em batches diretamente via `externalSupabase` (duplicando o que `useChamados` já faz).
+  - `src/pages/NPS.tsx`: busca `nps_check` manualmente com `select("*")` e estado local.
+- Resultado: navegação continua lenta e com múltiplos carregamentos.
 
-O problema de performance tem uma causa raiz clara: **todos os hooks de dados usam `useState`/`useEffect` puros**, sem qualquer camada de cache. Isso significa que:
+2) Há um gatilho de recarregamento em loop no login
+- Em `src/pages/Auth.tsx`, quando `isLoading` passa de 6s, o componente chama `handleForceReset()` dentro do render:
+  - limpa storage
+  - faz `window.location.href = "/auth"`
+- Isso pode causar ciclo de recarga contínua (especialmente em ambiente de teste/lento), aparentando “quebra total”.
 
-- Cada vez que o usuario navega de `/visao-geral` para `/financeiro`, **todas as requisicoes sao refeitas do zero** (eventos, chamados, churn_status, NPS, CRM workflow, risk_bucket_config)
-- A pagina `VisaoGeral` sozinha dispara **30-50+ requisicoes HTTP** (batches de 1000 registros)
-- O React Query ja esta instalado e configurado (`QueryClientProvider`), mas **nenhum hook o utiliza** -- ele esta la so como wrapper vazio
+3) Falta contenção global para erro assíncrono
+- Sem Error Boundary global e sem handler central de rejeição não tratada, qualquer erro assíncrono em tela pesada pode resultar em tela branca.
 
-Como os dados atualizam apenas **1x por dia**, toda essa refetch e completamente desnecessaria.
+4) Segurança: risco real de isolamento entre clientes no backend function
+- `supabase/functions/crm-api/index.ts` usa service role e aceita `isp_id` vindo do payload sem validação forte de autorização do usuário.
+- Isso abre vetor de acesso indevido por troca de `isp_id` no request.
+- Além disso, há findings de segurança pendentes em políticas de leitura ampla (`profiles`, `actions_log`) reportados pelo scanner.
 
-## Solucao: Migrar hooks para React Query com staleTime de 24h
+Plano de correção (ordem de execução)
 
-### Hooks a migrar (6 hooks criticos):
+Fase 1 — Hotfix de estabilidade imediata (parar “app inavegável”)
+1. Corrigir loop de reload no login (`src/pages/Auth.tsx`)
+- Remover chamada automática de `handleForceReset()` no render.
+- Substituir por estado de fallback visual com botão manual (“Limpar sessão e tentar novamente”).
+- Evitar `window.location.href` automático.
 
-| Hook | Origem | Requests por mount |
-|------|--------|--------------------|
-| `useEventos` | external supabase | 10-20 batches |
-| `useChurnData` | external supabase | 5-10 batches |
-| `useChamados` | external supabase | 5-15 batches |
-| `useNPSData` | external supabase | 1 request |
-| `useCrmWorkflow` | internal (crm-api) | 1 request |
-| `useRiskBucketConfig` | internal (crm-api) | 1 request |
+2. Adicionar proteção global contra tela branca
+- Incluir Error Boundary no topo da aplicação (envolvendo rotas principais).
+- Adicionar listener de `unhandledrejection` e `error` para capturar falhas assíncronas e mostrar fallback amigável (sem quebrar SPA).
 
-### Estrategia tecnica:
+Resultado esperado da fase 1:
+- Para imediatamente o comportamento de recarregamento infinito.
+- Em caso de erro, usuário vê fallback controlado em vez de branco total.
 
-1. Configurar `QueryClient` com `staleTime` de 24 horas e `gcTime` (cacheTime) de 24 horas
-2. Cada hook usa `useQuery` com uma `queryKey` que inclui o `ispId`
-3. Na primeira navegacao do dia, os dados carregam normalmente
-4. Nas navegacoes subsequentes, os dados vem do cache em memoria instantaneamente
-5. O usuario pode forcar um refresh manual se necessario (botao de atualizar)
+Fase 2 — Unificar 100% do carregamento no React Query (sem bypass)
+1. Refatorar `Index.tsx` para usar só cache existente
+- Remover `useEffect` de fetch manual de chamados.
+- Derivar `chamados` a partir de `useChamados()` com `useMemo` para transformação (`Chamado[]`) e deduplicação, sem nova ida à API.
+- `isLoading` da tela passa a vir do hook.
 
-### Exemplo da transformacao (useChurnData):
+2. Refatorar `NPS.tsx` para usar `useNPSData()`
+- Eliminar `fetchNPSData` local manual e estados redundantes (`setRespostasNPS`, `setIsLoading` controlados manualmente).
+- Usar o hook cacheado por `queryKey` + memo para filtros e KPIs.
+- Se precisar “taxa de resposta” com total enviado, criar query separada específica (também com cache 24h), sem `select("*")`.
 
-**Antes (atual):**
-```
-useState + useEffect -> fetch direto -> recarrega toda vez
-```
+3. Padronizar “fonte única de dados”
+- Garantir que páginas não façam fetch direto quando já existe hook central.
+- Manter “um hook por domínio de dado” (eventos, chamados, nps, churn) e páginas apenas compõem.
 
-**Depois:**
-```
-useQuery({ queryKey: ["churn-data", ispId], queryFn: fetchAll, staleTime: 24h })
--> primeira vez: carrega normalmente
--> proximas paginas: dados instantaneos do cache
-```
+Resultado esperado da fase 2:
+- Navegação entre páginas reutiliza cache real.
+- Redução drástica de requisições duplicadas e tempo de bloqueio no mount.
 
-### Beneficio esperado:
-- Primeira carga: igual ou ligeiramente mais rapida (sem mudanca)
-- Navegacao entre paginas: **instantanea** (0ms de loading, dados ja em memoria)
-- Troca de ISP (super admin): refetch automatico (queryKey muda)
+Fase 3 — Persistência diária em device (além da memória)
+Contexto: hoje o cache é em memória (rápido), mas se recarregar a aba ele perde.
+Implementar persistência diária no navegador:
+1. Persistir cache do React Query em `localStorage` (ou IndexedDB) com TTL por dia + `isp_id`.
+2. Versionar chave de cache (ex.: `uf-cache-v1`) para invalidar corretamente após mudanças de schema.
+3. Estratégia:
+- Primeiro acesso do dia: busca API.
+- Navegações e recargas no mesmo dia: hidrata do cache local.
+- Troca de ISP: invalidação seletiva.
+- Botão “Atualizar dados” para invalidate manual.
 
----
+Resultado esperado da fase 3:
+- “Primeira carga do dia” por ISP.
+- Reabertura/reload da aplicação no mesmo dia sem custo total de reimportação.
 
-## Correcoes de Seguranca
+Fase 4 — Segurança (prioridade alta em paralelo)
+1. Blindar `crm-api` contra escalada de tenant
+- Validar JWT no início da function.
+- Derivar ISPs permitidos do usuário autenticado (perfil/roles) no backend.
+- Ignorar ou validar estritamente `isp_id` do payload contra os ISPs autorizados.
+- Retornar 403 quando não autorizado.
+- Manter CORS completo em todos os retornos (sucesso/erro/preflight).
 
-### 1. Credenciais do Supabase externo hardcoded no frontend
-**Arquivo:** `src/integrations/supabase/external-client.ts`
+2. Reduzir uso amplo de service role
+- Onde possível, operar com contexto autenticado + políticas.
+- Se service role for indispensável, aplicar checagem de autorização explícita antes de qualquer query.
 
-A URL e a `anon_key` do Supabase externo estao hardcoded diretamente no codigo fonte. Embora a `anon_key` seja por definicao publica (equivalente a uma chave de API do lado do cliente), o padrao correto e mover para variaveis de ambiente para facilitar rotacao e evitar exposicao desnecessaria em buscas de codigo.
+3. Ajustar políticas de dados sensíveis
+- `profiles`: restringir SELECT para próprio usuário (e exceção admin controlada).
+- `actions_log`: além do header de ISP, exigir vínculo ao usuário/role autorizado; evitar leitura ampla por qualquer autenticado.
+- Revisar findings atuais do scanner e fechar os erros primeiro.
 
-**Acao:** Mover para `VITE_EXTERNAL_SUPABASE_URL` e `VITE_EXTERNAL_SUPABASE_ANON_KEY` (ou deixar como esta, ja que anon keys sao publicas por design -- baixo risco).
+Resultado esperado da fase 4:
+- Isolamento multi-tenant robusto no backend.
+- Redução de risco de exposição de dados entre clientes.
 
-### 2. Super Admin determinado apenas por dominio de email no frontend
-**Arquivo:** `src/contexts/AuthContext.tsx` (linha 96-98)
+Fase 5 — Otimizações complementares de throughput
+1. Trocar `select("*")` por colunas essenciais nas consultas pesadas.
+2. Evitar transformações duplicadas grandes no render (concentrar em memo único).
+3. (Opcional) Pré-computar agregações pesadas no backend diário para diminuir CPU no front.
 
-```typescript
-const SUPER_ADMIN_DOMAINS = ["uniforce.com.br"];
-function isSuperAdminEmail(email: string): boolean {
-  return SUPER_ADMIN_DOMAINS.includes(emailDomain(email));
-}
-```
+Critérios de aceite (validação objetiva)
+1) Estabilidade
+- Entrar em `/auth` com rede lenta não dispara reload automático infinito.
+- Não há tela branca durante navegação normal; erro cai em fallback controlado.
 
-Qualquer usuario que criar uma conta com email `@uniforce.com.br` ganha acesso super admin automaticamente. Isso e uma vulnerabilidade se o provedor de email nao for controlado, ou se alguem registrar um email falso. A verificacao deveria ser feita no backend (RLS ou edge function) e nao apenas no cliente.
+2) Performance
+- Navegar: Visão Geral → Financeiro → Chamados → NPS sem refetch pesado repetido.
+- Após reload no mesmo dia, dados voltam rapidamente do cache persistido.
+- Queda significativa de requests redundantes nas páginas que antes tinham fetch manual (`Index`, `NPS`).
 
-**Acao:** Documentar o risco. A mitigacao ideal seria validar o dominio no backend antes de conceder privilegios, mas como a autenticacao usa o Supabase externo e os dados sao somente leitura com RLS, o risco pratico e moderado.
+3) Segurança
+- Requests ao `crm-api` com `isp_id` não autorizado retornam 403.
+- Scanner sem erros críticos de exposição ampla em `profiles/actions_log`.
 
-### 3. Erro ativo no console: coluna `nps_check.celular` nao existe
-O hook `useNPSData` faz `SELECT ... celular ...` mas a coluna nao existe na tabela externa. Isso causa erro silencioso que impede o carregamento de dados NPS.
+Riscos e mitigação
+- Risco: persistir cache grande no localStorage estourar limite.
+  Mitigação: usar limite por query + limpeza por TTL + considerar IndexedDB se necessário.
+- Risco: mudança de políticas quebrar telas administrativas.
+  Mitigação: aplicar regras por etapas e testar fluxo admin/super admin antes de publicar.
+- Risco: regressão de UX no login.
+  Mitigação: manter ação manual de limpeza de sessão (sem automação destrutiva).
 
-**Acao:** Remover `celular` do select e usar apenas as colunas existentes.
-
----
-
-## Plano de implementacao
-
-### Etapa 1 -- Configurar QueryClient com staleTime global
-**Arquivo:** `src/App.tsx`
-
-Alterar a criacao do `QueryClient` para definir defaults globais:
-```
-staleTime: 24 * 60 * 60 * 1000 (24h)
-gcTime: 24 * 60 * 60 * 1000 (24h)
-refetchOnWindowFocus: false
-refetchOnMount: false
-retry: 1
-```
-
-### Etapa 2 -- Migrar useEventos para React Query
-**Arquivo:** `src/hooks/useEventos.ts`
-
-- Extrair a funcao `fetchEventos` para fora do hook (como `queryFn`)
-- Usar `useQuery` com `queryKey: ["eventos", ispId]`
-- Manter a mesma logica de batching e merge
-- Retornar `{ data, isLoading, error }` do React Query
-
-### Etapa 3 -- Migrar useChurnData para React Query
-**Arquivo:** `src/hooks/useChurnData.ts`
-
-- Separar em duas queries: `["churn-status", ispId]` e `["churn-events", ispId]`
-- Ambas com staleTime de 24h
-
-### Etapa 4 -- Migrar useChamados para React Query
-**Arquivo:** `src/hooks/useChamados.ts`
-
-- `useQuery` com `queryKey: ["chamados", ispId]`
-- `getChamadosPorCliente` continua como funcao derivada (memoizada)
-
-### Etapa 5 -- Migrar useNPSData para React Query + fix coluna
-**Arquivo:** `src/hooks/useNPSData.ts`
-
-- `useQuery` com `queryKey: ["nps-data", ispId]`
-- Remover `celular` e `telefone` do select (colunas inexistentes)
-
-### Etapa 6 -- Migrar useCrmWorkflow e useRiskBucketConfig
-**Arquivos:** `src/hooks/useCrmWorkflow.ts`, `src/hooks/useRiskBucketConfig.ts`
-
-- Ambos para `useQuery` com staleTime de 24h
-- Mutacoes (addToWorkflow, updateStatus, etc.) usam `useMutation` com `invalidateQueries`
-
-### Etapa 7 -- Botao de refresh manual
-Adicionar um botao "Atualizar dados" no header/toolbar que invalida todas as queries, forcando um refetch completo quando o usuario precisar.
-
----
-
-## Arquivos impactados
-1. `src/App.tsx` (QueryClient config)
-2. `src/hooks/useEventos.ts`
-3. `src/hooks/useChurnData.ts`
-4. `src/hooks/useChamados.ts`
-5. `src/hooks/useNPSData.ts`
-6. `src/hooks/useCrmWorkflow.ts`
-7. `src/hooks/useRiskBucketConfig.ts`
-
-## Resultado esperado
-- Primeira carga do dia: sem mudanca (mesmo tempo)
-- Navegacao entre paginas: **de 5-15s para instantaneo**
-- Troca de ISP: refetch automatico
-- Erro NPS corrigido
-- Riscos de seguranca documentados
+Sequência recomendada de entrega
+1. Fase 1 (hotfix reload/tela branca) — urgente.
+2. Fase 2 (retirar bypass React Query em Index/NPS).
+3. Fase 3 (persistência diária no device).
+4. Fase 4 (hardening de segurança backend + políticas).
+5. Fase 5 (otimizações extras).
