@@ -26,6 +26,7 @@ import ConfiguracaoChurnScore from "./pages/ConfiguracaoChurnScore";
 import PerfilISP from "./pages/PerfilISP";
 import ContasAcesso from "./pages/ContasAcesso";
 import SetupChamados from "./pages/SetupChamados";
+import EventosDebug from "./pages/EventosDebug";
 
 const TWENTY_FOUR_HOURS = 1000 * 60 * 60 * 24;
 
@@ -191,6 +192,7 @@ const App = () => (
                 </ProtectedRoute>
               }
             />
+            <Route path="/eventos-debug" element={<EventosDebug />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
           </ChurnScoreConfigProvider>
