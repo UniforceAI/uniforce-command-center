@@ -1,8 +1,8 @@
-import { useState, useMemo, useEffect, useCallback } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useActiveIsp } from "@/hooks/useActiveIsp";
-import { externalSupabase } from "@/integrations/supabase/external-client";
+import { useNPSData } from "@/hooks/useNPSData";
 import { useChurnData } from "@/hooks/useChurnData";
 import { useChurnScore } from "@/hooks/useChurnScore";
 import { useRiskBucketConfig } from "@/hooks/useRiskBucketConfig";
@@ -25,14 +25,15 @@ import { NPSInsightsPanel } from "@/components/nps/NPSInsightsPanel";
 import { NPSImportDialog } from "@/components/nps/NPSImportDialog";
 import { RespostaNPS, ClassificacaoNPS, TipoNPS } from "@/types/nps";
 import { useToast } from "@/hooks/use-toast";
+import { useQueryClient } from "@tanstack/react-query";
 
 const NPS = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const { signOut } = useAuth();
   const { ispId, ispNome } = useActiveIsp();
-  const [respostasNPS, setRespostasNPS] = useState<RespostaNPS[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const queryClient = useQueryClient();
+  const { npsData, isLoading } = useNPSData(ispId);
   const [importOpen, setImportOpen] = useState(false);
   const [selectedClienteId, setSelectedClienteId] = useState<number | null>(null);
 
@@ -70,7 +71,7 @@ const NPS = () => {
     const tipoLower = tipo?.toLowerCase().trim() || "";
     if (tipoLower === "contrato") return "contrato";
     if (tipoLower === "ordem_servico" || tipoLower.includes("os") || tipoLower.includes("o.s") || tipoLower.includes("ordem") || tipoLower.includes("pós")) return "os";
-    return "contrato"; // Default to contrato, no atendimento
+    return "contrato";
   };
 
   const calcClassificacao = (nota: number): ClassificacaoNPS => {
@@ -79,71 +80,23 @@ const NPS = () => {
     return "Promotor";
   };
 
-  const fetchNPSData = useCallback(async () => {
-    try {
-      setIsLoading(true);
-      // Total de pesquisas enviadas (inclui sem resposta) para taxa de resposta
-      const { count: totalPesquisas } = await externalSupabase
-        .from("nps_check")
-        .select("*", { count: "exact", head: true })
-        .eq("isp_id", ispId);
+  // Transform hook data to RespostaNPS[]
+  const respostasNPS = useMemo((): RespostaNPS[] => {
+    return npsData.map((item) => ({
+      cliente_id: item.cliente_id,
+      cliente_nome: "N/A",
+      tipo_nps: mapTipoNPS(item.tipo_nps),
+      nota: item.nota,
+      classificacao: item.classificacao,
+      comentario: "",
+      data_resposta: item.data_resposta || new Date().toISOString().split("T")[0],
+      celular: "",
+    }));
+  }, [npsData]);
 
-      // Apenas registros com resposta (data_resposta não nula)
-      const { data, error } = await externalSupabase
-        .from("nps_check")
-        .select("*")
-        .eq("isp_id", ispId)
-        .not("data_resposta", "is", null)
-        .order("data_resposta", { ascending: false })
-        .limit(5000);
-
-      if (error) throw error;
-
-      const totalRecords = totalPesquisas || data?.length || 0;
-
-      const respostasTransformadas: RespostaNPS[] = (data || [])
-        .map((item: any) => {
-          const rawNota = item.nota_numerica != null ? Number(item.nota_numerica) : Number(item.nota);
-          const nota = (!isNaN(rawNota) && rawNota >= 0 && rawNota <= 10) ? rawNota : 0;
-
-          const mapClassificacaoFromDB = (classif: string): ClassificacaoNPS => {
-            const lower = classif?.toLowerCase().trim() || "";
-            if (lower === "promotor") return "Promotor";
-            if (lower === "neutro") return "Neutro";
-            if (lower === "detrator") return "Detrator";
-            return calcClassificacao(nota);
-          };
-
-          return {
-            cliente_id: item.id_cliente || item.cliente_id || 0,
-            cliente_nome: item.nome || item.cliente_nome || "N/A",
-            tipo_nps: mapTipoNPS(item.nps_type || item.origem || ""),
-            nota,
-            classificacao: mapClassificacaoFromDB(item.classificacao_nps),
-            comentario: item.mensagem_melhoria || item.comentario || "",
-            data_resposta: item.data_resposta || new Date().toISOString().split("T")[0],
-            celular: item.celular || item.telefone || "",
-            // Store total records for taxa de resposta
-            _totalPesquisas: totalRecords,
-          };
-        });
-
-      setRespostasNPS(respostasTransformadas);
-    } catch (error: any) {
-      console.error("❌ Erro NPS:", error);
-      toast({
-        title: "Erro ao carregar dados NPS",
-        description: error.message,
-        variant: "destructive",
-      });
-    } finally {
-      setIsLoading(false);
-    }
-  }, [ispId, toast]);
-
-  useEffect(() => {
-    fetchNPSData();
-  }, [fetchNPSData]);
+  const handleRefreshNPS = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ["nps-data", ispId] });
+  }, [queryClient, ispId]);
 
   const dataReferencia = useMemo(() => {
     if (respostasNPS.length === 0) return new Date();
@@ -184,7 +137,6 @@ const NPS = () => {
     };
 
     const respondidas = filteredRespostas.length;
-    // Taxa de resposta: respondidas (com nota) vs total de pesquisas enviadas
     const totalPesquisas = respostasSemAtendimento.length;
     const taxaResposta = totalPesquisas > 0 ? Math.round((respondidas / totalPesquisas) * 100) : 0;
 
@@ -228,7 +180,6 @@ const NPS = () => {
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {/* NPS Check CTA */}
               <Card className="border-primary/30 bg-primary/5 hover:bg-primary/10 transition-colors cursor-pointer">
                 <CardContent className="p-6 text-center space-y-3">
                   <Sparkles className="h-8 w-8 text-primary mx-auto" />
@@ -244,7 +195,6 @@ const NPS = () => {
                 </CardContent>
               </Card>
 
-              {/* Import CSV CTA */}
               <Card className="hover:bg-muted/50 transition-colors cursor-pointer" onClick={() => setImportOpen(true)}>
                 <CardContent className="p-6 text-center space-y-3">
                   <Upload className="h-8 w-8 text-muted-foreground mx-auto" />
@@ -261,7 +211,7 @@ const NPS = () => {
               </Card>
             </div>
           </div>
-          <NPSImportDialog open={importOpen} onOpenChange={setImportOpen} onSuccess={fetchNPSData} />
+          <NPSImportDialog open={importOpen} onOpenChange={setImportOpen} onSuccess={handleRefreshNPS} />
         </main>
       </div>
     );
@@ -307,36 +257,13 @@ const NPS = () => {
               onClassificacaoChange={setClassificacao}
             />
 
-            {/* KPIs - sem atendimento, com taxa de resposta */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              <NPSKPICard
-                title="NPS Geral"
-                value={kpis.geral}
-                icon={Gauge}
-                count={filteredRespostas.length}
-              />
-              <NPSKPICard
-                title="NPS Contrato"
-                value={kpis.contrato}
-                icon={ThumbsUp}
-                count={filteredRespostas.filter((r) => r.tipo_nps === "contrato").length}
-              />
-              <NPSKPICard
-                title="NPS Pós-O.S"
-                value={kpis.os}
-                icon={Wrench}
-                count={filteredRespostas.filter((r) => r.tipo_nps === "os").length}
-              />
-              <NPSKPICard
-                title="Taxa de Resposta"
-                value={kpis.taxaResposta}
-                icon={Percent}
-                count={kpis.totalRespostas}
-                isPercentage
-              />
+              <NPSKPICard title="NPS Geral" value={kpis.geral} icon={Gauge} count={filteredRespostas.length} />
+              <NPSKPICard title="NPS Contrato" value={kpis.contrato} icon={ThumbsUp} count={filteredRespostas.filter((r) => r.tipo_nps === "contrato").length} />
+              <NPSKPICard title="NPS Pós-O.S" value={kpis.os} icon={Wrench} count={filteredRespostas.filter((r) => r.tipo_nps === "os").length} />
+              <NPSKPICard title="Taxa de Resposta" value={kpis.taxaResposta} icon={Percent} count={kpis.totalRespostas} isPercentage />
             </div>
 
-            {/* Charts */}
             <div>
               <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
                 <BarChart3 className="h-5 w-5 text-primary" />
@@ -345,16 +272,12 @@ const NPS = () => {
               <NPSCharts respostas={filteredRespostas} />
             </div>
 
-            {/* Insights */}
             <NPSInsightsPanel respostas={filteredRespostas} />
-
-            {/* Table */}
             <NPSTable respostas={filteredRespostas} onOpenProfile={(id) => setSelectedClienteId(id)} />
           </>
         )}
-        <NPSImportDialog open={importOpen} onOpenChange={setImportOpen} onSuccess={fetchNPSData} />
+        <NPSImportDialog open={importOpen} onOpenChange={setImportOpen} onSuccess={handleRefreshNPS} />
 
-        {/* CRM Profile Drawer */}
         {selectedCliente && (
           <CrmDrawer
             cliente={selectedCliente}

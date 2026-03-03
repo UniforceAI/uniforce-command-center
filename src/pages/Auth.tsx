@@ -97,7 +97,7 @@ export default function Auth() {
 
   useEffect(() => {
     if (isLoading) {
-      const timer = setTimeout(() => setAuthStuck(true), 6000);
+      const timer = setTimeout(() => setAuthStuck(true), 8000);
       return () => clearTimeout(timer);
     }
     setAuthStuck(false);
@@ -109,18 +109,20 @@ export default function Auth() {
     window.location.href = "/auth";
   };
 
-  if (isLoading && !authStuck) {
+  if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
+      <div className="min-h-screen flex flex-col items-center justify-center bg-background gap-4">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary" />
+        {authStuck && (
+          <div className="text-center space-y-3">
+            <p className="text-sm text-muted-foreground">O carregamento está demorando mais que o esperado.</p>
+            <Button variant="outline" size="sm" onClick={handleForceReset}>
+              Limpar sessão e tentar novamente
+            </Button>
+          </div>
+        )}
       </div>
     );
-  }
-
-  if (isLoading && authStuck) {
-    // Force clear and show login
-    handleForceReset();
-    return null;
   }
 
   return (

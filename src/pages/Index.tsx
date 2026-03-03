@@ -1,8 +1,7 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { Chamado } from "@/types/chamado";
 import { useAuth } from "@/contexts/AuthContext";
-import { externalSupabase } from "@/integrations/supabase/external-client";
 import { getCategoriaName } from "@/lib/categoriasMap";
 import { useActiveIsp } from "@/hooks/useActiveIsp";
 import { useChurnScore } from "@/hooks/useChurnScore";
@@ -31,12 +30,11 @@ const Index = () => {
   const { scoreMap, churnStatus, churnEvents, getScoreTotalReal } = useChurnScore();
   const { getBucket } = useRiskBucketConfig();
   const { workflowMap, addToWorkflow, updateStatus, updateTags, updateOwner } = useCrmWorkflow();
-  const { chamados: crmChamados } = useChamados();
-  const [chamados, setChamados] = useState<Chamado[]>([]);
+  const { chamados: rawChamados, isLoading } = useChamados();
+
   const [selectedCliente, setSelectedCliente] = useState<Chamado | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [selectedCrmClienteId, setSelectedCrmClienteId] = useState<number | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
 
   // Filtros
   const [periodo, setPeriodo] = useState("7");
@@ -44,90 +42,47 @@ const Index = () => {
   const [urgencia, setUrgencia] = useState("todas");
   const [setor, setSetor] = useState("todos");
 
-  // Buscar dados do banco - em batches para superar limite de 1000
-  useEffect(() => {
-    const fetchChamados = async () => {
-      try {
-        setIsLoading(true);
-        const { count: totalCount, error: countError } = await externalSupabase
-          .from("chamados")
-          .select("*", { count: "exact", head: true })
-          .eq("isp_id", ispId);
-
-        if (countError) throw countError;
-
-        const BATCH_SIZE = 1000;
-        const MAX_BATCHES = 15;
-        const totalBatches = Math.min(Math.ceil((totalCount || 0) / BATCH_SIZE), MAX_BATCHES);
-        let allData: any[] = [];
-
-        for (let i = 0; i < totalBatches; i++) {
-          const start = i * BATCH_SIZE;
-          const end = start + BATCH_SIZE - 1;
-          const { data, error } = await externalSupabase
-            .from("chamados")
-            .select("*")
-            .eq("isp_id", ispId)
-            .order("created_at", { ascending: false })
-            .range(start, end);
-          if (error) throw error;
-          if (data) allData = [...allData, ...data];
-        }
-
-        // Deduplicar por protocolo + id_cliente
-        const uniqueMap = new Map<string, any>();
-        allData.forEach((item: any) => {
-          const key = `${item.id_cliente}_${item.protocolo}`;
-          const existing = uniqueMap.get(key);
-          if (!existing || (item.updated_at && (!existing.updated_at || item.updated_at > existing.updated_at))) {
-            uniqueMap.set(key, item);
-          }
-        });
-        const uniqueData = Array.from(uniqueMap.values());
-
-        const chamadosTransformados: Chamado[] = uniqueData.map((item: any) => {
-          const categoria = item.categoria || "";
-          const motivoFinal = getCategoriaName(categoria, ispId);
-          return {
-            "ID Cliente": item.id_cliente || "",
-            "Qtd. Chamados": item.qtd_chamados ?? 0,
-            Protocolo: item.protocolo || "",
-            "Data de Abertura": item.data_abertura || "",
-            "Última Atualização": item.ultima_atualizacao || "",
-            Responsável: item.responsavel || "",
-            Setor: item.setor || "",
-            Categoria: categoria,
-            "Motivo do Contato": motivoFinal,
-            Origem: item.origem || "",
-            Solicitante: item.solicitante || item.id_cliente || "",
-            Urgência: item.urgencia || "",
-            Status: item.status || "",
-            "Dias ultimo chamado": item.dias_desde_ultimo ?? null,
-            "Tempo de Atendimento": item.tempo_atendimento || "",
-            Classificação: item.classificacao || "",
-            Insight: item.insight || "",
-            "Chamados Anteriores": item.chamados_anteriores || "",
-            _id: item.id,
-            isp_id: item.isp_id || null,
-            instancia_isp: item.instancia_isp || null,
-          };
-        });
-
-        setChamados(chamadosTransformados);
-      } catch (error: any) {
-        console.error("Erro ao buscar chamados:", error);
-        toast({
-          title: "Erro ao carregar dados",
-          description: "Não foi possível carregar os chamados. Tente novamente.",
-          variant: "destructive",
-        });
-      } finally {
-        setIsLoading(false);
+  // Transform raw chamados from hook into Chamado[] type with dedup
+  const chamados = useMemo(() => {
+    // Deduplicar por protocolo + id_cliente
+    const uniqueMap = new Map<string, any>();
+    rawChamados.forEach((item: any) => {
+      const key = `${item.id_cliente}_${item.protocolo}`;
+      const existing = uniqueMap.get(key);
+      if (!existing || (item.updated_at && (!existing.updated_at || item.updated_at > existing.updated_at))) {
+        uniqueMap.set(key, item);
       }
-    };
+    });
+    const uniqueData = Array.from(uniqueMap.values());
 
-    fetchChamados();
-  }, [toast, ispId]);
+    return uniqueData.map((item: any) => {
+      const categoria = item.categoria || "";
+      const motivoFinal = getCategoriaName(categoria, ispId);
+      return {
+        "ID Cliente": item.id_cliente || "",
+        "Qtd. Chamados": item.qtd_chamados ?? 0,
+        Protocolo: item.protocolo || "",
+        "Data de Abertura": item.data_abertura || "",
+        "Última Atualização": item.ultima_atualizacao || "",
+        Responsável: item.responsavel || "",
+        Setor: item.setor || "",
+        Categoria: categoria,
+        "Motivo do Contato": motivoFinal,
+        Origem: item.origem || "",
+        Solicitante: item.solicitante || item.id_cliente || "",
+        Urgência: item.urgencia || "",
+        Status: item.status || "",
+        "Dias ultimo chamado": item.dias_desde_ultimo ?? null,
+        "Tempo de Atendimento": item.tempo_atendimento || "",
+        Classificação: item.classificacao || "",
+        Insight: item.insight || "",
+        "Chamados Anteriores": item.chamados_anteriores || "",
+        _id: item.id,
+        isp_id: item.isp_id || null,
+        instancia_isp: item.instancia_isp || null,
+      } as Chamado;
+    });
+  }, [rawChamados, ispId]);
 
   // Encontrar a data mais recente dos dados
   const dataMaisRecente = useMemo(() => {
@@ -276,11 +231,11 @@ const Index = () => {
 
   const selectedCrmChamados = useMemo(() => {
     if (!selectedCrmClienteId) return [];
-    return crmChamados.filter(c => {
+    return rawChamados.filter(c => {
       const id = typeof c.id_cliente === "string" ? parseInt(c.id_cliente as any) : c.id_cliente;
       return id === selectedCrmClienteId;
     });
-  }, [selectedCrmClienteId, crmChamados]);
+  }, [selectedCrmClienteId, rawChamados]);
 
   // Função auxiliar para parsear data
   const parseData = (dataStr: string) => {

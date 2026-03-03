@@ -7,6 +7,7 @@ import { AuthProvider } from "@/contexts/AuthContext";
 import { ChurnScoreConfigProvider } from "@/contexts/ChurnScoreConfigContext";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { MainLayout } from "@/components/layout/MainLayout";
+import { ErrorBoundary } from "@/components/shared/ErrorBoundary";
 import Index from "./pages/Index";
 import NPS from "./pages/NPS";
 import Auth from "./pages/Auth";
@@ -45,6 +46,7 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <AuthProvider>
+          <ErrorBoundary>
           <ChurnScoreConfigProvider>
           <Routes>
             <Route path="/auth" element={<Auth />} />
@@ -182,6 +184,7 @@ const App = () => (
             <Route path="*" element={<NotFound />} />
           </Routes>
           </ChurnScoreConfigProvider>
+          </ErrorBoundary>
         </AuthProvider>
       </BrowserRouter>
     </TooltipProvider>
