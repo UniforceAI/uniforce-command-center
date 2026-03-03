@@ -277,42 +277,28 @@ const VisaoGeral = () => {
       e.status_contrato !== "C" && e.servico_status !== "C"
     ).length;
 
-    // Churn no período — usa data_cancelamento da tabela eventos como fonte primária
+    // Churn no período — usa EXCLUSIVAMENTE churn_status (fonte única)
     let canceladosPeriodo = 0;
     let receitaPerdida = 0;
     let ticketsPerdidos: number[] = [];
     
-    // Primeiro: contar via eventos.data_cancelamento (fonte primária)
-    const canceladosViaEventos = new Set<number>();
-    filteredEventos.forEach(e => {
-      const dataCancelamento = (e as any).data_cancelamento;
-      if (!dataCancelamento) return;
-      const d = new Date(dataCancelamento);
+    const canceladosViaChurn = new Set<number>();
+    churnStatus.forEach(cs => {
+      if (cs.status_churn !== "cancelado") return;
+      if (!cs.data_cancelamento) return;
+      // Apply dimension filters
+      if (cidade !== "todos" && String(cs.cliente_cidade) !== cidade && getCidadeNome(cs.cliente_cidade) !== cidade) return;
+      if (bairro !== "todos" && cs.cliente_bairro !== bairro) return;
+      if (plano !== "todos" && cs.plano_nome !== plano) return;
+      const d = new Date(cs.data_cancelamento);
       if (isNaN(d.getTime())) return;
       if (dataLimiteChurn && d < dataLimiteChurn) return;
-      if (canceladosViaEventos.has(e.cliente_id)) return;
-      canceladosViaEventos.add(e.cliente_id);
+      if (canceladosViaChurn.has(cs.cliente_id)) return;
+      canceladosViaChurn.add(cs.cliente_id);
       canceladosPeriodo++;
-      receitaPerdida += e.valor_mensalidade || 0;
-      if (e.valor_mensalidade) ticketsPerdidos.push(e.valor_mensalidade);
+      receitaPerdida += cs.valor_mensalidade || 0;
+      if (cs.valor_mensalidade) ticketsPerdidos.push(cs.valor_mensalidade);
     });
-    
-    // Fallback: se eventos não retornou cancelamentos, usar churn_status
-    if (canceladosPeriodo === 0) {
-      churnStatus.forEach(cs => {
-        if (cs.status_churn !== "cancelado") return;
-        if (cidade !== "todos" && String(cs.cliente_cidade) !== cidade && getCidadeNome(cs.cliente_cidade) !== cidade) return;
-        if (bairro !== "todos" && cs.cliente_bairro !== bairro) return;
-        if (plano !== "todos" && cs.plano_nome !== plano) return;
-        if (dataLimiteChurn && cs.data_cancelamento) {
-          const d = new Date(cs.data_cancelamento);
-          if (!isNaN(d.getTime()) && d < dataLimiteChurn) return;
-        }
-        canceladosPeriodo++;
-        receitaPerdida += cs.valor_mensalidade || 0;
-        if (cs.valor_mensalidade) ticketsPerdidos.push(cs.valor_mensalidade);
-      });
-    }
 
     const churnPct = totalClientes > 0 ? (canceladosPeriodo / totalClientes * 100) : 0;
     const ticketMedioPerdido = ticketsPerdidos.length > 0
