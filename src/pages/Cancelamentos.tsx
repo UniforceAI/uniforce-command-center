@@ -3,7 +3,7 @@ import { FAIXAS_AGING } from "@/types/evento";
 import { safeParse } from "@/lib/safeDate";
 import { useChurnData, ChurnStatus, ChurnEvent } from "@/hooks/useChurnData";
 import { useEventos } from "@/hooks/useEventos";
-import { buildUnifiedCancelados, getTotalClientesBase, getMaxCancelDate } from "@/lib/churnUnified";
+import { buildUnifiedCancelados, getTotalClientesBase } from "@/lib/churnUnified";
 import { useChamados } from "@/hooks/useChamados";
 import { useRiskBucketConfig, RiskBucket } from "@/hooks/useRiskBucketConfig";
 import { useCrmWorkflow } from "@/hooks/useCrmWorkflow";
