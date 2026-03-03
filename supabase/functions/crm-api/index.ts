@@ -2,29 +2,115 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.78.0";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
+function jsonResponse(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
+
+// ── External Supabase (auth provider) ──
+const EXT_URL = "https://yqdqmudsnjhixtxldqwi.supabase.co";
+const EXT_SERVICE_KEY = Deno.env.get("EXTERNAL_SUPABASE_SERVICE_ROLE_KEY")!;
+
+const SUPER_ADMIN_DOMAINS = ["uniforce.com.br"];
+
+function emailDomain(email: string): string {
+  return email.split("@")[1]?.toLowerCase() || "";
+}
+
+/**
+ * Verify the caller's JWT against the external Supabase auth.
+ * Returns the authenticated user's id, email, and allowed isp_ids.
+ */
+async function verifyCaller(authHeader: string | null): Promise<{
+  userId: string;
+  email: string;
+  isSuperAdmin: boolean;
+  allowedIspIds: string[];
+}> {
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    throw { status: 401, message: "Token de autenticação ausente." };
+  }
+
+  const token = authHeader.replace("Bearer ", "");
+  const extClient = createClient(EXT_URL, EXT_SERVICE_KEY);
+  const {
+    data: { user },
+    error,
+  } = await extClient.auth.getUser(token);
+
+  if (error || !user) {
+    throw { status: 401, message: "Token inválido ou expirado." };
+  }
+
+  const email = user.email || "";
+  const isSuperAdmin = SUPER_ADMIN_DOMAINS.includes(emailDomain(email));
+
+  // Super admins can access any ISP
+  if (isSuperAdmin) {
+    return { userId: user.id, email, isSuperAdmin: true, allowedIspIds: [] };
+  }
+
+  // Regular users: get their isp_id from external profiles
+  const { data: profile } = await extClient
+    .from("profiles")
+    .select("isp_id")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  const allowedIspIds = profile?.isp_id ? [profile.isp_id] : [];
+
+  return { userId: user.id, email, isSuperAdmin: false, allowedIspIds };
+}
+
+/**
+ * Check that the requested isp_id is allowed for this caller.
+ */
+function assertIspAccess(
+  caller: { isSuperAdmin: boolean; allowedIspIds: string[] },
+  requestedIspId: string
+) {
+  if (caller.isSuperAdmin) return; // super admin can access any
+  if (!caller.allowedIspIds.includes(requestedIspId)) {
+    throw {
+      status: 403,
+      message: "Acesso negado: você não tem permissão para acessar este ISP.",
+    };
+  }
+}
+
+// ── Main handler ──
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
 
   try {
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const supabase = createClient(supabaseUrl, serviceRoleKey);
+    // 1. Authenticate caller
+    const authHeader = req.headers.get("authorization");
+    const caller = await verifyCaller(authHeader);
 
+    // 2. Parse body
     const body = await req.json();
     const { action, isp_id, ...params } = body;
 
     if (!isp_id || typeof isp_id !== "string" || isp_id.trim() === "") {
-      return new Response(JSON.stringify({ error: "isp_id is required" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return jsonResponse({ error: "isp_id is required" }, 400);
     }
+
+    // 3. Authorize ISP access
+    assertIspAccess(caller, isp_id);
+
+    // 4. Internal Supabase client (service role for internal DB operations)
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabase = createClient(supabaseUrl, serviceRoleKey);
 
     let result: any;
 
@@ -115,7 +201,7 @@ Deno.serve(async (req) => {
           .insert({
             isp_id,
             cliente_id,
-            created_by: created_by || null,
+            created_by: created_by || caller.userId,
             body: commentBody,
             type,
             meta: meta || null,
@@ -225,20 +311,14 @@ Deno.serve(async (req) => {
       }
 
       default:
-        return new Response(JSON.stringify({ error: `Unknown action: ${action}` }), {
-          status: 400,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
+        return jsonResponse({ error: `Unknown action: ${action}` }, 400);
     }
 
-    return new Response(JSON.stringify(result), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-  } catch (err) {
-    console.error("crm-api error:", err);
-    return new Response(JSON.stringify({ error: err.message }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return jsonResponse(result);
+  } catch (err: any) {
+    const status = err.status || 500;
+    const message = err.message || "Internal server error";
+    console.error(`crm-api error [${status}]:`, message);
+    return jsonResponse({ error: message }, status);
   }
 });
