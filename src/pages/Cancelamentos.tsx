@@ -110,10 +110,8 @@ const Cancelamentos = () => {
     return getTotalClientesBase(eventos, { cidade, bairro, plano });
   }, [eventos, cidade, bairro, plano]);
 
-  // Max date considerando ambas fontes (eventos + churn_status)
-  const maxDate = useMemo(() => {
-    return getMaxCancelDate(eventos, churnStatus);
-  }, [eventos, churnStatus]);
+  // Usar data de hoje como referência para filtros de período (previsível e estável)
+  const maxDate = useMemo(() => new Date(), []);
 
   const filterOptions = useMemo(() => {
     const planos = new Set<string>();
