@@ -30,6 +30,7 @@ export function useCrmWorkflow() {
       return (data as CrmWorkflowRecord[]) || [];
     },
     enabled: !!ispId,
+    refetchOnMount: true,
   });
 
   const upsertMutation = useMutation({
