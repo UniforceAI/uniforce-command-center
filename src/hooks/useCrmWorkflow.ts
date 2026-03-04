@@ -5,6 +5,12 @@ import { callCrmApi } from "@/lib/crmApi";
 
 export type WorkflowStatus = "em_tratamento" | "resolvido" | "perdido";
 
+const STATUS_LABELS: Record<WorkflowStatus, string> = {
+  em_tratamento: "Em Tratamento",
+  resolvido: "Resolvido",
+  perdido: "Perdido",
+};
+
 export interface CrmWorkflowRecord {
   id: string;
   isp_id: string;
@@ -51,12 +57,22 @@ export function useCrmWorkflow() {
   const addToWorkflow = useCallback(
     async (clienteId: number, tags?: string[]) => {
       if (!ispId) throw new Error("No ISP");
-      return upsertMutation.mutateAsync({
+      const result = await upsertMutation.mutateAsync({
         action: "upsert_workflow",
         cliente_id: clienteId,
         status_workflow: "em_tratamento" as WorkflowStatus,
         tags: tags || [],
       });
+      // Log action as a comment (fire-and-forget)
+      callCrmApi({
+        action: "add_comment",
+        isp_id: ispId,
+        cliente_id: clienteId,
+        body: "Cliente adicionado ao fluxo de tratamento.",
+        type: "status_change",
+        meta: { new_status: "em_tratamento" },
+      }).catch(console.error);
+      return result;
     },
     [ispId, upsertMutation]
   );
@@ -64,11 +80,21 @@ export function useCrmWorkflow() {
   const updateStatus = useCallback(
     async (clienteId: number, status: WorkflowStatus) => {
       if (!ispId) throw new Error("No ISP");
-      return upsertMutation.mutateAsync({
+      const result = await upsertMutation.mutateAsync({
         action: "upsert_workflow",
         cliente_id: clienteId,
         status_workflow: status,
       });
+      // Log status change as a comment (fire-and-forget)
+      callCrmApi({
+        action: "add_comment",
+        isp_id: ispId,
+        cliente_id: clienteId,
+        body: `Status alterado para: ${STATUS_LABELS[status]}`,
+        type: "status_change",
+        meta: { new_status: status },
+      }).catch(console.error);
+      return result;
     },
     [ispId, upsertMutation]
   );

@@ -110,24 +110,26 @@ const ClientesEmRisco = () => {
     return max > 0 ? new Date(max) : new Date();
   }, [churnStatus]);
 
-  // Filtro 100% baseado no score recalculado — ignora status_churn do banco
-  // Apenas clientes cujo score >= alert_min (bucket ALERTA ou CRÍTICO) entram
+  // Clientes visíveis no CRM:
+  // (1) Qualquer cliente com bucket ALERTA/CRÍTICO → entra em "Em Risco"
+  // (2) Qualquer cliente com registro de workflow ativo → persiste no Kanban
+  //     independente do bucket atual (score pode ter melhorado após o tratamento)
+  // Excluir cancelados (status_internet = "D") — sem retenção possível
   const clientesRisco = useMemo(() => {
-    // Deduplicar por cliente_id — manter o registro com maior score
-    // Excluir clientes cancelados (status_internet = "D") — não há retenção possível
     const map = new Map<number, typeof churnStatus[0]>();
     churnStatus.forEach((c) => {
-      if (c.status_internet === "D") return; // Cancelado — ignorar
+      if (c.status_internet === "D") return;
       const score = getScoreTotalReal(c);
       const b = getBucket(score);
-      if (b !== "ALERTA" && b !== "CRÍTICO") return; // Ignora OK
+      const hasWorkflow = workflowMap.has(c.cliente_id);
+      if (b !== "ALERTA" && b !== "CRÍTICO" && !hasWorkflow) return;
       const existing = map.get(c.cliente_id);
       if (!existing || score > getScoreTotalReal(existing)) {
         map.set(c.cliente_id, c);
       }
     });
     return Array.from(map.values());
-  }, [churnStatus, getScoreTotalReal, getBucket]);
+  }, [churnStatus, getScoreTotalReal, getBucket, workflowMap]);
 
   const filterOptions = useMemo(() => {
     const planos = new Set<string>();

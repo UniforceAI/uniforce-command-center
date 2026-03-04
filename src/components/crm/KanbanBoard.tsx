@@ -290,10 +290,34 @@ export function KanbanBoard({
     if (currentColumn === targetColumnId) return;
 
     const targetStatus = COLUMN_TO_STATUS[targetColumnId];
-    if (targetStatus === null) return;
-
     const item = allItems.find(i => i.cliente.cliente_id === clienteId);
     if (!item) return;
+
+    // Em Risco is a computed column — dragging here reactivates card to Em Tratamento
+    if (targetStatus === null) {
+      if (!item.workflow) {
+        toast({
+          title: "Coluna automática",
+          description: '"Em Risco" é calculado pelo score. Use "Em Tratamento" para iniciar atendimento.',
+        });
+        return;
+      }
+      // Card has a workflow → reactivate to em_tratamento
+      setPendingDrag(true);
+      try {
+        await onUpdateStatus(clienteId, "em_tratamento");
+        toast({
+          title: "Card reativado",
+          description: '"Em Risco" é automático. Card movido para Em Tratamento.',
+        });
+      } catch (err) {
+        console.error("❌ Drag error:", err);
+        toast({ title: "Falha ao reativar card", description: "Tente novamente.", variant: "destructive" });
+      } finally {
+        setPendingDrag(false);
+      }
+      return;
+    }
 
     setPendingDrag(true);
     try {
