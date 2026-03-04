@@ -1,6 +1,6 @@
 import type { PersistedClient, Persister } from "@tanstack/react-query-persist-client";
 
-const CACHE_KEY = "uf-cache-v3";
+const CACHE_KEY = "uf-cache-v4";
 const MAX_AGE = 1000 * 60 * 60 * 24; // 24h
 
 // Clean legacy cache keys on module load
