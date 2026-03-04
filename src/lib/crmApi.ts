@@ -1,28 +1,27 @@
 /**
- * Shared helper to call the crm-api edge function with the EXTERNAL Supabase JWT.
+ * Shared helper to call the crm-api edge function.
  *
- * The crm-api validates tokens against the external Supabase auth provider,
- * so we must send the external token — not the internal Lovable Cloud one.
+ * Both auth and data now live in the same Supabase project (yqdqmudsnjhixtxldqwi),
+ * so we use the externalSupabase client for both the JWT and the function invocation.
  */
-import { supabase } from "@/integrations/supabase/client";
 import { externalSupabase } from "@/integrations/supabase/external-client";
 
 export async function callCrmApi(payload: Record<string, any>) {
-  // 1. Refresh external session to ensure a valid token
+  // 1. Ensure a valid session token
   const { data: sessionData } = await externalSupabase.auth.refreshSession();
-  const externalToken =
+  const token =
     sessionData?.session?.access_token ??
     (await externalSupabase.auth.getSession()).data.session?.access_token;
 
-  if (!externalToken) {
+  if (!token) {
     throw new Error("Sessão expirada. Faça login novamente.");
   }
 
-  // 2. Call edge function with the external JWT in the Authorization header
-  const { data, error } = await supabase.functions.invoke("crm-api", {
+  // 2. Call edge function on the official Uniforce Supabase project
+  const { data, error } = await externalSupabase.functions.invoke("crm-api", {
     body: payload,
     headers: {
-      Authorization: `Bearer ${externalToken}`,
+      Authorization: `Bearer ${token}`,
     },
   });
 

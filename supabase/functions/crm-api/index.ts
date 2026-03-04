@@ -14,10 +14,10 @@ function jsonResponse(body: unknown, status = 200) {
   });
 }
 
-// ── Single Supabase client (external = official Uniforce project) ──
-// Used for BOTH auth validation AND CRM data operations
-const EXT_URL = "https://yqdqmudsnjhixtxldqwi.supabase.co";
-const EXT_SERVICE_KEY = Deno.env.get("EXTERNAL_SUPABASE_SERVICE_ROLE_KEY")!;
+// ── Single Supabase client (this project = official Uniforce yqdqmudsnjhixtxldqwi) ──
+// SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are auto-injected by the Supabase runtime
+const EXT_URL = Deno.env.get("SUPABASE_URL")!;
+const EXT_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
 const SUPER_ADMIN_DOMAINS = ["uniforce.com.br"];
 
