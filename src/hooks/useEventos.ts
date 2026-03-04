@@ -101,6 +101,7 @@ export function useEventos() {
     queryKey: ["eventos", ispId],
     queryFn: () => fetchEventos(ispId),
     enabled: !!ispId,
+    refetchOnMount: true,
   });
 
   const eventos = data ?? [];

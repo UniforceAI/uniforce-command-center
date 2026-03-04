@@ -38,6 +38,7 @@ export function useRiskBucketConfig() {
       }
     },
     enabled: !!ispId,
+    refetchOnMount: true,
   });
 
   const currentConfig = config ?? { ...DEFAULTS, isp_id: ispId };

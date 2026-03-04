@@ -69,6 +69,7 @@ export function useNPSData(ispId: string) {
     queryKey: ["nps-data", ispId],
     queryFn: () => fetchNPSData(ispId),
     enabled: !!ispId,
+    refetchOnMount: true,
   });
 
   return { npsData: data ?? [], isLoading };

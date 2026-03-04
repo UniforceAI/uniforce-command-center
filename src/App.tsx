@@ -10,6 +10,7 @@ import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { ErrorBoundary } from "@/components/shared/ErrorBoundary";
 import { createLocalStoragePersister } from "@/lib/queryPersister";
+import { CacheRefreshGuard } from "@/components/CacheRefreshGuard";
 import Index from "./pages/Index";
 import NPS from "./pages/NPS";
 import Auth from "./pages/Auth";
@@ -57,6 +58,7 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <AuthProvider>
+          <CacheRefreshGuard>
           <ErrorBoundary>
           <ChurnScoreConfigProvider>
           <Routes>
@@ -197,6 +199,7 @@ const App = () => (
           </Routes>
           </ChurnScoreConfigProvider>
           </ErrorBoundary>
+          </CacheRefreshGuard>
         </AuthProvider>
       </BrowserRouter>
     </TooltipProvider>
