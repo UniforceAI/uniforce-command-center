@@ -1,64 +1,60 @@
 
 
-## Plano: Migrar fonte de dados de Churn para tabelas dedicadas (churn_*)
+## Plano: Migrar dados CRM para projeto externo e redirecionar edge function
 
-### Contexto
+### Verificação da infraestrutura
 
-Atualmente, a lógica de cancelamentos usa a tabela `eventos` como fonte primária de `data_cancelamento`, com fallback para `churn_status`. Isso causa inconsistências entre tenants (d-kiros sem dados, zen-telecom com datas fixas). Após a normalização feita via Claude Code, os dados corretos agora residem nas tabelas `churn_status`, `churn_history`, `churn_events` e `churn_ixc_confirmados` do Supabase externo.
+A infraestrutura no projeto externo (`yqdqmudsnjhixtxldqwi`) precisa conter:
+- Tabelas: `crm_workflow`, `crm_comments`, `crm_tags`, `risk_bucket_config`, `actions_log`
+- Enum: `workflow_status` (`em_tratamento`, `resolvido`, `perdido`)
+- Função: `update_updated_at_column()`
+- Triggers de `updated_at` em `crm_workflow` e `risk_bucket_config`
 
-O objetivo é simplificar: **dados de churn vêm sempre e exclusivamente das tabelas churn_***.
+Assumindo que o Claude Code criou tudo conforme a documentação fornecida, a estrutura está em conformidade.
 
-### Mudanças necessárias
+### Dados a migrar (projeto interno → externo)
 
-#### 1. Refatorar `useChurnData.ts` — adicionar total de clientes da base
+| Tabela | Registros | ISPs |
+|---|---|---|
+| `crm_workflow` | 40 | zen-telecom (17), d-kiros (12), igp-fibra (7), agy-telecom (4) |
+| `crm_comments` | 27 | zen-telecom (14), d-kiros (6), igp-fibra (7) |
+| `crm_tags` | 2 | zen-telecom |
+| `risk_bucket_config` | 1 | zen-telecom |
+| `actions_log` | 0 | (vazio) |
 
-O hook já busca `churn_status` e `churn_events`. Precisamos:
-- Adicionar query para contar o **total de clientes ativos** (denominador da taxa de churn) diretamente de `churn_status` (clientes com `status_churn != 'cancelado'` + cancelados = total)
-- Expor `totalClientesBase` como contagem de clientes únicos (deduplicated por `cliente_id`)
+### Etapas de implementação
 
-#### 2. Reescrever `churnUnified.ts` — eliminar dependência de `eventos`
+#### 1. Exportar dados do projeto interno
+Ler todos os registros das 4 tabelas com dados via `read-query` do projeto interno.
 
-- Remover import de `Evento`
-- Remover `eventoToChurnStatus()` 
-- Remover `buildUnifiedCancelados()` (não mais necessária — cancelados vêm direto de `churn_status` filtrado por `status_churn === 'cancelado'`)
-- Reescrever `getTotalClientesBase()` para receber `ChurnStatus[]` em vez de `Evento[]`
-- A nova lógica: cancelados = `churn_status.filter(s => s.status_churn === 'cancelado' && s.data_cancelamento != null)`
-- Total base = todos os clientes únicos em `churn_status` (deduplicated por `cliente_id`)
+#### 2. Importar dados no projeto externo
+Não é possível inserir dados diretamente no projeto externo via ferramentas Lovable. O plano é:
+- Gerar os comandos SQL `INSERT` com todos os dados
+- O usuário (ou Claude Code) executa no projeto externo
 
-#### 3. Refatorar `Cancelamentos.tsx`
+#### 3. Atualizar edge function `crm-api`
+Mudança principal: em vez de criar dois clientes Supabase (externo para auth + interno para dados), usar **apenas o cliente externo** para tudo — auth E operações CRM. O `SUPABASE_URL` e `SUPABASE_SERVICE_ROLE_KEY` internos deixam de ser usados para CRM. A edge function passa a usar `EXT_URL` + `EXT_SERVICE_KEY` como o único cliente de dados.
 
-- Remover `useEventos()` — não mais necessário para esta página
-- Remover `buildUnifiedCancelados(eventos, churnStatus)` 
-- Cancelados = `churnStatus.filter(c => c.status_churn === 'cancelado' && c.data_cancelamento)`
-- `totalClientesBase` = contagem de `cliente_id` únicos em `churnStatus`
-- Os filtros de período (7d/30d/90d) continuam usando `new Date()` como referência e `data_cancelamento` de `churn_status`
-- O cohort por dimensão usa `churnStatus` para o denominador total por plano/cidade/bairro em vez de `eventos`
+```text
+ANTES:
+  extClient (yqdq...) → auth only
+  supabase  (ohvd...) → CRM data
 
-#### 4. Refatorar `VisaoGeral.tsx` — bloco de Taxa de Churn
+DEPOIS:
+  extClient (yqdq...) → auth + CRM data (single client)
+```
 
-- No bloco `saudeAtual` (linhas ~280-315), substituir a lógica que itera `filteredEventos` buscando `data_cancelamento` por uma iteração direta em `churnStatus`
-- Remover o fallback condicional (if cancelados via eventos === 0, use churn_status) — agora é sempre `churn_status`
-- O denominador `totalClientes` pode continuar vindo de `eventos` (para os demais KPIs da Visão Geral), mas a taxa de churn usará `churnStatus` como numerador
+#### 4. Atualizar `crmApi.ts` (client-side)
+A chamada `supabase.functions.invoke("crm-api")` continuará igual — a edge function ainda roda no Lovable Cloud. Nenhuma mudança necessária no client-side.
 
-#### 5. Cleanup
-
-- Remover `eventoToChurnStatus` e `buildUnifiedCancelados` de `churnUnified.ts`
-- Remover import de `useEventos` em `Cancelamentos.tsx`
-- Atualizar imports em ambas as páginas
-
-### Resultado esperado
-
-- **Cancelamentos.tsx**: dados vêm 100% de `churn_status` (cancelados + scores + datas)
-- **VisaoGeral.tsx**: taxa de churn vem de `churn_status`, demais KPIs continuam via `eventos`
-- **Consistência total**: mesma fonte, mesma contagem, para todos os tenants (igp-fibra, zen-telecom, d-kiros)
-- **Sem divergências**: eliminada a lógica all-or-nothing de eventos vs churn_status
+#### 5. `scoped-client.ts` — pode ser removido
+Não é usado em nenhum lugar do código. Cleanup.
 
 ### Arquivos afetados
 
 | Arquivo | Ação |
 |---|---|
-| `src/lib/churnUnified.ts` | Reescrita — remover lógica de eventos, simplificar para churn_status only |
-| `src/pages/Cancelamentos.tsx` | Refatorar — remover useEventos, usar churnStatus direto |
-| `src/pages/VisaoGeral.tsx` | Ajustar bloco saudeAtual — churn vem de churn_status |
-| `src/hooks/useChurnData.ts` | Opcional: expor contagem de base se necessário |
+| `supabase/functions/crm-api/index.ts` | Alterar para usar extClient como único cliente de dados |
+| `src/integrations/supabase/scoped-client.ts` | Remover (não é usado) |
+| Dados (SQL exports) | Gerar INSERTs para execução no projeto externo |
 
