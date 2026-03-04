@@ -14,7 +14,8 @@ function jsonResponse(body: unknown, status = 200) {
   });
 }
 
-// ── External Supabase (auth provider) ──
+// ── Single Supabase client (external = official Uniforce project) ──
+// Used for BOTH auth validation AND CRM data operations
 const EXT_URL = "https://yqdqmudsnjhixtxldqwi.supabase.co";
 const EXT_SERVICE_KEY = Deno.env.get("EXTERNAL_SUPABASE_SERVICE_ROLE_KEY")!;
 
@@ -28,7 +29,10 @@ function emailDomain(email: string): string {
  * Verify the caller's JWT against the external Supabase auth.
  * Returns the authenticated user's id, email, and allowed isp_ids.
  */
-async function verifyCaller(authHeader: string | null): Promise<{
+async function verifyCaller(
+  extClient: ReturnType<typeof createClient>,
+  authHeader: string | null
+): Promise<{
   userId: string;
   email: string;
   isSuperAdmin: boolean;
@@ -39,7 +43,6 @@ async function verifyCaller(authHeader: string | null): Promise<{
   }
 
   const token = authHeader.replace("Bearer ", "");
-  const extClient = createClient(EXT_URL, EXT_SERVICE_KEY);
   const {
     data: { user },
     error,
@@ -52,12 +55,10 @@ async function verifyCaller(authHeader: string | null): Promise<{
   const email = user.email || "";
   const isSuperAdmin = SUPER_ADMIN_DOMAINS.includes(emailDomain(email));
 
-  // Super admins can access any ISP
   if (isSuperAdmin) {
     return { userId: user.id, email, isSuperAdmin: true, allowedIspIds: [] };
   }
 
-  // Regular users: get their isp_id from external profiles
   const { data: profile } = await extClient
     .from("profiles")
     .select("isp_id")
@@ -69,14 +70,11 @@ async function verifyCaller(authHeader: string | null): Promise<{
   return { userId: user.id, email, isSuperAdmin: false, allowedIspIds };
 }
 
-/**
- * Check that the requested isp_id is allowed for this caller.
- */
 function assertIspAccess(
   caller: { isSuperAdmin: boolean; allowedIspIds: string[] },
   requestedIspId: string
 ) {
-  if (caller.isSuperAdmin) return; // super admin can access any
+  if (caller.isSuperAdmin) return;
   if (!caller.allowedIspIds.includes(requestedIspId)) {
     throw {
       status: 403,
@@ -92,9 +90,12 @@ Deno.serve(async (req) => {
   }
 
   try {
+    // Single client for auth + data (external Supabase with service role)
+    const extClient = createClient(EXT_URL, EXT_SERVICE_KEY);
+
     // 1. Authenticate caller
     const authHeader = req.headers.get("authorization");
-    const caller = await verifyCaller(authHeader);
+    const caller = await verifyCaller(extClient, authHeader);
 
     // 2. Parse body
     const body = await req.json();
@@ -107,17 +108,13 @@ Deno.serve(async (req) => {
     // 3. Authorize ISP access
     assertIspAccess(caller, isp_id);
 
-    // 4. Internal Supabase client (service role for internal DB operations)
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const supabase = createClient(supabaseUrl, serviceRoleKey);
-
+    // 4. All data operations use the same extClient (service role)
     let result: any;
 
     switch (action) {
       // ── Workflow ──
       case "fetch_workflow": {
-        const { data, error } = await supabase
+        const { data, error } = await extClient
           .from("crm_workflow")
           .select("*")
           .eq("isp_id", isp_id)
@@ -131,7 +128,7 @@ Deno.serve(async (req) => {
         const { cliente_id, status_workflow, tags, owner_user_id, entered_workflow_at } = params;
         if (!cliente_id) throw new Error("cliente_id required");
 
-        const { data: existing, error: fetchErr } = await supabase
+        const { data: existing, error: fetchErr } = await extClient
           .from("crm_workflow")
           .select("*")
           .eq("isp_id", isp_id)
@@ -147,7 +144,7 @@ Deno.serve(async (req) => {
           if (tags !== undefined) updates.tags = tags;
           if (owner_user_id !== undefined) updates.owner_user_id = owner_user_id;
 
-          const { data, error } = await supabase
+          const { data, error } = await extClient
             .from("crm_workflow")
             .update(updates)
             .eq("id", existing.id)
@@ -156,7 +153,7 @@ Deno.serve(async (req) => {
           if (error) throw error;
           result = data;
         } else {
-          const { data, error } = await supabase
+          const { data, error } = await extClient
             .from("crm_workflow")
             .insert({
               isp_id,
@@ -180,7 +177,7 @@ Deno.serve(async (req) => {
         const { cliente_id, limit = 50 } = params;
         if (!cliente_id) throw new Error("cliente_id required");
 
-        const { data, error } = await supabase
+        const { data, error } = await extClient
           .from("crm_comments")
           .select("*")
           .eq("isp_id", isp_id)
@@ -196,7 +193,7 @@ Deno.serve(async (req) => {
         const { cliente_id, body: commentBody, type = "comment", meta, created_by } = params;
         if (!cliente_id || !commentBody) throw new Error("cliente_id and body required");
 
-        const { data, error } = await supabase
+        const { data, error } = await extClient
           .from("crm_comments")
           .insert({
             isp_id,
@@ -217,7 +214,7 @@ Deno.serve(async (req) => {
         const { comment_id, body: updatedBody } = params;
         if (!comment_id || !updatedBody) throw new Error("comment_id and body required");
 
-        const { data, error } = await supabase
+        const { data, error } = await extClient
           .from("crm_comments")
           .update({ body: updatedBody })
           .eq("id", comment_id)
@@ -233,7 +230,7 @@ Deno.serve(async (req) => {
         const { comment_id } = params;
         if (!comment_id) throw new Error("comment_id required");
 
-        const { error } = await supabase
+        const { error } = await extClient
           .from("crm_comments")
           .delete()
           .eq("id", comment_id)
@@ -245,7 +242,7 @@ Deno.serve(async (req) => {
 
       // ── Tags catalog ──
       case "fetch_tags": {
-        const { data, error } = await supabase
+        const { data, error } = await extClient
           .from("crm_tags")
           .select("*")
           .eq("isp_id", isp_id)
@@ -259,7 +256,7 @@ Deno.serve(async (req) => {
         const { name, color = "#6366f1" } = params;
         if (!name) throw new Error("name required");
 
-        const { data, error } = await supabase
+        const { data, error } = await extClient
           .from("crm_tags")
           .upsert({ isp_id, name, color }, { onConflict: "isp_id,name" })
           .select()
@@ -273,7 +270,7 @@ Deno.serve(async (req) => {
         const { tag_id } = params;
         if (!tag_id) throw new Error("tag_id required");
 
-        const { error } = await supabase
+        const { error } = await extClient
           .from("crm_tags")
           .delete()
           .eq("id", tag_id)
@@ -285,7 +282,7 @@ Deno.serve(async (req) => {
 
       // ── Risk Bucket Config ──
       case "fetch_risk_bucket_config": {
-        const { data, error } = await supabase
+        const { data, error } = await extClient
           .from("risk_bucket_config")
           .select("*")
           .eq("isp_id", isp_id)
@@ -297,7 +294,7 @@ Deno.serve(async (req) => {
 
       case "save_risk_bucket_config": {
         const { ok_max, alert_min, alert_max, critical_min } = params;
-        const { data, error } = await supabase
+        const { data, error } = await extClient
           .from("risk_bucket_config")
           .upsert(
             { isp_id, ok_max, alert_min, alert_max, critical_min },
