@@ -108,12 +108,14 @@ export function useChurnData() {
     queryKey: ["churn-status", ispId],
     queryFn: () => fetchChurnStatus(ispId),
     enabled: !!ispId,
+    refetchOnMount: true,
   });
 
   const eventsQuery = useQuery({
     queryKey: ["churn-events", ispId],
     queryFn: () => fetchChurnEvents(ispId),
     enabled: !!ispId,
+    refetchOnMount: true,
   });
 
   return {

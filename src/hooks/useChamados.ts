@@ -82,6 +82,7 @@ export function useChamados() {
     queryKey: ["chamados", ispId],
     queryFn: () => fetchChamados(ispId),
     enabled: !!ispId,
+    refetchOnMount: true,
   });
 
   const chamados = data ?? [];
