@@ -1,4 +1,5 @@
 import { useState, useMemo, useCallback } from "react";
+import { usePageFilters } from "@/hooks/usePageFilters";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useActiveIsp } from "@/hooks/useActiveIsp";
@@ -62,10 +63,13 @@ const NPS = () => {
     });
   }, [selectedClienteId, chamados]);
 
-  // Filtros
-  const [periodo, setPeriodo] = useState("30");
-  const [tipoNPS, setTipoNPS] = useState("todos");
-  const [classificacao, setClassificacao] = useState("todos");
+  // Filtros — persisted in sessionStorage for the session
+  const { filters, setFilter } = usePageFilters("nps", {
+    periodo: "30" as string,
+    tipoNPS: "todos" as string,
+    classificacao: "todos" as string,
+  });
+  const { periodo, tipoNPS, classificacao } = filters;
 
   const mapTipoNPS = (tipo: string): TipoNPS => {
     const tipoLower = tipo?.toLowerCase().trim() || "";
@@ -252,9 +256,9 @@ const NPS = () => {
               periodo={periodo}
               tipoNPS={tipoNPS}
               classificacao={classificacao}
-              onPeriodoChange={setPeriodo}
-              onTipoNPSChange={setTipoNPS}
-              onClassificacaoChange={setClassificacao}
+              onPeriodoChange={(v) => setFilter("periodo", v)}
+              onTipoNPSChange={(v) => setFilter("tipoNPS", v)}
+              onClassificacaoChange={(v) => setFilter("classificacao", v)}
             />
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">

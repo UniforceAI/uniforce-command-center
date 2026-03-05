@@ -1,4 +1,5 @@
 import { useState, useMemo, useCallback, useEffect } from "react";
+import { usePageFilters } from "@/hooks/usePageFilters";
 import { safeFormatDate } from "@/lib/safeDate";
 import { ChurnStatus } from "@/hooks/useChurnData";
 import { useChamados } from "@/hooks/useChamados";
@@ -71,30 +72,34 @@ const ClientesEmRisco = () => {
   const { workflowMap, records, addToWorkflow, updateStatus, updateTags, updateOwner, archiveWorkflow } = useCrmWorkflow();
   const { toast } = useToast();
 
-  // Filters
-  const [scoreMin, setScoreMin] = useState(0);
-  const [bucket, setBucket] = useState("todos");
-  const [plano, setPlano] = useState("todos");
-  const [cidade, setCidade] = useState("todos");
-  const [bairro, setBairro] = useState("todos");
-  const [periodo, setPeriodo] = useState("todos");
-  const [selectedCliente, setSelectedCliente] = useState<ChurnStatus | null>(null);
-  const [viewMode, setViewMode] = useState<"lista" | "kanban">("kanban");
-
-  // Sort state for lista view
+  // Sort types for lista view
   type SortField = "score" | "cliente_nome" | "dias_atraso" | "chamados_90d" | "nps" | "internet" | "valor_mensalidade" | "motivo" | "crm";
   type SortDir = "asc" | "desc";
-  const [sortField, setSortField] = useState<SortField>("score");
-  const [sortDir, setSortDir] = useState<SortDir>("desc");
+
+  // Filters — persisted in sessionStorage for the session
+  const { filters, setFilter, resetFilters } = usePageFilters("crm", {
+    scoreMin: 0 as number,
+    bucket: "todos" as string,
+    plano: "todos" as string,
+    cidade: "todos" as string,
+    bairro: "todos" as string,
+    periodo: "todos" as string,
+    viewMode: "kanban" as "lista" | "kanban",
+    sortField: "score" as SortField,
+    sortDir: "desc" as SortDir,
+  });
+  const { scoreMin, bucket, plano, cidade, bairro, periodo, viewMode, sortField, sortDir } = filters;
+
+  const [selectedCliente, setSelectedCliente] = useState<ChurnStatus | null>(null);
 
   const toggleSort = useCallback((field: SortField) => {
     if (sortField === field) {
-      setSortDir((d) => (d === "desc" ? "asc" : "desc"));
+      setFilter("sortDir", sortDir === "desc" ? "asc" : "desc");
     } else {
-      setSortField(field);
-      setSortDir("desc");
+      setFilter("sortField", field);
+      setFilter("sortDir", "desc");
     }
-  }, [sortField]);
+  }, [sortField, sortDir, setFilter]);
 
   const SortIcon = useCallback(({ field }: { field: SortField }) => {
     if (sortField !== field) return <ArrowUpDown className="h-3 w-3 ml-1 text-muted-foreground/50" />;
@@ -218,15 +223,6 @@ const ClientesEmRisco = () => {
   }, [filtered, getScoreTotalReal]);
 
   const hasActiveFilters = scoreMin > 0 || bucket !== "todos" || plano !== "todos" || cidade !== "todos" || bairro !== "todos" || periodo !== "todos";
-
-  const clearFilters = () => {
-    setScoreMin(0);
-    setBucket("todos");
-    setPlano("todos");
-    setCidade("todos");
-    setBairro("todos");
-    setPeriodo("todos");
-  };
 
   // Chamados for selected client
   const selectedClienteChamados = useMemo(() => {
@@ -445,10 +441,10 @@ const ClientesEmRisco = () => {
 
               {/* View toggle (right side) */}
               <div className="flex items-center gap-1.5 ml-auto">
-                <Button variant={viewMode === "kanban" ? "default" : "outline"} size="sm" className="h-7 text-xs gap-1" onClick={() => setViewMode("kanban")}>
+                <Button variant={viewMode === "kanban" ? "default" : "outline"} size="sm" className="h-7 text-xs gap-1" onClick={() => setFilter("viewMode", "kanban")}>
                   <Columns className="h-3.5 w-3.5" />Kanban
                 </Button>
-                <Button variant={viewMode === "lista" ? "default" : "outline"} size="sm" className="h-7 text-xs gap-1" onClick={() => setViewMode("lista")}>
+                <Button variant={viewMode === "lista" ? "default" : "outline"} size="sm" className="h-7 text-xs gap-1" onClick={() => setFilter("viewMode", "lista")}>
                   <LayoutList className="h-3.5 w-3.5" />Lista
                 </Button>
               </div>
@@ -458,7 +454,7 @@ const ClientesEmRisco = () => {
             <div className="flex flex-wrap items-center gap-3">
               <div className="flex flex-col gap-0.5">
                 <span className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">Período</span>
-                <Select value={periodo} onValueChange={setPeriodo}>
+                <Select value={periodo} onValueChange={(v) => setFilter("periodo", v)}>
                   <SelectTrigger className="h-7 text-xs w-[110px]"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="todos">Tudo</SelectItem>
@@ -477,13 +473,13 @@ const ClientesEmRisco = () => {
                   <span className="text-xs font-mono font-bold">{scoreMin}</span>
                 </div>
                 <div className="w-24">
-                  <Slider min={0} max={100} step={5} value={[scoreMin]} onValueChange={(v) => setScoreMin(v[0])} />
+                  <Slider min={0} max={100} step={5} value={[scoreMin]} onValueChange={(v) => setFilter("scoreMin", v[0])} />
                 </div>
               </div>
 
               <div className="flex flex-col gap-0.5">
                 <span className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">Bucket</span>
-                <Select value={bucket} onValueChange={setBucket}>
+                <Select value={bucket} onValueChange={(v) => setFilter("bucket", v)}>
                   <SelectTrigger className="h-7 text-xs w-[100px]"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="todos">Todos</SelectItem>
@@ -497,7 +493,7 @@ const ClientesEmRisco = () => {
               {filterOptions.planos.length > 0 && (
                 <div className="flex flex-col gap-0.5">
                   <span className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">Plano</span>
-                  <Select value={plano} onValueChange={setPlano}>
+                  <Select value={plano} onValueChange={(v) => setFilter("plano", v)}>
                     <SelectTrigger className="h-7 text-xs w-[130px]"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="todos">Todos</SelectItem>
@@ -510,7 +506,7 @@ const ClientesEmRisco = () => {
               {filterOptions.cidades.length > 0 && (
                 <div className="flex flex-col gap-0.5">
                   <span className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">Cidade</span>
-                  <Select value={cidade} onValueChange={setCidade}>
+                  <Select value={cidade} onValueChange={(v) => setFilter("cidade", v)}>
                     <SelectTrigger className="h-7 text-xs w-[120px]"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="todos">Todas</SelectItem>
@@ -523,7 +519,7 @@ const ClientesEmRisco = () => {
               {filterOptions.bairros.length > 0 && (
                 <div className="flex flex-col gap-0.5">
                   <span className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">Bairro</span>
-                  <Select value={bairro} onValueChange={setBairro}>
+                  <Select value={bairro} onValueChange={(v) => setFilter("bairro", v)}>
                     <SelectTrigger className="h-7 text-xs w-[120px]"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="todos">Todos</SelectItem>
@@ -534,7 +530,7 @@ const ClientesEmRisco = () => {
               )}
 
               {hasActiveFilters && (
-                <Button variant="ghost" size="sm" className="h-7 text-xs gap-1 text-muted-foreground" onClick={clearFilters}>
+                <Button variant="ghost" size="sm" className="h-7 text-xs gap-1 text-muted-foreground" onClick={resetFilters}>
                   <X className="h-3 w-3" />Limpar
                 </Button>
               )}

@@ -1,4 +1,5 @@
 import { useState, useMemo, useCallback } from "react";
+import { usePageFilters } from "@/hooks/usePageFilters";
 import { FAIXAS_AGING } from "@/types/evento";
 import { safeParse } from "@/lib/safeDate";
 import { useChurnData, ChurnStatus, ChurnEvent } from "@/hooks/useChurnData";
@@ -91,15 +92,20 @@ const Cancelamentos = () => {
     });
   }, [churnStatus, chamadosMap30d, chamadosMap90d, config, getScoreTotalReal]);
 
-  const [plano, setPlano] = useState("todos");
-  const [cidade, setCidade] = useState("todos");
-  const [bairro, setBairro] = useState("todos");
-  const [bucket, setBucket] = useState("todos");
-  const [churnDimension, setChurnDimension] = useState<"plano" | "cidade" | "bairro">("plano");
-  const [periodo, setPeriodo] = useState("7");
-  const [cohortMetric, setCohortMetric] = useState<"qtd" | "mrr" | "ltv">("qtd");
-  const [sortField, setSortField] = useState<SortField>("churn_risk_score");
-  const [sortDir, setSortDir] = useState<SortDir>("desc");
+  // Filters — persisted in sessionStorage for the session
+  const { filters, setFilter, resetFilters } = usePageFilters("cancelamentos", {
+    plano: "todos" as string,
+    cidade: "todos" as string,
+    bairro: "todos" as string,
+    bucket: "todos" as string,
+    churnDimension: "plano" as "plano" | "cidade" | "bairro",
+    periodo: "7" as string,
+    cohortMetric: "qtd" as "qtd" | "mrr" | "ltv",
+    sortField: "churn_risk_score" as SortField,
+    sortDir: "desc" as SortDir,
+  });
+  const { plano, cidade, bairro, bucket, churnDimension, periodo, cohortMetric, sortField, sortDir } = filters;
+
   const [selectedCliente, setSelectedCliente] = useState<ChurnStatus | null>(null);
 
   // Total de clientes únicos — agora vem de churn_status (mesma fonte dos cancelados)
@@ -419,12 +425,12 @@ const Cancelamentos = () => {
   // ─── Sort handler ───
   const toggleSort = useCallback((field: SortField) => {
     if (sortField === field) {
-      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+      setFilter("sortDir", sortDir === "asc" ? "desc" : "asc");
     } else {
-      setSortField(field);
-      setSortDir("desc");
+      setFilter("sortField", field);
+      setFilter("sortDir", "desc");
     }
-  }, [sortField]);
+  }, [sortField, sortDir, setFilter]);
 
   const SortIcon = ({ field }: { field: SortField }) => {
     if (sortField !== field) return <ArrowUpDown className="h-3 w-3 ml-1 opacity-30" />;
@@ -521,9 +527,9 @@ const Cancelamentos = () => {
   }, [selectedCliente, allChamados]);
 
   // ─── Filters ───
-  const filters = [
+  const filterConfig = [
     {
-      id: "periodo", label: "Período", value: periodo, onChange: setPeriodo,
+      id: "periodo", label: "Período", value: periodo, onChange: (v: string) => setFilter("periodo", v),
       options: [
         { value: "7", label: "Últimos 7 dias" },
         { value: "30", label: "Últimos 30 dias" },
@@ -534,25 +540,25 @@ const Cancelamentos = () => {
       ],
     },
     {
-      id: "plano", label: "Plano", value: plano, onChange: setPlano,
+      id: "plano", label: "Plano", value: plano, onChange: (v: string) => setFilter("plano", v),
       disabled: filterOptions.planos.length === 0,
       tooltip: "Sem dados de plano para esse ISP",
       options: [{ value: "todos", label: "Todos" }, ...filterOptions.planos.map((p) => ({ value: p, label: p }))],
     },
     {
-      id: "cidade", label: "Cidade", value: cidade, onChange: setCidade,
+      id: "cidade", label: "Cidade", value: cidade, onChange: (v: string) => setFilter("cidade", v),
       disabled: filterOptions.cidades.length === 0,
       tooltip: "Sem dados de cidade para esse ISP",
       options: [{ value: "todos", label: "Todas" }, ...filterOptions.cidades.map((c) => ({ value: c, label: c }))],
     },
     {
-      id: "bairro", label: "Bairro", value: bairro, onChange: setBairro,
+      id: "bairro", label: "Bairro", value: bairro, onChange: (v: string) => setFilter("bairro", v),
       disabled: filterOptions.bairros.length === 0,
       tooltip: "Sem dados de bairro para esse ISP",
       options: [{ value: "todos", label: "Todos" }, ...filterOptions.bairros.map((b) => ({ value: b, label: b }))],
     },
     {
-      id: "bucket", label: "Nível Risco", value: bucket, onChange: setBucket,
+      id: "bucket", label: "Nível Risco", value: bucket, onChange: (v: string) => setFilter("bucket", v),
       options: [
         { value: "todos", label: "Todos" },
         { value: "CRÍTICO", label: "🔴 Crítico" },
@@ -590,7 +596,7 @@ const Cancelamentos = () => {
           </div>
         )}
 
-        <GlobalFilters filters={filters} />
+        <GlobalFilters filters={filterConfig} />
 
         {cancelados.length === 0 ? (
           <Card className="border-dashed">
@@ -797,7 +803,7 @@ const Cancelamentos = () => {
                     {(["plano", "cidade", "bairro"] as const).map((dim) => (
                       <button
                         key={dim}
-                        onClick={() => setChurnDimension(dim)}
+                        onClick={() => setFilter("churnDimension", dim)}
                         className={`px-3 py-1 text-xs rounded transition-colors ${
                           churnDimension === dim
                             ? "bg-background shadow text-foreground font-medium"

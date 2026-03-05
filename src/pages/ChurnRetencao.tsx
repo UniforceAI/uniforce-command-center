@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { usePageFilters } from "@/hooks/usePageFilters";
 import { useNavigate } from "react-router-dom";
 import { useActiveIsp } from "@/hooks/useActiveIsp";
 import { useAuth } from "@/contexts/AuthContext";
@@ -66,12 +67,15 @@ const ChurnRetencao = () => {
   const { eventos, isLoading, error } = useEventos();
   const { churnStatus } = useChurnData();
   const { getBucket } = useRiskBucketConfig();
-  // Filtros
-  const [periodo, setPeriodo] = useState("7");
-  const [uf, setUf] = useState("todos");
-  const [plano, setPlano] = useState("todos");
-  const [riscoBucket, setRiscoBucket] = useState("todos");
-  const [filial, setFilial] = useState("todos");
+  // Filtros — persisted in sessionStorage for the session
+  const { filters, setFilter } = usePageFilters("churn-retencao", {
+    periodo: "7" as string,
+    uf: "todos" as string,
+    plano: "todos" as string,
+    riscoBucket: "todos" as string,
+    filial: "todos" as string,
+  });
+  const { periodo, uf, plano, riscoBucket, filial } = filters;
 
   // Extrair opções dinâmicas
   const filterOptions = useMemo(() => {
@@ -358,12 +362,12 @@ const ChurnRetencao = () => {
     navigate("/auth");
   };
 
-  const filters = [
+  const filterConfig = [
     {
       id: "periodo",
       label: "Período",
       value: periodo,
-      onChange: setPeriodo,
+      onChange: (v: string) => setFilter("periodo", v),
       options: [
         { value: "7", label: "Últimos 7 dias" },
         { value: "30", label: "Últimos 30 dias" },
@@ -376,7 +380,7 @@ const ChurnRetencao = () => {
       id: "uf",
       label: "UF",
       value: uf,
-      onChange: setUf,
+      onChange: (v: string) => setFilter("uf", v),
       disabled: filterOptions.ufs.length === 0,
       options: [
         { value: "todos", label: "Todas" },
@@ -387,7 +391,7 @@ const ChurnRetencao = () => {
       id: "plano",
       label: "Plano",
       value: plano,
-      onChange: setPlano,
+      onChange: (v: string) => setFilter("plano", v),
       disabled: filterOptions.planos.length === 0,
       options: [
         { value: "todos", label: "Todos" },
@@ -398,7 +402,7 @@ const ChurnRetencao = () => {
       id: "risco",
       label: "Nível de Risco",
       value: riscoBucket,
-      onChange: setRiscoBucket,
+      onChange: (v: string) => setFilter("riscoBucket", v),
       options: [
         { value: "todos", label: "Todos" },
         { value: "CRÍTICO", label: "🔴 Crítico" },
@@ -410,7 +414,7 @@ const ChurnRetencao = () => {
       id: "filial",
       label: "Filial",
       value: filial,
-      onChange: setFilial,
+      onChange: (v: string) => setFilter("filial", v),
       disabled: filterOptions.filiais.length === 0,
       tooltip: "Campo filial não encontrado nos dados",
       options: [
@@ -464,7 +468,7 @@ const ChurnRetencao = () => {
         ) : (
           <>
             {/* Filtros */}
-            <GlobalFilters filters={filters} />
+            <GlobalFilters filters={filterConfig} />
 
             {/* KPIs Principais */}
             <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">

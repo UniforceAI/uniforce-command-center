@@ -1,4 +1,5 @@
 import { useState, useMemo, useCallback } from "react";
+import { usePageFilters } from "@/hooks/usePageFilters";
 import { useNavigate } from "react-router-dom";
 import { useActiveIsp } from "@/hooks/useActiveIsp";
 import { useAuth } from "@/contexts/AuthContext";
@@ -95,21 +96,24 @@ const Financeiro = () => {
     });
   }, [selectedClienteId, chamados]);
 
-  // Filtros
-  const [periodo, setPeriodo] = useState("7");
-  const [plano, setPlano] = useState("todos");
-  const [metodo, setMetodo] = useState("todos");
-  const [filial, setFilial] = useState("todos");
-  const [ordemPlanoDecrescente, setOrdemPlanoDecrescente] = useState(true);
-  const [sortColuna, setSortColuna] = useState<SortColumn>("churnScore");
-  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  // Filtros — persisted in sessionStorage for the session
+  const { filters, setFilter } = usePageFilters("financeiro", {
+    periodo: "7" as string,
+    plano: "todos" as string,
+    metodo: "todos" as string,
+    filial: "todos" as string,
+    ordemPlanoDecrescente: true as boolean,
+    sortColuna: "churnScore" as SortColumn,
+    sortDir: "desc" as "asc" | "desc",
+  });
+  const { periodo, plano, metodo, filial, ordemPlanoDecrescente, sortColuna, sortDir } = filters;
 
   const handleSortColuna = (col: SortColumn) => {
     if (sortColuna === col) {
-      setSortDir(d => d === "asc" ? "desc" : "asc");
+      setFilter("sortDir", sortDir === "asc" ? "desc" : "asc");
     } else {
-      setSortColuna(col);
-      setSortDir("desc");
+      setFilter("sortColuna", col);
+      setFilter("sortDir", "desc");
     }
   };
 
@@ -385,9 +389,9 @@ const Financeiro = () => {
     toast({ title: `${label} copiado!`, description: "Copiado para a área de transferência." });
   };
 
-  const filters = [
+  const filterConfig = [
     {
-      id: "periodo", label: "Período", value: periodo, onChange: setPeriodo,
+      id: "periodo", label: "Período", value: periodo, onChange: (v: string) => setFilter("periodo", v),
       options: [
         { value: "7", label: "Últimos 7 dias" },
         { value: "30", label: "Últimos 30 dias" },
@@ -398,17 +402,17 @@ const Financeiro = () => {
       ],
     },
     {
-      id: "plano", label: "Plano", value: plano, onChange: setPlano,
+      id: "plano", label: "Plano", value: plano, onChange: (v: string) => setFilter("plano", v),
       disabled: filterOptions.planos.length === 0,
       options: [{ value: "todos", label: "Todos" }, ...filterOptions.planos.map(p => ({ value: p, label: p }))],
     },
     {
-      id: "metodo", label: "Método", value: metodo, onChange: setMetodo,
+      id: "metodo", label: "Método", value: metodo, onChange: (v: string) => setFilter("metodo", v),
       disabled: filterOptions.metodos.length === 0,
       options: [{ value: "todos", label: "Todos" }, ...filterOptions.metodos.map(m => ({ value: m, label: m }))],
     },
     {
-      id: "filial", label: "Filial", value: filial, onChange: setFilial,
+      id: "filial", label: "Filial", value: filial, onChange: (v: string) => setFilter("filial", v),
       disabled: filterOptions.filiais.length === 0,
       options: [{ value: "todos", label: "Todas" }, ...filterOptions.filiais.map(f => ({ value: f, label: `Filial ${f}` }))],
     },
@@ -466,7 +470,7 @@ const Financeiro = () => {
         ) : (
           <>
             {/* Filtros */}
-            <GlobalFilters filters={filters} />
+            <GlobalFilters filters={filterConfig} />
 
             {/* ===== KPIs Row 1 ===== */}
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
@@ -544,7 +548,7 @@ const Financeiro = () => {
                   <CardTitle className="text-base font-medium flex items-center gap-2"><BarChart3 className="h-4 w-4 text-primary" />Vencido por Plano</CardTitle>
                   <Button 
                     variant="outline" size="sm"
-                    onClick={() => setOrdemPlanoDecrescente(!ordemPlanoDecrescente)}
+                    onClick={() => setFilter("ordemPlanoDecrescente", !ordemPlanoDecrescente)}
                     className="h-8 gap-1 text-xs"
                   >
                     <ArrowUpDown className="h-3 w-3" />
