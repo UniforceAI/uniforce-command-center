@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { usePageFilters } from "@/hooks/usePageFilters";
 import { useChurnData } from "@/hooks/useChurnData";
 import { useChamados } from "@/hooks/useChamados";
 import { useRiskBucketConfig } from "@/hooks/useRiskBucketConfig";
@@ -44,10 +45,14 @@ const ChurnAnalytics = () => {
   const { getBucket } = useRiskBucketConfig();
   const chamadosMap90d = useMemo(() => getChamadosPorCliente(90), [getChamadosPorCliente]);
 
-  const [plano, setPlano] = useState("todos");
-  const [cidade, setCidade] = useState("todos");
-  const [bairro, setBairro] = useState("todos");
-  const [bucket, setBucket] = useState("todos");
+  // Filtros — persisted in sessionStorage for the session
+  const { filters, setFilter } = usePageFilters("chamados-analytics", {
+    plano: "todos" as string,
+    cidade: "todos" as string,
+    bairro: "todos" as string,
+    bucket: "todos" as string,
+  });
+  const { plano, cidade, bairro, bucket } = filters;
 
   const filterOptions = useMemo(() => {
     const planos = new Set<string>();
@@ -124,27 +129,27 @@ const ChurnAnalytics = () => {
       .slice(0, 10);
   }, [ativos]);
 
-  const filters = [
+  const filterConfig = [
     {
-      id: "plano", label: "Plano", value: plano, onChange: setPlano,
+      id: "plano", label: "Plano", value: plano, onChange: (v: string) => setFilter("plano", v),
       disabled: filterOptions.planos.length === 0,
       tooltip: "Sem dados de plano para esse ISP",
       options: [{ value: "todos", label: "Todos" }, ...filterOptions.planos.map((p) => ({ value: p, label: p }))],
     },
     {
-      id: "cidade", label: "Cidade", value: cidade, onChange: setCidade,
+      id: "cidade", label: "Cidade", value: cidade, onChange: (v: string) => setFilter("cidade", v),
       disabled: filterOptions.cidades.length === 0,
       tooltip: "Sem dados de cidade para esse ISP",
       options: [{ value: "todos", label: "Todas" }, ...filterOptions.cidades.map((c) => ({ value: c, label: c }))],
     },
     {
-      id: "bairro", label: "Bairro", value: bairro, onChange: setBairro,
+      id: "bairro", label: "Bairro", value: bairro, onChange: (v: string) => setFilter("bairro", v),
       disabled: filterOptions.bairros.length === 0,
       tooltip: "Sem dados de bairro para esse ISP",
       options: [{ value: "todos", label: "Todos" }, ...filterOptions.bairros.map((b) => ({ value: b, label: b }))],
     },
     {
-      id: "bucket", label: "Nível Risco", value: bucket, onChange: setBucket,
+      id: "bucket", label: "Nível Risco", value: bucket, onChange: (v: string) => setFilter("bucket", v),
       options: [
         { value: "todos", label: "Todos" },
         { value: "CRÍTICO", label: "🔴 Crítico" },
@@ -175,7 +180,7 @@ const ChurnAnalytics = () => {
 
       <main className="px-6 py-6 space-y-6 max-w-[1400px] mx-auto">
         {/* Filtros — usando GlobalFilters padronizado */}
-        <GlobalFilters filters={filters} />
+        <GlobalFilters filters={filterConfig} />
         {error && (
           <div className="flex items-center gap-2 text-destructive bg-destructive/10 rounded-lg p-3 text-sm">
             <AlertCircle className="h-4 w-4 shrink-0" />

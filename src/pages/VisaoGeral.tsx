@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
+import { usePageFilters } from "@/hooks/usePageFilters";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useActiveIsp } from "@/hooks/useActiveIsp";
@@ -144,12 +145,16 @@ const VisaoGeral = () => {
   }, [isLoading, showInitialScreen]);
 
   // Filtros
-  const [periodo, setPeriodo] = useState("7");
-  const [uf, setUf] = useState("todos");
-  const [cidade, setCidade] = useState("todos");
-  const [bairro, setBairro] = useState("todos");
-  const [plano, setPlano] = useState("todos");
-  const [filial, setFilial] = useState("todos");
+  // Filtros — persisted in sessionStorage for the session
+  const { filters, setFilter } = usePageFilters("visao-geral", {
+    periodo: "7" as string,
+    uf: "todos" as string,
+    cidade: "todos" as string,
+    bairro: "todos" as string,
+    plano: "todos" as string,
+    filial: "todos" as string,
+  });
+  const { periodo, uf, cidade, bairro, plano, filial } = filters;
   const [mapTab, setMapTab] = useState("chamados");
   const [churnChartMode, setChurnChartMode] = useState<"volume" | "taxa">("volume");
   const [geoMetric, setGeoMetric] = useState<GeoMetric>("financeiro");
@@ -898,7 +903,7 @@ const VisaoGeral = () => {
                 const dias = parseInt(p);
                 const unavailable = dataSpanDays < dias;
                 return (
-                  <button key={p} onClick={() => !unavailable && setPeriodo(p)}
+                  <button key={p} onClick={() => !unavailable && setFilter("periodo", p)}
                     disabled={unavailable}
                     title={unavailable ? `Sem dados anteriores a ${dias} dias` : `Últimos ${dias} dias`}
                     className={`px-3 py-1 text-xs rounded-md font-medium transition-colors ${periodo === p ? "bg-primary text-primary-foreground shadow-sm" : unavailable ? "text-muted-foreground/30 cursor-not-allowed" : "text-muted-foreground hover:bg-background"}`}>
@@ -927,25 +932,25 @@ const VisaoGeral = () => {
             {/* FILTROS GLOBAIS */}
             <GlobalFilters filters={[
               {
-                id: "plano", label: "Plano", value: plano, onChange: setPlano,
+                id: "plano", label: "Plano", value: plano, onChange: (v: string) => setFilter("plano", v),
                 disabled: filterOptions.planos.length === 0,
                 tooltip: "Nenhum plano encontrado",
                 options: [{ value: "todos", label: "Todos" }, ...filterOptions.planos.map(p => ({ value: p, label: p.length > 30 ? p.substring(0, 30) + "…" : p }))],
               },
               {
-                id: "cidade", label: "Cidade", value: cidade, onChange: setCidade,
+                id: "cidade", label: "Cidade", value: cidade, onChange: (v: string) => setFilter("cidade", v),
                 disabled: filterOptions.cidades.length === 0,
                 tooltip: "Nenhuma cidade encontrada",
                 options: [{ value: "todos", label: "Todas" }, ...filterOptions.cidades.map(c => ({ value: c, label: cidadeIdMap[c] || c }))],
               },
               {
-                id: "bairro", label: "Bairro", value: bairro, onChange: setBairro,
+                id: "bairro", label: "Bairro", value: bairro, onChange: (v: string) => setFilter("bairro", v),
                 disabled: filterOptions.bairros.length === 0,
                 tooltip: "Nenhum bairro encontrado",
                 options: [{ value: "todos", label: "Todos" }, ...filterOptions.bairros.map(b => ({ value: b, label: b }))],
               },
               {
-                id: "filial", label: "Filial", value: filial, onChange: setFilial,
+                id: "filial", label: "Filial", value: filial, onChange: (v: string) => setFilter("filial", v),
                 disabled: filterOptions.filiais.length === 0,
                 tooltip: "Campo filial não encontrado nos dados",
                 options: [

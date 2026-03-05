@@ -1,4 +1,5 @@
 import { useState, useMemo, useCallback } from "react";
+import { usePageFilters } from "@/hooks/usePageFilters";
 import { useNavigate } from "react-router-dom";
 import { Chamado } from "@/types/chamado";
 import { useAuth } from "@/contexts/AuthContext";
@@ -36,11 +37,14 @@ const Index = () => {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [selectedCrmClienteId, setSelectedCrmClienteId] = useState<number | null>(null);
 
-  // Filtros
-  const [periodo, setPeriodo] = useState("7");
-  const [status, setStatus] = useState("todos");
-  const [urgencia, setUrgencia] = useState("todas");
-  const [setor, setSetor] = useState("todos");
+  // Filtros — persisted in sessionStorage for the session
+  const { filters, setFilter } = usePageFilters("chamados-frequentes", {
+    periodo: "7" as string,
+    status: "todos" as string,
+    urgencia: "todas" as string,
+    setor: "todos" as string,
+  });
+  const { periodo, status, urgencia, setor } = filters;
 
   // Transform raw chamados from hook into Chamado[] type with dedup
   const chamados = useMemo(() => {
@@ -367,10 +371,10 @@ const Index = () => {
               status={status}
               urgencia={urgencia}
               setor={setor}
-              onPeriodoChange={setPeriodo}
-              onStatusChange={setStatus}
-              onUrgenciaChange={setUrgencia}
-              onSetorChange={setSetor}
+              onPeriodoChange={(v) => setFilter("periodo", v)}
+              onStatusChange={(v) => setFilter("status", v)}
+              onUrgenciaChange={(v) => setFilter("urgencia", v)}
+              onSetorChange={(v) => setFilter("setor", v)}
             />
 
             {/* KPIs — using KPICardNew for visual consistency */}
