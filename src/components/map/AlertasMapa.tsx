@@ -15,6 +15,7 @@ interface MapPoint {
   vencido?: boolean;
   downtime_min_24h?: number;
   qtd_chamados?: number;
+  data_cancelamento?: string | null;
 }
 
 interface AlertasMapaProps {
@@ -23,7 +24,8 @@ interface AlertasMapaProps {
   viewMode?: "markers" | "grid";
   height?: string;
   disableScrollZoom?: boolean;
-  gridDensity?: number;
+  fixedBounds?: { minLat: number; maxLat: number; minLng: number; maxLng: number };
+  churnPeriodDays?: string; // "7" | "30" | "90" | "365" | "todos"
 }
 
 // Smart zoom: focus on densest cluster with tighter zoom
@@ -121,11 +123,8 @@ const getColorByRisk = (point: MapPoint, filter: string): string => {
     if (q >= 2) return "#f97316";
     return "#22c55e";
   }
-  const s = point.churn_risk_score ?? 0;
-  if (s >= 75) return "#ef4444";
-  if (s >= 50) return "#f97316";
-  if (s >= 25) return "#eab308";
-  return "#3b82f6";
+  // All churn-filter points are confirmed cancellations
+  return "#ef4444";
 };
 
 const getRadiusByRisk = (point: MapPoint, filter: string): number => {
@@ -137,8 +136,7 @@ const getRadiusByRisk = (point: MapPoint, filter: string): number => {
     const q = point.qtd_chamados ?? 0;
     return q >= 5 ? 10 : q >= 3 ? 8 : q >= 2 ? 7 : 6;
   }
-  const s = point.churn_risk_score ?? 0;
-  return s >= 75 ? 10 : s >= 50 ? 8 : s >= 25 ? 6 : 5;
+  return 7; // uniform radius for confirmed cancellations
 };
 
 // Format number: 1234 → "1.2k"
@@ -159,16 +157,31 @@ function deterministicJitter(id: string | number, axis: "lat" | "lng", cellSize:
   return ((hash % 1000) / 1000) * 0.8 * cellSize - 0.4 * cellSize;
 }
 
+// ── Adaptive grid: cells of ~TARGET_KM km, clamped to [6, 25] ──
+function computeAdaptiveGrid(
+  bounds: { minLat: number; maxLat: number; minLng: number; maxLng: number }
+): { rows: number; cols: number } {
+  const latRange = bounds.maxLat - bounds.minLat;
+  const lngRange = bounds.maxLng - bounds.minLng;
+  const avgLat = (bounds.minLat + bounds.maxLat) / 2;
+  const latKm = latRange * 111;
+  const lngKm = lngRange * 111 * Math.cos(avgLat * Math.PI / 180);
+  const TARGET_KM = 4;
+  const rows = Math.max(6, Math.min(25, Math.round(latKm / TARGET_KM)));
+  const cols = Math.max(6, Math.min(25, Math.round(lngKm / TARGET_KM)));
+  return { rows, cols };
+}
+
 // ── Grid Squares with inline numbers (Toronto-style) ──
 
-function GridSquares({ points, filter, bounds, gridCount = 40 }: { points: MapPoint[]; filter: string; bounds: { minLat: number; maxLat: number; minLng: number; maxLng: number }; gridCount?: number }) {
+function GridSquares({ points, filter, bounds, rows, cols }: { points: MapPoint[]; filter: string; bounds: { minLat: number; maxLat: number; minLng: number; maxLng: number }; rows: number; cols: number }) {
   const gridData = useMemo(() => {
     if (points.length === 0) return [];
 
     const latRange = bounds.maxLat - bounds.minLat;
     const lngRange = bounds.maxLng - bounds.minLng;
-    const cellLat = Math.max(0.0002, latRange / gridCount);
-    const cellLng = Math.max(0.0002, lngRange / gridCount);
+    const cellLat = Math.max(0.0002, latRange / rows);
+    const cellLng = Math.max(0.0002, lngRange / cols);
 
     // Build occupied cells — apply jitter to spread identical coordinates
     const cells = new Map<string, { row: number; col: number; count: number; metricSum: number; points: MapPoint[] }>();
@@ -204,7 +217,7 @@ function GridSquares({ points, filter, bounds, gridCount = 40 }: { points: MapPo
       });
     });
     return result;
-  }, [points, filter, bounds, gridCount]);
+  }, [points, filter, bounds, rows, cols]);
 
   // Get the display number for a cell
   const getCellDisplayNumber = (cell: typeof gridData[0]): string => {
@@ -270,7 +283,7 @@ function GridSquares({ points, filter, bounds, gridCount = 40 }: { points: MapPo
                     <p>Média atraso: {Math.round(cell.points.reduce((s, p) => s + (p.dias_atraso ?? 0), 0) / cell.count)}d</p>
                   )}
                   {filter === "churn" && (
-                    <p>Score médio: {Math.round(cell.points.reduce((s, p) => s + (p.churn_risk_score ?? 0), 0) / cell.count)}</p>
+                    <p>Cancelamentos: {cell.count}</p>
                   )}
                 </div>
               </Popup>
@@ -284,16 +297,25 @@ function GridSquares({ points, filter, bounds, gridCount = 40 }: { points: MapPo
 
 // ── Main Component ──
 
-export function AlertasMapa({ data, activeFilter, viewMode = "grid", height, disableScrollZoom = false, gridDensity = 120 }: AlertasMapaProps) {
+export function AlertasMapa({ data, activeFilter, viewMode = "grid", height, disableScrollZoom = false, fixedBounds, churnPeriodDays }: AlertasMapaProps) {
   const validPoints = useMemo(() => {
     return data.filter((p) => {
       if (p.geo_lat === undefined || p.geo_lng === undefined || isNaN(p.geo_lat) || isNaN(p.geo_lng) || p.geo_lat === 0 || p.geo_lng === 0) return false;
       if (p.geo_lat < -34 || p.geo_lat > 6 || p.geo_lng < -74 || p.geo_lng > -28) return false;
       if (activeFilter === "vencido") return (p.dias_atraso !== undefined && p.dias_atraso !== null && p.dias_atraso > 0);
       if (activeFilter === "chamados") return p.qtd_chamados !== undefined && p.qtd_chamados > 0;
+      if (activeFilter === "churn") {
+        if (!p.data_cancelamento) return false;
+        if (churnPeriodDays && churnPeriodDays !== "todos") {
+          const d = new Date(p.data_cancelamento);
+          const limite = new Date(Date.now() - parseInt(churnPeriodDays) * 864e5);
+          if (d < limite) return false;
+        }
+        return true;
+      }
       return true;
     });
-  }, [data, activeFilter]);
+  }, [data, activeFilter, churnPeriodDays]);
 
   const defaultCenter: [number, number] = [-15.77972, -47.92972];
 
@@ -307,6 +329,7 @@ export function AlertasMapa({ data, activeFilter, viewMode = "grid", height, dis
   const boundsPoints = useMemo(() => validPoints.map(p => ({ lat: p.geo_lat!, lng: p.geo_lng! })), [validPoints]);
 
   const gridBounds = useMemo(() => {
+    if (fixedBounds) return fixedBounds;
     if (validPoints.length === 0) return { minLat: -34, maxLat: 6, minLng: -74, maxLng: -28 };
     let minLat = 90, maxLat = -90, minLng = 180, maxLng = -180;
     validPoints.forEach(p => {
@@ -318,7 +341,9 @@ export function AlertasMapa({ data, activeFilter, viewMode = "grid", height, dis
     const latPad = (maxLat - minLat) * 0.1 || 0.01;
     const lngPad = (maxLng - minLng) * 0.1 || 0.01;
     return { minLat: minLat - latPad, maxLat: maxLat + latPad, minLng: minLng - lngPad, maxLng: maxLng + lngPad };
-  }, [validPoints]);
+  }, [validPoints, fixedBounds]);
+
+  const { rows, cols } = useMemo(() => computeAdaptiveGrid(gridBounds), [gridBounds]);
 
   if (validPoints.length === 0) {
     return (
@@ -361,7 +386,7 @@ export function AlertasMapa({ data, activeFilter, viewMode = "grid", height, dis
         <SmartFitBounds points={boundsPoints} />
 
         {viewMode === "grid" ? (
-          <GridSquares points={validPoints} filter={activeFilter} bounds={gridBounds} gridCount={gridDensity} />
+          <GridSquares points={validPoints} filter={activeFilter} bounds={gridBounds} rows={rows} cols={cols} />
         ) : (
           validPoints.map((point, idx) => (
             <CircleMarker
@@ -378,8 +403,8 @@ export function AlertasMapa({ data, activeFilter, viewMode = "grid", height, dis
                 <div className="text-xs">
                   <p className="font-semibold">{point.cliente_nome || `Cliente ${point.cliente_id}`}</p>
                   {point.cliente_cidade && <p className="text-muted-foreground">{point.cliente_cidade}</p>}
-                  {activeFilter === "churn" && point.churn_risk_score !== undefined && (
-                    <p>Risco Churn: <span className="font-medium">{point.churn_risk_score}%</span></p>
+                  {activeFilter === "churn" && point.data_cancelamento && (
+                    <p>Cancelado em: <span className="font-medium">{new Date(point.data_cancelamento).toLocaleDateString("pt-BR")}</span></p>
                   )}
                   {activeFilter === "vencido" && point.dias_atraso !== undefined && point.dias_atraso > 0 && (
                     <p>Dias em Atraso: <span className="font-medium">{point.dias_atraso}</span></p>
@@ -422,10 +447,7 @@ export function AlertasMapa({ data, activeFilter, viewMode = "grid", height, dis
             )}
             {activeFilter === "churn" && (
               <>
-                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{background: "#3b82f6"}}></span> Baixo</span>
-                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{background: "#eab308"}}></span> Médio</span>
-                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{background: "#f97316"}}></span> Alto</span>
-                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{background: "#ef4444"}}></span> Crítico</span>
+                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{background: "#ef4444"}}></span> Cancelado no período</span>
               </>
             )}
           </>

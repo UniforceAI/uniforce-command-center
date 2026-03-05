@@ -827,6 +827,18 @@ const VisaoGeral = () => {
     return filtered;
   }, [eventos, cidade, bairro, plano, filial]);
 
+  const canceladoMap = useMemo(() => {
+    const m = new Map<number, string>(); // cliente_id → data_cancelamento (latest)
+    churnStatus.forEach(cs => {
+      if (cs.status_churn === "cancelado" && cs.data_cancelamento) {
+        const existing = m.get(cs.cliente_id);
+        if (!existing || cs.data_cancelamento > existing)
+          m.set(cs.cliente_id, cs.data_cancelamento);
+      }
+    });
+    return m;
+  }, [churnStatus]);
+
   const mapData = useMemo(() => {
     const clientesMap = new Map<number, any>();
     const chamadosPorCliente = getChamadosPorCliente(undefined);
@@ -850,11 +862,25 @@ const VisaoGeral = () => {
           geo_lat: lat, geo_lng: lng,
           churn_risk_score: scoreMap.get(e.cliente_id)?.score ?? e.churn_risk_score,
           dias_atraso: e.dias_atraso, vencido: e.vencido, alerta_tipo: e.alerta_tipo, downtime_min_24h: e.downtime_min_24h, qtd_chamados: qtdChamados,
+          data_cancelamento: canceladoMap.get(e.cliente_id) ?? null,
         });
       }
     });
     return Array.from(clientesMap.values());
-  }, [mapEventos, getChamadosPorCliente, scoreMap]);
+  }, [mapEventos, getChamadosPorCliente, scoreMap, canceladoMap]);
+
+  const allMapBounds = useMemo(() => {
+    const pts = mapData.filter(p => p.geo_lat && p.geo_lng && !isNaN(p.geo_lat) && !isNaN(p.geo_lng));
+    if (pts.length === 0) return undefined;
+    let minLat = 90, maxLat = -90, minLng = 180, maxLng = -180;
+    pts.forEach((p: any) => {
+      minLat = Math.min(minLat, p.geo_lat); maxLat = Math.max(maxLat, p.geo_lat);
+      minLng = Math.min(minLng, p.geo_lng); maxLng = Math.max(maxLng, p.geo_lng);
+    });
+    const latPad = (maxLat - minLat) * 0.1 || 0.01;
+    const lngPad = (maxLng - minLng) * 0.1 || 0.01;
+    return { minLat: minLat - latPad, maxLat: maxLat + latPad, minLng: minLng - lngPad, maxLng: maxLng + lngPad };
+  }, [mapData]);
 
   const formatCurrency = (value: number) => {
     if (value >= 1000000) return `R$ ${(value / 1000000).toFixed(1)} mi`;
@@ -1277,6 +1303,8 @@ const VisaoGeral = () => {
                         viewMode={mapViewMode}
                         height="520px"
                         disableScrollZoom={true}
+                        churnPeriodDays={periodo}
+                        fixedBounds={allMapBounds}
                       />
                     )}
                     {mapLightboxOpen && (
@@ -1325,6 +1353,8 @@ const VisaoGeral = () => {
                       activeFilter={mapTab as "churn" | "vencido" | "chamados"}
                       viewMode={mapViewMode}
                       height="100%"
+                      churnPeriodDays={periodo}
+                      fixedBounds={allMapBounds}
                     />
                   </div>
                 </div>
