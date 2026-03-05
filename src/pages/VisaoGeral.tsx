@@ -828,12 +828,13 @@ const VisaoGeral = () => {
   }, [eventos, cidade, bairro, plano, filial]);
 
   const canceladoMap = useMemo(() => {
-    const m = new Map<number, string>(); // cliente_id → data_cancelamento (latest)
+    const m = new Map<string, string>(); // cliente_id (string) → data_cancelamento (latest)
     churnStatus.forEach(cs => {
       if (cs.status_churn === "cancelado" && cs.data_cancelamento) {
-        const existing = m.get(cs.cliente_id);
+        const key = String(cs.cliente_id);
+        const existing = m.get(key);
         if (!existing || cs.data_cancelamento > existing)
-          m.set(cs.cliente_id, cs.data_cancelamento);
+          m.set(key, cs.data_cancelamento);
       }
     });
     return m;
@@ -862,7 +863,7 @@ const VisaoGeral = () => {
           geo_lat: lat, geo_lng: lng,
           churn_risk_score: scoreMap.get(e.cliente_id)?.score ?? e.churn_risk_score,
           dias_atraso: e.dias_atraso, vencido: e.vencido, alerta_tipo: e.alerta_tipo, downtime_min_24h: e.downtime_min_24h, qtd_chamados: qtdChamados,
-          data_cancelamento: canceladoMap.get(e.cliente_id) ?? null,
+          data_cancelamento: canceladoMap.get(String(e.cliente_id)) ?? null,
         });
       }
     });

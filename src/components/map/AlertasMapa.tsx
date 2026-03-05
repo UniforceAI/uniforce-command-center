@@ -157,18 +157,19 @@ function deterministicJitter(id: string | number, axis: "lat" | "lng", cellSize:
   return ((hash % 1000) / 1000) * 0.8 * cellSize - 0.4 * cellSize;
 }
 
-// ── Adaptive grid: cells of ~TARGET_KM km, clamped to [6, 25] ──
+// ── Adaptive grid: ~N_TOTAL cells preserving geographic aspect ratio ──
 function computeAdaptiveGrid(
   bounds: { minLat: number; maxLat: number; minLng: number; maxLng: number }
 ): { rows: number; cols: number } {
-  const latRange = bounds.maxLat - bounds.minLat;
-  const lngRange = bounds.maxLng - bounds.minLng;
   const avgLat = (bounds.minLat + bounds.maxLat) / 2;
-  const latKm = latRange * 111;
-  const lngKm = lngRange * 111 * Math.cos(avgLat * Math.PI / 180);
-  const TARGET_KM = 4;
-  const rows = Math.max(6, Math.min(25, Math.round(latKm / TARGET_KM)));
-  const cols = Math.max(6, Math.min(25, Math.round(lngKm / TARGET_KM)));
+  const latKm = (bounds.maxLat - bounds.minLat) * 111;
+  const lngKm = (bounds.maxLng - bounds.minLng) * 111 * Math.cos(avgLat * Math.PI / 180);
+  const aspect = Math.max(latKm, 1) / Math.max(lngKm, 1);
+  const N = 30;
+  let cols = Math.round(Math.sqrt(N / aspect));
+  cols = Math.max(3, Math.min(8, cols));
+  let rows = Math.round(N / cols);
+  rows = Math.max(3, Math.min(12, rows));
   return { rows, cols };
 }
 
@@ -176,8 +177,6 @@ function computeAdaptiveGrid(
 
 function GridSquares({ points, filter, bounds, rows, cols }: { points: MapPoint[]; filter: string; bounds: { minLat: number; maxLat: number; minLng: number; maxLng: number }; rows: number; cols: number }) {
   const gridData = useMemo(() => {
-    if (points.length === 0) return [];
-
     const latRange = bounds.maxLat - bounds.minLat;
     const lngRange = bounds.maxLng - bounds.minLng;
     const cellLat = Math.max(0.0002, latRange / rows);
@@ -204,18 +203,23 @@ function GridSquares({ points, filter, bounds, rows, cols }: { points: MapPoint[
 
     const result: { lat: number; lng: number; cellLat: number; cellLng: number; count: number; metricSum: number; intensity: number; points: MapPoint[] }[] = [];
 
-    cells.forEach(existing => {
-      result.push({
-        lat: bounds.minLat + existing.row * cellLat,
-        lng: bounds.minLng + existing.col * cellLng,
-        cellLat,
-        cellLng,
-        count: existing.count,
-        metricSum: existing.metricSum,
-        intensity: existing.count / maxCount,
-        points: existing.points,
-      });
-    });
+    // Always render ALL cells (empty ones show as gray, preserving stable grid layout)
+    for (let row = 0; row < rows; row++) {
+      for (let col = 0; col < cols; col++) {
+        const key = `${row},${col}`;
+        const existing = cells.get(key) || { row, col, count: 0, metricSum: 0, points: [] };
+        result.push({
+          lat: bounds.minLat + row * cellLat,
+          lng: bounds.minLng + col * cellLng,
+          cellLat,
+          cellLng,
+          count: existing.count,
+          metricSum: existing.metricSum,
+          intensity: existing.count / maxCount,
+          points: existing.points,
+        });
+      }
+    }
     return result;
   }, [points, filter, bounds, rows, cols]);
 
