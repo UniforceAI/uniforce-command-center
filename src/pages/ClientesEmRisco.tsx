@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import { safeFormatDate } from "@/lib/safeDate";
 import { ChurnStatus } from "@/hooks/useChurnData";
 import { useChamados } from "@/hooks/useChamados";
@@ -6,6 +6,7 @@ import { useActiveIsp } from "@/hooks/useActiveIsp";
 import { useChurnScoreConfig, calcScoreSuporteConfiguravel, calcScoreFinanceiroConfiguravel } from "@/contexts/ChurnScoreConfigContext";
 import { useRiskBucketConfig, RiskBucket } from "@/hooks/useRiskBucketConfig";
 import { useCrmWorkflow, WorkflowStatus } from "@/hooks/useCrmWorkflow";
+import { countCalendarDays, countBusinessDays, hasNewSignal } from "@/lib/workflowLifecycle";
 import { useChurnScore } from "@/hooks/useChurnScore";
 import { IspActions } from "@/components/shared/IspActions";
 import { ActionMenu } from "@/components/shared/ActionMenu";
@@ -67,7 +68,7 @@ const ClientesEmRisco = () => {
   const { churnStatus, churnEvents, isLoading, error, chamadosPorClienteMap, npsMap, getScoreSuporteReal, getScoreNPSReal, getScoreTotalReal, config, getBucket } = useChurnScore();
   const { chamados, getChamadosPorCliente } = useChamados();
   const { ispId } = useActiveIsp();
-  const { workflowMap, addToWorkflow, updateStatus, updateTags, updateOwner } = useCrmWorkflow();
+  const { workflowMap, records, addToWorkflow, updateStatus, updateTags, updateOwner, archiveWorkflow } = useCrmWorkflow();
   const { toast } = useToast();
 
   // Filters
@@ -332,10 +333,54 @@ const ClientesEmRisco = () => {
     toast({ title: "Cliente adicionado ao workflow" });
   }, [getBucket, getScoreTotalReal, npsMap, addToWorkflow, toast]);
 
+  const getEffectiveScore = useCallback((c: ChurnStatus): number => {
+    const wf = workflowMap.get(c.cliente_id);
+    if (wf?.status_workflow !== "resolvido") return getScoreTotalReal(c);
+    const enteredAt = new Date(wf.status_entered_at ?? wf.last_action_at ?? wf.created_at);
+    if (countCalendarDays(enteredAt, new Date()) >= 7) return getScoreTotalReal(c);
+    if (wf.score_snapshot && hasNewSignal(c, wf.score_snapshot)) return getScoreTotalReal(c);
+    return 0;
+  }, [workflowMap, getScoreTotalReal]);
+
   const handleUpdateStatus = useCallback(async (clienteId: number, status: WorkflowStatus) => {
-    await updateStatus(clienteId, status);
+    let snapshot: Record<string, number> | undefined;
+    if (status === "resolvido") {
+      const c = clientesRisco.find((cl) => cl.cliente_id === clienteId);
+      if (c) {
+        snapshot = {
+          financeiro: c.score_financeiro ?? 0,
+          suporte: c.score_suporte ?? 0,
+          qualidade: c.score_qualidade ?? 0,
+          nps: c.score_nps ?? 0,
+          comportamental: c.score_comportamental ?? 0,
+          dias_atraso: c.dias_atraso ?? 0,
+        };
+      }
+    }
+    await updateStatus(clienteId, status, snapshot);
     toast({ title: `Marcado como ${status}` });
-  }, [updateStatus, toast]);
+  }, [updateStatus, clientesRisco, toast]);
+
+  useEffect(() => {
+    if (!workflowMap.size) return;
+    const now = new Date();
+    workflowMap.forEach((wf, clienteId) => {
+      const enteredAt = new Date(wf.status_entered_at ?? wf.last_action_at ?? wf.created_at);
+      if (wf.status_workflow === "resolvido") {
+        const expired = countCalendarDays(enteredAt, now) >= 7;
+        const newSignal = !expired && wf.score_snapshot
+          ? hasNewSignal(
+              clientesRisco.find((c) => c.cliente_id === clienteId) ?? {} as ChurnStatus,
+              wf.score_snapshot
+            )
+          : false;
+        if (expired || newSignal) archiveWorkflow(clienteId).catch(console.error);
+      }
+      if (wf.status_workflow === "perdido") {
+        if (countBusinessDays(enteredAt, now) >= 7) archiveWorkflow(clienteId).catch(console.error);
+      }
+    });
+  }, [workflowMap, clientesRisco, archiveWorkflow]);
 
   if (isLoading) return <div className="min-h-screen bg-background"><LoadingScreen /></div>;
 
@@ -505,7 +550,7 @@ const ClientesEmRisco = () => {
         {viewMode === "kanban" ? (
           <KanbanBoard
             clientes={filtered}
-            getScore={getScoreTotalReal}
+            getScore={getEffectiveScore}
             getBucket={getBucket}
             workflowMap={workflowMap}
             onSelectCliente={setSelectedCliente}

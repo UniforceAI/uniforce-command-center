@@ -118,6 +118,7 @@ Deno.serve(async (req) => {
           .from("crm_workflow")
           .select("*")
           .eq("isp_id", isp_id)
+          .eq("archived", false)
           .order("created_at", { ascending: false });
         if (error) throw error;
         result = data;
@@ -125,7 +126,7 @@ Deno.serve(async (req) => {
       }
 
       case "upsert_workflow": {
-        const { cliente_id, status_workflow, tags, owner_user_id, entered_workflow_at } = params;
+        const { cliente_id, status_workflow, tags, owner_user_id, entered_workflow_at, score_snapshot } = params;
         if (!cliente_id) throw new Error("cliente_id required");
 
         const { data: existing, error: fetchErr } = await extClient
@@ -136,13 +137,23 @@ Deno.serve(async (req) => {
           .maybeSingle();
         if (fetchErr) throw fetchErr;
 
+        const now = new Date().toISOString();
+
         if (existing) {
           const updates: Record<string, any> = {
-            last_action_at: new Date().toISOString(),
+            last_action_at: now,
           };
-          if (status_workflow !== undefined) updates.status_workflow = status_workflow;
+          if (status_workflow !== undefined) {
+            updates.status_workflow = status_workflow;
+            updates.status_entered_at = now;
+          }
           if (tags !== undefined) updates.tags = tags;
           if (owner_user_id !== undefined) updates.owner_user_id = owner_user_id;
+          if (status_workflow === "resolvido") {
+            updates.score_snapshot = score_snapshot ?? null;
+          } else if (status_workflow !== undefined) {
+            updates.score_snapshot = null;
+          }
 
           const { data, error } = await extClient
             .from("crm_workflow")
@@ -161,14 +172,37 @@ Deno.serve(async (req) => {
               status_workflow: status_workflow || "em_tratamento",
               tags: tags || [],
               owner_user_id: owner_user_id || null,
-              entered_workflow_at: entered_workflow_at || new Date().toISOString(),
-              last_action_at: new Date().toISOString(),
+              entered_workflow_at: entered_workflow_at || now,
+              last_action_at: now,
+              archived: false,
+              status_entered_at: now,
+              score_snapshot: null,
             })
             .select()
             .single();
           if (error) throw error;
           result = data;
         }
+        break;
+      }
+
+      case "archive_workflow": {
+        const { cliente_id } = params;
+        if (!cliente_id) throw new Error("cliente_id required");
+
+        const { data, error } = await extClient
+          .from("crm_workflow")
+          .update({
+            archived: true,
+            archived_at: new Date().toISOString(),
+            last_action_at: new Date().toISOString(),
+          })
+          .eq("isp_id", isp_id)
+          .eq("cliente_id", cliente_id)
+          .select()
+          .single();
+        if (error) throw error;
+        result = data;
         break;
       }
 

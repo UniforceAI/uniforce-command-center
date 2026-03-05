@@ -22,6 +22,10 @@ export interface CrmWorkflowRecord {
   last_action_at: string | null;
   created_at: string;
   updated_at: string;
+  archived: boolean;
+  archived_at: string | null;
+  status_entered_at: string | null;
+  score_snapshot: Record<string, number> | null;
 }
 
 export function useCrmWorkflow() {
@@ -78,12 +82,13 @@ export function useCrmWorkflow() {
   );
 
   const updateStatus = useCallback(
-    async (clienteId: number, status: WorkflowStatus) => {
+    async (clienteId: number, status: WorkflowStatus, scoreSnapshot?: Record<string, number>) => {
       if (!ispId) throw new Error("No ISP");
       const result = await upsertMutation.mutateAsync({
         action: "upsert_workflow",
         cliente_id: clienteId,
         status_workflow: status,
+        ...(scoreSnapshot !== undefined ? { score_snapshot: scoreSnapshot } : {}),
       });
       // Log status change as a comment (fire-and-forget)
       callCrmApi({
@@ -123,6 +128,28 @@ export function useCrmWorkflow() {
     [ispId, upsertMutation]
   );
 
+  const archiveWorkflow = useCallback(
+    async (clienteId: number) => {
+      if (!ispId) throw new Error("No ISP");
+      // Optimistic: remove from cache immediately
+      queryClient.setQueryData<CrmWorkflowRecord[]>(queryKey, (old = []) =>
+        old.filter((r) => r.cliente_id !== clienteId)
+      );
+      // Persist
+      await callCrmApi({ action: "archive_workflow", isp_id: ispId, cliente_id: clienteId });
+      // Audit comment (fire-and-forget)
+      callCrmApi({
+        action: "add_comment",
+        isp_id: ispId,
+        cliente_id: clienteId,
+        body: "Card arquivado automaticamente.",
+        type: "status_change",
+        meta: { archived: true },
+      }).catch(console.error);
+    },
+    [ispId, queryClient, queryKey]
+  );
+
   const workflowMap = new Map(records.map((r) => [r.cliente_id, r]));
 
   const refetch = useCallback(() => {
@@ -136,6 +163,7 @@ export function useCrmWorkflow() {
     updateStatus,
     updateTags,
     updateOwner,
+    archiveWorkflow,
     workflowMap,
     refetch,
   };

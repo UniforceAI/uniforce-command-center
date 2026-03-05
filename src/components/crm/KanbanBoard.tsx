@@ -2,6 +2,7 @@ import { useMemo, useState, useCallback } from "react";
 import { ChurnStatus } from "@/hooks/useChurnData";
 import { RiskBucket } from "@/hooks/useRiskBucketConfig";
 import { WorkflowStatus, CrmWorkflowRecord } from "@/hooks/useCrmWorkflow";
+import { countCalendarDays, countBusinessDays } from "@/lib/workflowLifecycle";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -69,6 +70,23 @@ function NPSMini({ classificacao }: { classificacao?: string | null }) {
   if (c === "NEUTRO") return <Minus className="h-3 w-3 text-yellow-600" />;
   if (c === "PROMOTOR") return <ThumbsUp className="h-3 w-3 text-green-600" />;
   return null;
+}
+
+function ExpiryBadge({ daysRemaining, isBusinessDays }: { daysRemaining: number; isBusinessDays?: boolean }) {
+  if (daysRemaining > 3) return null;
+  const label = daysRemaining <= 0
+    ? "Expirando"
+    : `${daysRemaining}d${isBusinessDays ? " úteis" : ""} restantes`;
+  const cls = daysRemaining <= 1
+    ? "bg-orange-100 text-orange-700 border-orange-300"
+    : daysRemaining <= 3
+    ? "bg-yellow-100 text-yellow-700 border-yellow-300"
+    : "bg-muted text-muted-foreground";
+  return (
+    <Badge className={`${cls} border text-[8px] lg:text-[9px] py-0 px-1 lg:px-1.5 gap-0.5 flex items-center`}>
+      <Clock className="h-2 w-2" />{label}
+    </Badge>
+  );
 }
 
 /* ── Droppable Column ── */
@@ -176,6 +194,14 @@ function KanbanCardVisual({ item, onSelect, onStart, onUpdate, isDragging }: {
         {workflow?.tags?.slice(0, 2).map(t => (
           <Badge key={t} variant="secondary" className="text-[8px] lg:text-[9px] py-0 px-1 lg:px-1.5">{t}</Badge>
         ))}
+        {workflow?.status_entered_at && workflow.status_workflow === "resolvido" && (() => {
+          const days = 7 - countCalendarDays(new Date(workflow.status_entered_at), new Date());
+          return <ExpiryBadge daysRemaining={days} />;
+        })()}
+        {workflow?.status_entered_at && workflow.status_workflow === "perdido" && (() => {
+          const days = 7 - countBusinessDays(new Date(workflow.status_entered_at), new Date());
+          return <ExpiryBadge daysRemaining={days} isBusinessDays />;
+        })()}
       </div>
 
       {/* Quick actions */}
