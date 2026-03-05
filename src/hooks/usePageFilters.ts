@@ -2,6 +2,11 @@ import { useState, useEffect } from "react";
 import { useActiveIsp } from "@/hooks/useActiveIsp";
 import { isPageReload } from "@/lib/refreshDetector";
 
+// Module-level: persists across React remounts within the same browser page session.
+// Cleared automatically on actual page reload (F5) because the module re-evaluates from scratch.
+// This prevents `isPageReload()` from being misread as `true` on Supabase-triggered React remounts.
+const _mountedOnce = new Set<string>();
+
 function storageKey(ispId: string, pageKey: string) {
   return `uf_filters_v1_${ispId || "default"}_${pageKey}`;
 }
@@ -23,9 +28,15 @@ export function usePageFilters<T extends Record<string, unknown>>(
   const { ispId } = useActiveIsp();
   const key = storageKey(ispId || "default", pageKey);
 
-  const [filters, setFilters] = useState<T>(() =>
-    isPageReload() ? defaults : readStored(key, defaults)
-  );
+  const [filters, setFilters] = useState<T>(() => {
+    const firstMount = !_mountedOnce.has(key);
+    _mountedOnce.add(key);
+    // Only reset on genuine page reload (F5) — only on the FIRST mount of this key.
+    // React remounts caused by Supabase SIGNED_IN re-sync are NOT reloads:
+    // `_mountedOnce` prevents the stale navigation.type from triggering defaults.
+    if (firstMount && isPageReload()) return defaults;
+    return readStored(key, defaults);
+  });
 
   useEffect(() => {
     try {
