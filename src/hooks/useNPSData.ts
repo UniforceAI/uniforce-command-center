@@ -69,7 +69,8 @@ export function useNPSData(ispId: string) {
     queryKey: ["nps-data", ispId],
     queryFn: () => fetchNPSData(ispId),
     enabled: !!ispId,
-    refetchOnMount: true,
+    // refetchOnMount removido: herda global false (staleTime 8h cobre sessão completa).
+    // F5 / reload: CacheRefreshGuard dispara refetchQueries explicitamente.
   });
 
   return { npsData: data ?? [], isLoading };

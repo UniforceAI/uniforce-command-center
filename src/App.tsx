@@ -29,15 +29,22 @@ import ContasAcesso from "./pages/ContasAcesso";
 import SetupChamados from "./pages/SetupChamados";
 import EventosDebug from "./pages/EventosDebug";
 
-const TWENTY_FOUR_HOURS = 1000 * 60 * 60 * 24;
+// Clientes operam o dashboard por sessões longas de trabalho (8h).
+// staleTime = 8h: dados permanecem frescos durante toda a jornada sem re-fetch.
+// gcTime = 10h: cache é mantido em memória e localStorage por 2h além do staleTime,
+//   garantindo que um background refetch pós-stale complete antes da limpeza.
+// F5 / reload: CacheRefreshGuard dispara refetchQueries explicitamente,
+//   ignorando staleTime e forçando dados frescos do banco.
+const EIGHT_HOURS = 1000 * 60 * 60 * 8;
+const TEN_HOURS   = 1000 * 60 * 60 * 10;
 
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: TWENTY_FOUR_HOURS,
-      gcTime: TWENTY_FOUR_HOURS,
+      staleTime: EIGHT_HOURS,
+      gcTime: TEN_HOURS,
       refetchOnWindowFocus: false,
-      refetchOnMount: false,
+      refetchOnMount: false,   // CacheRefreshGuard controla reload; navegação SPA usa cache
       retry: 1,
     },
   },
@@ -47,8 +54,8 @@ const persister = createLocalStoragePersister();
 
 const persistOptions = {
   persister,
-  maxAge: TWENTY_FOUR_HOURS,
-  buster: "v4", // bumped to discard stale localStorage cache for all users
+  maxAge: TEN_HOURS,
+  buster: "v5", // fase-1-perf: staleTime 8h + refetchOnMount removido dos hooks
 };
 
 const App = () => (

@@ -25,12 +25,19 @@ const TENANT_QUERY_PREFIXES = [
  * Must be rendered inside <AuthProvider> and inside
  * <PersistQueryClientProvider> (i.e. inside App.tsx provider tree).
  *
- * On every browser reload it invalidates the current tenant's cached
- * queries so that stale data from localStorage is immediately replaced
- * by a fresh fetch from Supabase.
+ * On every browser reload (F5 / Ctrl+F5) it triggers an immediate refetch
+ * of all tenant-specific queries, bypassing staleTime and serving fresh data
+ * from Supabase regardless of what is cached in localStorage.
  *
  * Normal SPA navigation (no reload) is unaffected: data within staleTime
- * is still served instantly from the in-memory cache.
+ * (8h) is served instantly from the in-memory cache without any network call.
+ *
+ * Why refetchQueries instead of invalidateQueries:
+ *   invalidateQueries marks data as stale but relies on refetchOnMount=true
+ *   to trigger the actual network call. Since hooks now use refetchOnMount=false
+ *   (global default), we call refetchQueries directly to force an immediate
+ *   background fetch for all currently-observed queries, and invalidateQueries
+ *   for non-observed ones (they will refetch on next mount).
  */
 export function CacheRefreshGuard({ children }: { children: React.ReactNode }) {
   const queryClient = useQueryClient();
@@ -39,26 +46,30 @@ export function CacheRefreshGuard({ children }: { children: React.ReactNode }) {
   // Capture reload status synchronously at component mount — before any
   // navigation changes the performance entry.
   const isReload = useRef(isPageReload());
-  const invalidated = useRef(false);
+  const triggered = useRef(false);
 
   // Resolve the active ISP id (same logic as useActiveIsp, but without the
-  // "agy-telecom" fallback so we don't invalidate before auth is ready).
+  // "agy-telecom" fallback so we don't fire before auth is ready).
   const ispId = isSuperAdmin && selectedIsp
     ? selectedIsp.isp_id
     : profile?.isp_id;
 
   useEffect(() => {
-    if (!ispId || !isReload.current || invalidated.current) return;
+    if (!ispId || !isReload.current || triggered.current) return;
 
-    invalidated.current = true;
+    triggered.current = true;
 
     TENANT_QUERY_PREFIXES.forEach((prefix) => {
-      queryClient.invalidateQueries({ queryKey: [prefix, ispId] });
+      const queryKey = [prefix, ispId];
+      // refetchQueries: força refetch imediato nos observers ativos (componentes montados).
+      // invalidateQueries: marca como stale os não-observados; serão refetchados ao montar.
+      queryClient.refetchQueries({ queryKey });
+      queryClient.invalidateQueries({ queryKey });
     });
 
     if (import.meta.env.DEV) {
       console.log(
-        `🔄 CacheRefreshGuard: reload detectado — invalidando cache para ISP "${ispId}"`
+        `🔄 CacheRefreshGuard: reload detectado — refetch forçado para ISP "${ispId}"`
       );
     }
   }, [ispId, queryClient]);

@@ -40,7 +40,8 @@ export function useCrmWorkflow() {
       return (data as CrmWorkflowRecord[]) || [];
     },
     enabled: !!ispId,
-    refetchOnMount: true,
+    // refetchOnMount removido: herda global false (staleTime 8h cobre sessão completa).
+    // F5 / reload: CacheRefreshGuard dispara refetchQueries explicitamente.
   });
 
   const upsertMutation = useMutation({

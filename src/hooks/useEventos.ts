@@ -101,7 +101,8 @@ export function useEventos() {
     queryKey: ["eventos", ispId],
     queryFn: () => fetchEventos(ispId),
     enabled: !!ispId,
-    refetchOnMount: true,
+    // refetchOnMount removido: herda global false (staleTime 8h cobre sessão completa).
+    // F5 / reload: CacheRefreshGuard dispara refetchQueries explicitamente.
   });
 
   const eventos = data ?? [];

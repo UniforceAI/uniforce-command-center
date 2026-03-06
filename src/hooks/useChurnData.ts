@@ -148,14 +148,16 @@ export function useChurnData() {
     queryKey: ["churn-status", ispId],
     queryFn: () => fetchChurnStatus(ispId),
     enabled: !!ispId,
-    refetchOnMount: true,
+    // refetchOnMount removido: herda global false (staleTime 8h cobre sessão completa).
+    // F5 / reload: CacheRefreshGuard dispara refetchQueries explicitamente.
   });
 
   const eventsQuery = useQuery({
     queryKey: ["churn-events", ispId],
     queryFn: () => fetchChurnEvents(ispId),
     enabled: !!ispId,
-    refetchOnMount: true,
+    // refetchOnMount removido: herda global false (staleTime 8h cobre sessão completa).
+    // F5 / reload: CacheRefreshGuard dispara refetchQueries explicitamente.
   });
 
   return {
