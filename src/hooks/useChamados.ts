@@ -35,43 +35,88 @@ export interface ChamadosPorCliente {
   categorias: string[];
 }
 
+const CHAMADOS_COLUMNS = [
+  "id", "isp_id", "id_cliente", "qtd_chamados", "protocolo",
+  "data_abertura", "ultima_atualizacao", "created_at",
+  "responsavel", "setor", "categoria", "motivo_contato",
+  "origem", "solicitante", "urgencia", "status",
+  "dias_desde_ultimo", "tempo_atendimento", "classificacao",
+  "insight", "chamados_anteriores",
+].join(",");
+
 const BATCH_SIZE = 1000;
-const MAX_BATCHES = 15;
+const MAX_RECORDS = 15_000; // safety cap (15 batches × 1000)
+const PARALLEL_LIMIT = 6;   // max simultaneous requests per round
 
 async function fetchChamados(ispId: string): Promise<ChamadoData[]> {
-  let allData: any[] = [];
-  let hasMore = true;
+  // Step 1: lightweight HEAD to get total count (no body returned)
+  const { count, error: countErr } = await externalSupabase
+    .from("chamados")
+    .select("*", { count: "exact", head: true })
+    .eq("isp_id", ispId);
 
-  for (let i = 0; i < MAX_BATCHES && hasMore; i++) {
-    const start = i * BATCH_SIZE;
-    const end = start + BATCH_SIZE - 1;
+  if (countErr || count === null) {
+    console.warn("⚠️ COUNT falhou para chamados — usando busca sequencial");
+    return fetchChamadosSequential(ispId);
+  }
 
-    const { data, error } = await externalSupabase
-      .from("chamados")
-      .select("*")
-      .eq("isp_id", ispId)
-      .order("created_at", { ascending: false })
-      .range(start, end);
+  const total = Math.min(count, MAX_RECORDS);
+  const totalPages = Math.ceil(total / BATCH_SIZE);
+  const allData: any[] = [];
 
-    if (error) throw error;
-
-    if (data && data.length > 0) {
-      allData = [...allData, ...data];
-      hasMore = data.length === BATCH_SIZE;
-    } else {
-      hasMore = false;
+  // Step 2: fetch all pages in parallel chunks (PARALLEL_LIMIT at a time)
+  for (let start = 0; start < totalPages; start += PARALLEL_LIMIT) {
+    const end = Math.min(start + PARALLEL_LIMIT, totalPages);
+    const results = await Promise.all(
+      Array.from({ length: end - start }, (_, i) => start + i).map(page =>
+        externalSupabase
+          .from("chamados")
+          .select(CHAMADOS_COLUMNS)
+          .eq("isp_id", ispId)
+          .order("created_at", { ascending: false })
+          .range(page * BATCH_SIZE, Math.min((page + 1) * BATCH_SIZE - 1, total - 1))
+      )
+    );
+    for (const { data, error } of results) {
+      if (error) throw error;
+      if (data?.length) allData.push(...data);
     }
   }
 
   // Deduplicate by protocolo
   const uniqueMap = new Map<string, any>();
   allData.forEach(c => {
-    if (!uniqueMap.has(c.protocolo)) {
-      uniqueMap.set(c.protocolo, c);
-    }
+    if (!uniqueMap.has(c.protocolo)) uniqueMap.set(c.protocolo, c);
   });
   const uniqueData = Array.from(uniqueMap.values());
-  console.log(`✅ ${uniqueData.length} chamados únicos para ${ispId}`);
+  console.log(`✅ Chamados: ${uniqueData.length} únicos (${totalPages} páginas em paralelo) para ${ispId}`);
+  return uniqueData as ChamadoData[];
+}
+
+// Fallback sequencial — usado se COUNT falhar
+async function fetchChamadosSequential(ispId: string): Promise<ChamadoData[]> {
+  const MAX_BATCHES = Math.ceil(MAX_RECORDS / BATCH_SIZE);
+  let allData: any[] = [];
+
+  for (let i = 0; i < MAX_BATCHES; i++) {
+    const { data, error } = await externalSupabase
+      .from("chamados")
+      .select(CHAMADOS_COLUMNS)
+      .eq("isp_id", ispId)
+      .order("created_at", { ascending: false })
+      .range(i * BATCH_SIZE, (i + 1) * BATCH_SIZE - 1);
+    if (error) throw error;
+    if (!data?.length) break;
+    allData = allData.concat(data);
+    if (data.length < BATCH_SIZE) break;
+  }
+
+  const uniqueMap = new Map<string, any>();
+  allData.forEach(c => {
+    if (!uniqueMap.has(c.protocolo)) uniqueMap.set(c.protocolo, c);
+  });
+  const uniqueData = Array.from(uniqueMap.values());
+  console.log(`✅ Chamados (sequential): ${uniqueData.length} únicos para ${ispId}`);
   return uniqueData as ChamadoData[];
 }
 
