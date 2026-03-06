@@ -68,10 +68,10 @@ function computeBoundsFromPoints(
   const p5lng = lngs[Math.floor(count * p)];
   const p95lng = lngs[Math.min(Math.floor(count * pHigh) - 1, count - 1)];
 
-  // Step 4: 75% safety margin on each side (minimum 0.30°) — 50% more than previous.
-  // Total span = P98-P2 * 2.5, covering full service areas including distant suburbs/islands.
-  const latMargin = Math.max((p95lat - p5lat) * 0.75, 0.30);
-  const lngMargin = Math.max((p95lng - p5lng) * 0.75, 0.30);
+  // Step 4: 60% safety margin on each side (minimum 0.24°) — 20% less than previous.
+  // Total span = P98-P2 * 2.2
+  const latMargin = Math.max((p95lat - p5lat) * 0.60, 0.24);
+  const lngMargin = Math.max((p95lng - p5lng) * 0.60, 0.24);
 
   // Step 5: area km² for QA
   const avgLat = (p5lat + p95lat) / 2;
