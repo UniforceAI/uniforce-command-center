@@ -170,7 +170,7 @@ function deterministicJitter(id: string | number, axis: "lat" | "lng", cellSize:
   return ((hash % 1000) / 1000) * 0.8 * cellSize - 0.4 * cellSize;
 }
 
-// ── Fixed 32×32 grid = 1024 squares ──
+// ── Fixed 32×32 grid = 1024 squares — cells fill 100% of each cell (no gap) ──
 function computeAdaptiveGrid(
   _bounds: { minLat: number; maxLat: number; minLng: number; maxLng: number }
 ): { rows: number; cols: number } {
