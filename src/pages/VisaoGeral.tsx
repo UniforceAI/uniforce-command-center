@@ -3,6 +3,7 @@ import { usePageFilters } from "@/hooks/usePageFilters";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useActiveIsp } from "@/hooks/useActiveIsp";
+import { useIspCoverage } from "@/hooks/useIspCoverage";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -155,6 +156,9 @@ const VisaoGeral = () => {
     filial: "todos" as string,
   });
   const { periodo, uf, cidade, bairro, plano, filial } = filters;
+  const filialIdForCoverage = filial === "todos" ? null : filial;
+  const { bounds: ispCoverageBounds, isRecalculating: coverageRecalculating } =
+    useIspCoverage(ispId, filialIdForCoverage);
   const [mapTab, setMapTab] = useState("chamados");
   const [churnChartMode, setChurnChartMode] = useState<"volume" | "taxa">("volume");
   const [geoMetric, setGeoMetric] = useState<GeoMetric>("financeiro");
@@ -1305,7 +1309,7 @@ const VisaoGeral = () => {
                         height="520px"
                         disableScrollZoom={true}
                         churnPeriodDays={periodo}
-                        fixedBounds={allMapBounds}
+                        fixedBounds={ispCoverageBounds ?? allMapBounds}
                       />
                     )}
                     {mapLightboxOpen && (
@@ -1355,7 +1359,7 @@ const VisaoGeral = () => {
                       viewMode={mapViewMode}
                       height="100%"
                       churnPeriodDays={periodo}
-                      fixedBounds={allMapBounds}
+                      fixedBounds={ispCoverageBounds ?? allMapBounds}
                     />
                   </div>
                 </div>
