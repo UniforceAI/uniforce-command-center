@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { MapContainer, TileLayer, CircleMarker, Popup, Rectangle, useMap, useMapEvents, Tooltip as LeafletTooltip } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 
@@ -108,34 +108,35 @@ function SmartFitBounds({ points }: { points: { lat: number; lng: number }[] }) 
 }
 
 // ── PersistMapView: saves/restores map zoom+center to sessionStorage ──
-// Save: on every moveend/zoomend
-// Restore: on mount (runs after FitToBounds, so saved view wins when returning to same ISP)
+// Restore: immediately on mount (runs after FitToBounds/SmartGridFocus due to JSX order)
+// Save: ONLY after 1000ms delay — prevents saving automated moves (FitToBounds, SmartGridFocus)
+// and only captures genuine user pan/zoom interactions.
 function PersistMapView({ persistKey }: { persistKey: string }) {
   const map = useMap();
   const ssKey = `uf_map_view_${persistKey}`;
-  const hasMounted = useRef(false);
-
-  // Restore saved view on mount / when persistKey changes
-  useEffect(() => {
-    hasMounted.current = false; // allow restore when key changes (ISP/filial switch)
-  }, [ssKey]);
+  const saveEnabled = useRef(false);
 
   useEffect(() => {
-    if (hasMounted.current) return;
-    hasMounted.current = true;
+    saveEnabled.current = false;
+    // Restore saved view — runs after FitToBounds+SmartGridFocus effects (JSX order),
+    // so setView here interrupts any running animation and places map at user's saved spot.
     try {
       const stored = sessionStorage.getItem(ssKey);
-      if (!stored) return;
-      const { lat, lng, zoom } = JSON.parse(stored);
-      if (typeof lat === "number" && typeof lng === "number" && typeof zoom === "number") {
-        map.setView([lat, lng], zoom, { animate: false });
+      if (stored) {
+        const { lat, lng, zoom } = JSON.parse(stored);
+        if (typeof lat === "number" && typeof lng === "number" && typeof zoom === "number") {
+          map.setView([lat, lng], zoom, { animate: false });
+        }
       }
     } catch {}
+    // Enable saves only after automated initial moves have completed (~250ms animation + margin)
+    const t = setTimeout(() => { saveEnabled.current = true; }, 1000);
+    return () => clearTimeout(t);
   }, [map, ssKey]);
 
-  // Persist on every pan/zoom
   useMapEvents({
     moveend: () => {
+      if (!saveEnabled.current) return;
       try {
         const c = map.getCenter();
         sessionStorage.setItem(ssKey, JSON.stringify({ lat: c.lat, lng: c.lng, zoom: map.getZoom() }));
@@ -148,12 +149,12 @@ function PersistMapView({ persistKey }: { persistKey: string }) {
 
 // ── SmartGridFocus: zoom travado no square mais quente, 10×10 squares visíveis ──
 // Dispara uma vez por ISP (boundsKey). Nunca re-dispara em troca de filtro.
-// Skips if a saved view already exists for persistKey (user navigated back).
-function SmartGridFocus({ validPoints, gridBounds, rows, cols, persistKey }: {
+// PersistMapView restore (which runs AFTER this effect in JSX order) will override with
+// the saved user view when one exists, naturally interrupting this animation.
+function SmartGridFocus({ validPoints, gridBounds, rows, cols }: {
   validPoints: MapPoint[];
   gridBounds: { minLat: number; maxLat: number; minLng: number; maxLng: number };
   rows: number; cols: number;
-  persistKey?: string;
 }) {
   const map = useMap();
   const hasFocused = useRef('');
@@ -164,12 +165,6 @@ function SmartGridFocus({ validPoints, gridBounds, rows, cols, persistKey }: {
     if (validPoints.length === 0) return;
     // Já focou para este ISP — ignora troca de filtro
     if (hasFocused.current === boundsKey) return;
-    // Usuário voltou à página com saved view — não sobrescrever
-    if (persistKey) {
-      try {
-        if (sessionStorage.getItem(`uf_map_view_${persistKey}`)) return;
-      } catch {}
-    }
     hasFocused.current = boundsKey;
 
     const cellLat = (maxLat - minLat) / rows;
@@ -206,7 +201,7 @@ function SmartGridFocus({ validPoints, gridBounds, rows, cols, persistKey }: {
       [[centerLat - halfLat, centerLng - halfLng], [centerLat + halfLat, centerLng + halfLng]],
       { animate: true, padding: [4, 4] }
     );
-  }, [boundsKey, validPoints, map, minLat, maxLat, minLng, maxLng, rows, cols, persistKey]);
+  }, [boundsKey, validPoints, map, minLat, maxLat, minLng, maxLng, rows, cols]);
 
   return null;
 }
@@ -414,6 +409,15 @@ function GridSquares({ points, filter, bounds, rows, cols }: {
 // ── Main Component ──
 
 export function AlertasMapa({ data, activeFilter, viewMode = "grid", height, disableScrollZoom = false, fixedBounds, churnPeriodDays, persistKey }: AlertasMapaProps) {
+  // Delay grid rendering until map animation has settled.
+  // Fixes: permanent Leaflet tooltips were positioned during SmartGridFocus animate:true,
+  // causing numbers to be invisible on initial load. 500ms is enough for the 250ms animation.
+  const [mapReady, setMapReady] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setMapReady(true), 500);
+    return () => clearTimeout(t);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   const validPoints = useMemo(() => {
     return data.filter((p) => {
       if (p.geo_lat === undefined || p.geo_lng === undefined || isNaN(p.geo_lat) || isNaN(p.geo_lng) || p.geo_lat === 0 || p.geo_lng === 0) return false;
@@ -526,26 +530,28 @@ export function AlertasMapa({ data, activeFilter, viewMode = "grid", height, dis
             gridBounds={gridBounds}
             rows={rows}
             cols={cols}
-            persistKey={persistKey}
           />
         )}
+        {/* PersistMapView must come AFTER SmartGridFocus in JSX so its restore effect runs
+            after SmartGridFocus starts its animation, naturally overriding with saved user view */}
         {persistKey && <PersistMapView persistKey={persistKey} />}
 
         {viewMode === "grid" ? (
           /*
-            key={activeFilter} forces full React remount of GridSquares on every filter switch.
-            This is the definitive fix for Leaflet permanent tooltip leak:
-            when the component tree unmounts, Leaflet properly removes all tooltip DOM elements
-            from the tooltip pane, preventing stale numbers from persisting outside their squares.
+            mapReady: delays rendering until 500ms after mount so the SmartGridFocus animation
+            (250ms) completes before Leaflet positions permanent tooltips. Prevents invisible numbers.
+            key={activeFilter} forces full remount on filter switch, clearing stale tooltip DOM.
           */
-          <GridSquares
-            key={activeFilter}
-            points={validPoints}
-            filter={activeFilter}
-            bounds={gridBounds}
-            rows={rows}
-            cols={cols}
-          />
+          mapReady ? (
+            <GridSquares
+              key={activeFilter}
+              points={validPoints}
+              filter={activeFilter}
+              bounds={gridBounds}
+              rows={rows}
+              cols={cols}
+            />
+          ) : null
         ) : (
           validPoints.map((point, idx) => (
             <CircleMarker
