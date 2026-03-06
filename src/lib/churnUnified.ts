@@ -17,7 +17,17 @@ export function getCancelados(churnStatus: ChurnStatus[]): ChurnStatus[] {
     if (cs.status_churn !== "cancelado") return;
     if (!cs.data_cancelamento) return;
     const existing = canceladosMap.get(cs.cliente_id);
-    if (!existing || (cs.churn_risk_score > existing.churn_risk_score)) {
+    if (!existing) {
+      canceladosMap.set(cs.cliente_id, cs);
+      return;
+    }
+    // Prefere o cancelamento mais recente (cliente pode ter múltiplos contratos cancelados).
+    // Isso garante que o filtro de período em Cancelamentos.tsx e VisaoGeral.tsx
+    // operem sobre a mesma data que ambas as páginas usam como referência.
+    // Tie-break: maior churn_risk_score quando as datas são iguais.
+    if (cs.data_cancelamento > existing.data_cancelamento! ||
+      (cs.data_cancelamento === existing.data_cancelamento &&
+        (cs.churn_risk_score ?? 0) > (existing.churn_risk_score ?? 0))) {
       canceladosMap.set(cs.cliente_id, cs);
     }
   });

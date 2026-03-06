@@ -60,26 +60,66 @@ export interface ChurnEvent {
 }
 
 const BATCH_SIZE = 1000;
-const MAX_BATCHES = 50; // Increased from 10 to prevent silent truncation (supports up to 50k records)
+const MAX_RECORDS = 50_000; // safety cap (50 batches × 1000)
+const PARALLEL_LIMIT = 6;   // max simultaneous requests per round
 
 async function fetchChurnStatus(ispId: string): Promise<ChurnStatus[]> {
-  let allStatus: any[] = [];
+  // Step 1: lightweight HEAD request to get total count (no body returned)
+  const { count, error: countErr } = await externalSupabase
+    .from("churn_status")
+    .select("*", { count: "exact", head: true })
+    .eq("isp_id", ispId);
+
+  if (countErr || count === null) {
+    // Fallback to sequential if COUNT unavailable
+    return fetchChurnStatusSequential(ispId);
+  }
+
+  const total = Math.min(count, MAX_RECORDS);
+  const totalPages = Math.ceil(total / BATCH_SIZE);
+  const allStatus: ChurnStatus[] = [];
+
+  // Step 2: fetch all pages in parallel chunks (PARALLEL_LIMIT at a time)
+  for (let start = 0; start < totalPages; start += PARALLEL_LIMIT) {
+    const end = Math.min(start + PARALLEL_LIMIT, totalPages);
+    const results = await Promise.all(
+      Array.from({ length: end - start }, (_, i) => start + i).map(page =>
+        externalSupabase
+          .from("churn_status")
+          .select("*")
+          .eq("isp_id", ispId)
+          .order("updated_at", { ascending: false })
+          .range(page * BATCH_SIZE, Math.min((page + 1) * BATCH_SIZE - 1, total - 1))
+      )
+    );
+    for (const { data, error } of results) {
+      if (error) throw error;
+      if (data?.length) allStatus.push(...data);
+    }
+  }
+
+  console.log(`✅ useChurnData: ${allStatus.length} registros (${totalPages} páginas em paralelo)`);
+  return allStatus;
+}
+
+// Fallback sequencial — usado se COUNT falhar
+async function fetchChurnStatusSequential(ispId: string): Promise<ChurnStatus[]> {
+  const allStatus: any[] = [];
   let page = 0;
-  while (page < MAX_BATCHES) {
+  while (page < Math.ceil(MAX_RECORDS / BATCH_SIZE)) {
     const { data, error } = await externalSupabase
       .from("churn_status")
       .select("*")
       .eq("isp_id", ispId)
-      .order("updated_at", { ascending: false }) // updated_at reflete churns recém-detectados pelo cron
+      .order("updated_at", { ascending: false })
       .range(page * BATCH_SIZE, (page + 1) * BATCH_SIZE - 1);
-
     if (error) throw error;
     if (!data || data.length === 0) break;
-    allStatus = allStatus.concat(data);
+    allStatus.push(...data);
     if (data.length < BATCH_SIZE) break;
     page++;
   }
-  console.log(`✅ useChurnData: ${allStatus.length} registros de churn_status (${page + 1} páginas)`);
+  console.log(`✅ useChurnData (sequential): ${allStatus.length} registros (${page + 1} páginas)`);
   return allStatus as ChurnStatus[];
 }
 
