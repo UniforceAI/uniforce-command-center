@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { MapContainer, TileLayer, CircleMarker, Popup, Rectangle, useMap, Tooltip as LeafletTooltip } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 
@@ -28,12 +28,33 @@ interface AlertasMapaProps {
   churnPeriodDays?: string; // "7" | "30" | "90" | "365" | "todos"
 }
 
-// Smart zoom: focus on densest cluster with tighter zoom
-function SmartFitBounds({ points }: { points: { lat: number; lng: number }[] }) {
+// ── FitToBounds: fits map to fixedBounds when it changes (ISP switch), NOT on filter change ──
+// This is the stable alternative to SmartFitBounds — does not depend on filter/points.
+function FitToBounds({ bounds }: { bounds: { minLat: number; maxLat: number; minLng: number; maxLng: number } }) {
   const map = useMap();
+  const { minLat, maxLat, minLng, maxLng } = bounds;
 
   useEffect(() => {
-    if (points.length === 0) return;
+    map.fitBounds(
+      [[minLat, minLng], [maxLat, maxLng]],
+      { padding: [10, 10], maxZoom: 13, animate: false }
+    );
+  // Only re-fires when the actual bounds coordinates change (ISP/filial switch), not on filter change
+  }, [minLat, maxLat, minLng, maxLng, map]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return null;
+}
+
+// ── SmartFitBounds: fires ONCE on initial mount when no fixedBounds available ──
+function SmartFitBounds({ points }: { points: { lat: number; lng: number }[] }) {
+  const map = useMap();
+  const hasFitted = useRef(false);
+
+  useEffect(() => {
+    // Only fit once — prevents re-zoom on every filter switch
+    if (hasFitted.current || points.length === 0) return;
+    hasFitted.current = true;
+
     if (points.length <= 3) {
       map.fitBounds(
         points.map(p => [p.lat, p.lng] as [number, number]),
@@ -53,13 +74,11 @@ function SmartFitBounds({ points }: { points: { lat: number; lng: number }[] }) 
       cells.set(key, cell);
     });
 
-    // Find densest cell and its neighbors
     let densest = { count: 0, points: points, key: "" };
     cells.forEach((cell, key) => {
       if (cell.count > densest.count) densest = { ...cell, key };
     });
 
-    // Include adjacent cells for smoother view
     const [dRow, dCol] = densest.key.split(",").map(Number);
     const clusterPoints: typeof points = [];
     for (let dr = -1; dr <= 1; dr++) {
@@ -80,7 +99,7 @@ function SmartFitBounds({ points }: { points: { lat: number; lng: number }[] }) 
     );
     map.fitBounds(
       [[b.minLat, b.minLng], [b.maxLat, b.maxLng]],
-      { padding: [40, 40], maxZoom: 15 }
+      { padding: [40, 40], maxZoom: 14 }
     );
   }, [points, map]);
 
@@ -89,7 +108,6 @@ function SmartFitBounds({ points }: { points: { lat: number; lng: number }[] }) 
 
 // ── Color helpers ──
 
-// Grid: 6-level semi-transparent scale (city map visible underneath)
 const GRID_COLORS: { bg: string; text: string; border: string; label: string }[] = [
   { bg: "rgba(100, 116, 139, 0.20)", text: "#94a3b8", border: "rgba(100,116,139,0.3)", label: "Vazio" },
   { bg: "rgba(34, 197, 94, 0.45)",   text: "#166534", border: "rgba(34,197,94,0.6)",   label: "Baixo" },
@@ -108,7 +126,6 @@ const getGridLevel = (intensity: number): number => {
   return 5;
 };
 
-// Marker colors
 const getColorByRisk = (point: MapPoint, filter: string): string => {
   if (filter === "vencido") {
     const d = point.dias_atraso ?? 0;
@@ -123,7 +140,6 @@ const getColorByRisk = (point: MapPoint, filter: string): string => {
     if (q >= 2) return "#f97316";
     return "#22c55e";
   }
-  // All churn-filter points are confirmed cancellations
   return "#ef4444";
 };
 
@@ -136,16 +152,14 @@ const getRadiusByRisk = (point: MapPoint, filter: string): number => {
     const q = point.qtd_chamados ?? 0;
     return q >= 5 ? 10 : q >= 3 ? 8 : q >= 2 ? 7 : 6;
   }
-  return 7; // uniform radius for confirmed cancellations
+  return 7;
 };
 
-// Format number: 1234 → "1.2k"
 const fmtNum = (n: number): string => {
   if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
   return String(n);
 };
 
-// ── Deterministic jitter to spread identical coordinates ──
 function deterministicJitter(id: string | number, axis: "lat" | "lng", cellSize: number): number {
   const str = `${id}_${axis}`;
   let hash = 0;
@@ -153,36 +167,30 @@ function deterministicJitter(id: string | number, axis: "lat" | "lng", cellSize:
     hash = ((hash << 5) - hash) + str.charCodeAt(i);
     hash |= 0;
   }
-  // Return value between -0.4*cellSize and +0.4*cellSize
   return ((hash % 1000) / 1000) * 0.8 * cellSize - 0.4 * cellSize;
 }
 
-// ── Adaptive grid: ~N_TOTAL cells preserving geographic aspect ratio ──
+// ── Fixed 12×12 grid = 144 squares for high granularity ──
 function computeAdaptiveGrid(
-  bounds: { minLat: number; maxLat: number; minLng: number; maxLng: number }
+  _bounds: { minLat: number; maxLat: number; minLng: number; maxLng: number }
 ): { rows: number; cols: number } {
-  const avgLat = (bounds.minLat + bounds.maxLat) / 2;
-  const latKm = (bounds.maxLat - bounds.minLat) * 111;
-  const lngKm = (bounds.maxLng - bounds.minLng) * 111 * Math.cos(avgLat * Math.PI / 180);
-  const aspect = Math.max(latKm, 1) / Math.max(lngKm, 1);
-  const N = 30;
-  let cols = Math.round(Math.sqrt(N / aspect));
-  cols = Math.max(3, Math.min(8, cols));
-  let rows = Math.round(N / cols);
-  rows = Math.max(3, Math.min(12, rows));
-  return { rows, cols };
+  return { rows: 12, cols: 12 };
 }
 
-// ── Grid Squares with inline numbers (Toronto-style) ──
-
-function GridSquares({ points, filter, bounds, rows, cols }: { points: MapPoint[]; filter: string; bounds: { minLat: number; maxLat: number; minLng: number; maxLng: number }; rows: number; cols: number }) {
+// ── Grid Squares with inline numbers ──
+// key={activeFilter} on this component forces full remount on filter switch,
+// cleaning up ALL Leaflet permanent tooltip DOM elements and preventing number leaks.
+function GridSquares({ points, filter, bounds, rows, cols }: {
+  points: MapPoint[]; filter: string;
+  bounds: { minLat: number; maxLat: number; minLng: number; maxLng: number };
+  rows: number; cols: number;
+}) {
   const gridData = useMemo(() => {
     const latRange = bounds.maxLat - bounds.minLat;
     const lngRange = bounds.maxLng - bounds.minLng;
     const cellLat = Math.max(0.0002, latRange / rows);
     const cellLng = Math.max(0.0002, lngRange / cols);
 
-    // Build occupied cells — apply jitter to spread identical coordinates
     const cells = new Map<string, { row: number; col: number; count: number; metricSum: number; points: MapPoint[] }>();
     points.forEach(p => {
       const jLat = p.geo_lat! + deterministicJitter(p.cliente_id, "lat", cellLat);
@@ -201,9 +209,12 @@ function GridSquares({ points, filter, bounds, rows, cols }: { points: MapPoint[
 
     const maxCount = Math.max(1, ...Array.from(cells.values()).map(c => c.count));
 
-    const result: { lat: number; lng: number; cellLat: number; cellLng: number; count: number; metricSum: number; intensity: number; points: MapPoint[] }[] = [];
+    const result: {
+      lat: number; lng: number; cellLat: number; cellLng: number;
+      count: number; metricSum: number; intensity: number; points: MapPoint[];
+      row: number; col: number;
+    }[] = [];
 
-    // Always render ALL cells (empty ones show as gray, preserving stable grid layout)
     for (let row = 0; row < rows; row++) {
       for (let col = 0; col < cols; col++) {
         const key = `${row},${col}`;
@@ -211,43 +222,40 @@ function GridSquares({ points, filter, bounds, rows, cols }: { points: MapPoint[
         result.push({
           lat: bounds.minLat + row * cellLat,
           lng: bounds.minLng + col * cellLng,
-          cellLat,
-          cellLng,
+          cellLat, cellLng,
           count: existing.count,
           metricSum: existing.metricSum,
           intensity: existing.count / maxCount,
           points: existing.points,
+          row, col,
         });
       }
     }
     return result;
   }, [points, filter, bounds, rows, cols]);
 
-  // Get the display number for a cell
   const getCellDisplayNumber = (cell: typeof gridData[0]): string => {
     if (cell.count === 0) return "";
     if (filter === "chamados") {
       const total = cell.points.reduce((s, p) => s + (p.qtd_chamados ?? 0), 0);
       return fmtNum(total);
     }
-    if (filter === "vencido") {
-      return fmtNum(cell.count);
-    }
-    // churn: show count of clients
     return fmtNum(cell.count);
   };
 
   return (
     <>
-      {gridData.map((cell, idx) => {
+      {gridData.map((cell) => {
         const level = getGridLevel(cell.intensity);
         const style = GRID_COLORS[level];
         const displayNum = getCellDisplayNumber(cell);
         const hasData = cell.count > 0;
+        // Stable unique key per cell position — not index-based
+        const cellKey = `${cell.row}-${cell.col}`;
 
         return (
           <Rectangle
-            key={idx}
+            key={cellKey}
             bounds={[
               [cell.lat, cell.lng],
               [cell.lat + cell.cellLat, cell.lng + cell.cellLng],
@@ -255,12 +263,11 @@ function GridSquares({ points, filter, bounds, rows, cols }: { points: MapPoint[
             pathOptions={{
               color: style.border,
               fillColor: style.bg,
-              fillOpacity: 1, // opacity is baked into rgba
+              fillOpacity: 1,
               weight: 1,
               opacity: 1,
             }}
           >
-            {/* Show number inside each square */}
             {hasData && (
               <LeafletTooltip
                 permanent
@@ -270,7 +277,7 @@ function GridSquares({ points, filter, bounds, rows, cols }: { points: MapPoint[
                 <span style={{
                   color: level >= 3 ? "#fff" : style.text,
                   fontWeight: 700,
-                  fontSize: cell.count >= 100 ? "9px" : "11px",
+                  fontSize: cell.count >= 1000 ? "8px" : cell.count >= 100 ? "9px" : "10px",
                   textShadow: level >= 3 ? "0 1px 2px rgba(0,0,0,0.5)" : "none",
                 }}>{displayNum}</span>
               </LeafletTooltip>
@@ -323,12 +330,22 @@ export function AlertasMapa({ data, activeFilter, viewMode = "grid", height, dis
 
   const defaultCenter: [number, number] = [-15.77972, -47.92972];
 
+  // When fixedBounds available, start centered on the ISP coverage area at a city-level zoom.
+  // This prevents the flash of "whole Brazil" zoom-5 view before FitToBounds corrects it.
   const centerPoint = useMemo((): [number, number] => {
+    if (fixedBounds) {
+      return [
+        (fixedBounds.minLat + fixedBounds.maxLat) / 2,
+        (fixedBounds.minLng + fixedBounds.maxLng) / 2,
+      ];
+    }
     if (validPoints.length === 0) return defaultCenter;
     const avgLat = validPoints.reduce((s, p) => s + (p.geo_lat || 0), 0) / validPoints.length;
     const avgLng = validPoints.reduce((s, p) => s + (p.geo_lng || 0), 0) / validPoints.length;
     return [avgLat, avgLng];
-  }, [validPoints]);
+  }, [validPoints, fixedBounds]);
+
+  const initialZoom = fixedBounds ? 11 : 5;
 
   const boundsPoints = useMemo(() => validPoints.map(p => ({ lat: p.geo_lat!, lng: p.geo_lng! })), [validPoints]);
 
@@ -362,7 +379,6 @@ export function AlertasMapa({ data, activeFilter, viewMode = "grid", height, dis
 
   return (
     <div className="relative overflow-hidden rounded-b-lg" style={{ height: height || "520px", isolation: "isolate", zIndex: 0 }}>
-      {/* Custom CSS for grid cell labels */}
       <style>{`
         .grid-cell-label {
           background: transparent !important;
@@ -371,6 +387,7 @@ export function AlertasMapa({ data, activeFilter, viewMode = "grid", height, dis
           padding: 0 !important;
           margin: 0 !important;
           font-family: system-ui, -apple-system, sans-serif;
+          pointer-events: none !important;
         }
         .grid-cell-label::before {
           display: none !important;
@@ -379,7 +396,7 @@ export function AlertasMapa({ data, activeFilter, viewMode = "grid", height, dis
 
       <MapContainer
         center={centerPoint}
-        zoom={5}
+        zoom={initialZoom}
         style={{ height: "100%", width: "100%", zIndex: 1 }}
         scrollWheelZoom={!disableScrollZoom}
       >
@@ -387,10 +404,33 @@ export function AlertasMapa({ data, activeFilter, viewMode = "grid", height, dis
           attribution='&copy; <a href="https://carto.com/">CARTO</a>'
           url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
         />
-        <SmartFitBounds points={boundsPoints} />
+
+        {/*
+          Fit strategy:
+          - fixedBounds provided → FitToBounds (stable, only re-fires when ISP changes, never on filter switch)
+          - no fixedBounds (loading/fallback) → SmartFitBounds (fires once on mount)
+          This eliminates the re-zoom on every filter switch that was causing tooltip misalignment.
+        */}
+        {fixedBounds
+          ? <FitToBounds bounds={fixedBounds} />
+          : <SmartFitBounds points={boundsPoints} />
+        }
 
         {viewMode === "grid" ? (
-          <GridSquares points={validPoints} filter={activeFilter} bounds={gridBounds} rows={rows} cols={cols} />
+          /*
+            key={activeFilter} forces full React remount of GridSquares on every filter switch.
+            This is the definitive fix for Leaflet permanent tooltip leak:
+            when the component tree unmounts, Leaflet properly removes all tooltip DOM elements
+            from the tooltip pane, preventing stale numbers from persisting outside their squares.
+          */
+          <GridSquares
+            key={activeFilter}
+            points={validPoints}
+            filter={activeFilter}
+            bounds={gridBounds}
+            rows={rows}
+            cols={cols}
+          />
         ) : (
           validPoints.map((point, idx) => (
             <CircleMarker

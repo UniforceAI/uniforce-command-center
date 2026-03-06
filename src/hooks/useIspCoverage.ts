@@ -59,17 +59,18 @@ function computeBoundsFromPoints(
   const lngs = valid.map((p) => p.geo_lng).sort((a, b) => a - b);
   const count = valid.length;
 
-  const p = count >= 50 ? 0.05 : 0.0;
-  const pHigh = count >= 50 ? 0.95 : 1.0;
+  // P2/P98 covers 96% of records — wide enough for islands/suburbs that P5/P95 missed
+  const p = count >= 50 ? 0.02 : 0.0;
+  const pHigh = count >= 50 ? 0.98 : 1.0;
 
   const p5lat = lats[Math.floor(count * p)];
   const p95lat = lats[Math.min(Math.floor(count * pHigh) - 1, count - 1)];
   const p5lng = lngs[Math.floor(count * p)];
   const p95lng = lngs[Math.min(Math.floor(count * pHigh) - 1, count - 1)];
 
-  // Step 4: 10% safety margin (minimum 0.05°)
-  const latMargin = Math.max((p95lat - p5lat) * 0.1, 0.05);
-  const lngMargin = Math.max((p95lng - p5lng) * 0.1, 0.05);
+  // Step 4: 15% safety margin (minimum 0.08°) — covers surrounding area comfortably
+  const latMargin = Math.max((p95lat - p5lat) * 0.15, 0.08);
+  const lngMargin = Math.max((p95lng - p5lng) * 0.15, 0.08);
 
   // Step 5: area km² for QA
   const avgLat = (p5lat + p95lat) / 2;
