@@ -170,11 +170,11 @@ function deterministicJitter(id: string | number, axis: "lat" | "lng", cellSize:
   return ((hash % 1000) / 1000) * 0.8 * cellSize - 0.4 * cellSize;
 }
 
-// ── Fixed 48×48 grid = 2304 squares for maximum granularity ──
+// ── Fixed 32×32 grid = 1024 squares ──
 function computeAdaptiveGrid(
   _bounds: { minLat: number; maxLat: number; minLng: number; maxLng: number }
 ): { rows: number; cols: number } {
-  return { rows: 48, cols: 48 };
+  return { rows: 32, cols: 32 };
 }
 
 // ── Grid Squares with inline numbers ──
@@ -277,7 +277,7 @@ function GridSquares({ points, filter, bounds, rows, cols }: {
                 <span style={{
                   color: level >= 3 ? "#fff" : style.text,
                   fontWeight: 700,
-                  fontSize: cell.count >= 1000 ? "6px" : cell.count >= 100 ? "7px" : "8px",
+                  fontSize: cell.count >= 1000 ? "7px" : cell.count >= 100 ? "8px" : "9px",
                   textShadow: level >= 3 ? "0 1px 2px rgba(0,0,0,0.5)" : "none",
                 }}>{displayNum}</span>
               </LeafletTooltip>
