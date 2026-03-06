@@ -70,7 +70,7 @@ async function fetchChurnStatus(ispId: string): Promise<ChurnStatus[]> {
       .from("churn_status")
       .select("*")
       .eq("isp_id", ispId)
-      .order("created_at", { ascending: false }) // Order by date instead of score to avoid temporal bias
+      .order("updated_at", { ascending: false }) // updated_at reflete churns recém-detectados pelo cron
       .range(page * BATCH_SIZE, (page + 1) * BATCH_SIZE - 1);
 
     if (error) throw error;

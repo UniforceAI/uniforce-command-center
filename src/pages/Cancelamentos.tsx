@@ -142,6 +142,7 @@ const Cancelamentos = () => {
     if (periodo !== "todos") {
       const dias = parseInt(periodo);
       const limite = new Date(maxDate.getTime() - dias * 24 * 60 * 60 * 1000);
+      limite.setUTCHours(0, 0, 0, 0); // alinha ao UTC midnight — data_cancelamento date-only é parseado como UTC midnight
       f = f.filter((c) => {
         const d = safeParse(c.data_cancelamento);
         return d ? d >= limite : false;
