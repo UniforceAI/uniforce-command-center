@@ -377,6 +377,7 @@ export function AlertasMapa({ data, activeFilter, viewMode = "grid", height, dis
         if (churnPeriodDays && churnPeriodDays !== "todos") {
           const d = new Date(p.data_cancelamento);
           const limite = new Date(Date.now() - parseInt(churnPeriodDays) * 864e5);
+          limite.setUTCHours(0, 0, 0, 0); // alinha ao UTC midnight — data_cancelamento date-only é parseado como UTC midnight
           if (d < limite) return false;
         }
         return true;

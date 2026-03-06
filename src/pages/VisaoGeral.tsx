@@ -255,7 +255,9 @@ const VisaoGeral = () => {
 
   const dataLimiteChurn = useMemo(() => {
     if (periodo === "todos") return null;
-    return new Date(maxCancelamentoDate.getTime() - parseInt(periodo) * 24 * 60 * 60 * 1000);
+    const d = new Date(maxCancelamentoDate.getTime() - parseInt(periodo) * 24 * 60 * 60 * 1000);
+    d.setUTCHours(0, 0, 0, 0); // alinha ao UTC midnight — data_cancelamento date-only é parseado como UTC midnight
+    return d;
   }, [periodo, maxCancelamentoDate]);
 
   const periodoLabel = useMemo(() => {
