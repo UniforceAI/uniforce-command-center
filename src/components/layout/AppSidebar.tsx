@@ -12,8 +12,8 @@ import {
   SidebarMenuSub,
   SidebarMenuSubButton,
   SidebarMenuSubItem,
-  useSidebar,
-} from "@/components/ui/sidebar";
+  useSidebar } from
+"@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { ChevronRight } from "lucide-react";
@@ -22,20 +22,20 @@ import uniforceLogo from "@/assets/uniforce-logo.png";
 import unforceIcon from "@/assets/uniforce-icon.png";
 
 const menuItems = [
-  { title: "Visão Geral", url: "/", icon: LayoutDashboard },
-  { title: "Financeiro", url: "/financeiro", icon: DollarSign },
-  { title: "Chamados Frequentes", url: "/chamados", icon: AlertTriangle },
-  { title: "Clientes em Risco", url: "/crm", icon: UserX },
-  { title: "Cancelamentos", url: "/cancelamentos", icon: XCircle },
-  { title: "NPS", url: "/nps", icon: ThumbsUp },
-];
+{ title: "Visão Geral", url: "/", icon: LayoutDashboard },
+{ title: "Financeiro", url: "/financeiro", icon: DollarSign },
+{ title: "Chamados Frequentes", url: "/chamados", icon: AlertTriangle },
+{ title: "Clientes em Risco", url: "/crm", icon: UserX },
+{ title: "Cancelamentos", url: "/cancelamentos", icon: XCircle },
+{ title: "NPS", url: "/nps", icon: ThumbsUp }];
+
 
 const configSubItems = [
-  { title: "Perfil do Provedor", url: "/configuracoes/perfil", icon: Building2 },
-  { title: "Contas de Acesso", url: "/configuracoes/contas", icon: Users },
-  { title: "Setup de Churn", url: "/configuracoes/churn-score", icon: SlidersHorizontal },
-  { title: "Setup de Chamados", url: "/configuracoes/chamados", icon: Headphones },
-];
+{ title: "Perfil do Provedor", url: "/configuracoes/perfil", icon: Building2 },
+{ title: "Contas de Acesso", url: "/configuracoes/contas", icon: Users },
+{ title: "Setup de Churn", url: "/configuracoes/churn-score", icon: SlidersHorizontal },
+{ title: "Setup de Chamados", url: "/configuracoes/chamados", icon: Headphones }];
+
 
 export function AppSidebar() {
   const { state, toggleSidebar } = useSidebar();
@@ -48,28 +48,28 @@ export function AppSidebar() {
 
   return (
     <Sidebar collapsible="icon" className="border-r border-border/50">
-      <SidebarContent>
+      <SidebarContent className="bg-slate-100">
         {/* Logo + Toggle */}
         <div className="px-3 py-5 flex items-center justify-center gap-2">
-          {collapsed ? (
-            <button onClick={() => { toggleSidebar(); navigate("/"); }} className="mx-auto cursor-pointer">
+          {collapsed ?
+          <button onClick={() => {toggleSidebar();navigate("/");}} className="mx-auto cursor-pointer">
               <img src={unforceIcon} alt="Uniforce" className="h-8 w-auto object-contain" />
-            </button>
-          ) : (
-            <div className="flex items-center justify-between w-full">
+            </button> :
+
+          <div className="flex items-center justify-between w-full">
               <button onClick={() => navigate("/")} className="cursor-pointer mx-auto">
                 <img src={uniforceLogo} alt="Uniforce" className="h-9" />
               </button>
               <Button
-                variant="ghost"
-                size="sm"
-                onClick={toggleSidebar}
-                className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground shrink-0"
-              >
+              variant="ghost"
+              size="sm"
+              onClick={toggleSidebar}
+              className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground shrink-0">
+              
                 <PanelLeftClose className="h-4 w-4" />
               </Button>
             </div>
-          )}
+          }
         </div>
         
         <SidebarGroup>
@@ -85,15 +85,15 @@ export function AppSidebar() {
                     <SidebarMenuButton
                       asChild
                       isActive={isActive}
-                      tooltip={item.title}
-                    >
+                      tooltip={item.title}>
+                      
                       <NavLink to={item.url} className={collapsed ? "" : "text-[18px]"}>
                         <item.icon className={collapsed ? "!h-[24px] !w-[24px]" : "h-5 w-5"} />
                         <span>{item.title}</span>
                       </NavLink>
                     </SidebarMenuButton>
-                  </SidebarMenuItem>
-                );
+                  </SidebarMenuItem>);
+
               })}
             </SidebarMenu>
           </SidebarGroupContent>
@@ -106,28 +106,28 @@ export function AppSidebar() {
           </SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {collapsed ? (
-                <SidebarMenuItem>
+              {collapsed ?
+              <SidebarMenuItem>
                   <SidebarMenuButton
-                    asChild
-                    isActive={isConfigActive}
-                    tooltip="Configurações"
-                  >
+                  asChild
+                  isActive={isConfigActive}
+                  tooltip="Configurações">
+                  
                     <NavLink to="/configuracoes/churn-score">
                       <Settings className="!h-[24px] !w-[24px]" />
                       <span>Configurações</span>
                     </NavLink>
                   </SidebarMenuButton>
-                </SidebarMenuItem>
-              ) : (
-                <Collapsible open={configOpen} onOpenChange={setConfigOpen}>
+                </SidebarMenuItem> :
+
+              <Collapsible open={configOpen} onOpenChange={setConfigOpen}>
                   <SidebarMenuItem>
                     <CollapsibleTrigger asChild>
                       <SidebarMenuButton
-                        isActive={isConfigActive}
-                        tooltip="Configurações"
-                        className="w-full"
-                      >
+                      isActive={isConfigActive}
+                      tooltip="Configurações"
+                      className="w-full">
+                      
                         <Settings className="h-5 w-5" />
                         <span>Configurações</span>
                         <ChevronRight className={`ml-auto h-3 w-3 transition-transform ${configOpen ? "rotate-90" : ""}`} />
@@ -135,28 +135,28 @@ export function AppSidebar() {
                     </CollapsibleTrigger>
                     <CollapsibleContent>
                       <SidebarMenuSub>
-                        {configSubItems.map((sub) => (
-                          <SidebarMenuSubItem key={sub.title}>
+                        {configSubItems.map((sub) =>
+                      <SidebarMenuSubItem key={sub.title}>
                             <SidebarMenuSubButton
-                              asChild
-                              isActive={location.pathname === sub.url}
-                            >
+                          asChild
+                          isActive={location.pathname === sub.url}>
+                          
                               <NavLink to={sub.url}>
                                 <sub.icon className="h-3.5 w-3.5" />
                                 <span>{sub.title}</span>
                               </NavLink>
                             </SidebarMenuSubButton>
                           </SidebarMenuSubItem>
-                        ))}
+                      )}
                       </SidebarMenuSub>
                     </CollapsibleContent>
                   </SidebarMenuItem>
                 </Collapsible>
-              )}
+              }
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
-    </Sidebar>
-  );
+    </Sidebar>);
+
 }
