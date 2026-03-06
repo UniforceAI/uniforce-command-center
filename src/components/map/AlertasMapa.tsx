@@ -106,6 +106,63 @@ function SmartFitBounds({ points }: { points: { lat: number; lng: number }[] }) 
   return null;
 }
 
+// ── SmartGridFocus: zoom travado no square mais quente, 10×10 squares visíveis ──
+// Dispara uma vez por ISP (boundsKey). Nunca re-dispara em troca de filtro.
+function SmartGridFocus({ validPoints, gridBounds, rows, cols }: {
+  validPoints: MapPoint[];
+  gridBounds: { minLat: number; maxLat: number; minLng: number; maxLng: number };
+  rows: number; cols: number;
+}) {
+  const map = useMap();
+  const hasFocused = useRef('');
+  const { minLat, maxLat, minLng, maxLng } = gridBounds;
+  const boundsKey = `${minLat.toFixed(5)},${maxLat.toFixed(5)},${minLng.toFixed(5)},${maxLng.toFixed(5)}`;
+
+  useEffect(() => {
+    if (validPoints.length === 0) return;
+    // Já focou para este ISP — ignora troca de filtro
+    if (hasFocused.current === boundsKey) return;
+    hasFocused.current = boundsKey;
+
+    const cellLat = (maxLat - minLat) / rows;
+    const cellLng = (maxLng - minLng) / cols;
+
+    // Contar pontos por célula
+    const cells = new Map<string, { row: number; col: number; count: number }>();
+    validPoints.forEach(p => {
+      if (!p.geo_lat || !p.geo_lng) return;
+      const row = Math.max(0, Math.min(rows - 1, Math.floor((p.geo_lat - minLat) / cellLat)));
+      const col = Math.max(0, Math.min(cols - 1, Math.floor((p.geo_lng - minLng) / cellLng)));
+      const key = `${row},${col}`;
+      const c = cells.get(key) || { row, col, count: 0 };
+      c.count++;
+      cells.set(key, c);
+    });
+
+    if (cells.size === 0) return;
+
+    // Square com maior concentração de problemas
+    let hot = { row: 0, col: 0, count: 0 };
+    cells.forEach(c => { if (c.count > hot.count) hot = c; });
+
+    // Centro do square mais quente
+    const centerLat = minLat + (hot.row + 0.5) * cellLat;
+    const centerLng = minLng + (hot.col + 0.5) * cellLng;
+
+    // Janela de 10×10 squares ao redor do centro (5 cells em cada direção)
+    const halfLat = 5 * cellLat;
+    const halfLng = 5 * cellLng;
+
+    // Fly-in animado: FitToBounds já definiu a visão geral, agora zoom no problema
+    map.fitBounds(
+      [[centerLat - halfLat, centerLng - halfLng], [centerLat + halfLat, centerLng + halfLng]],
+      { animate: true, padding: [4, 4] }
+    );
+  }, [boundsKey, validPoints, map, minLat, maxLat, minLng, maxLng, rows, cols]);
+
+  return null;
+}
+
 // ── Color helpers ──
 
 const GRID_COLORS: { bg: string; text: string; border: string; label: string }[] = [
@@ -415,6 +472,14 @@ export function AlertasMapa({ data, activeFilter, viewMode = "grid", height, dis
           ? <FitToBounds bounds={fixedBounds} />
           : <SmartFitBounds points={boundsPoints} />
         }
+        {fixedBounds && viewMode === "grid" && (
+          <SmartGridFocus
+            validPoints={validPoints}
+            gridBounds={gridBounds}
+            rows={rows}
+            cols={cols}
+          />
+        )}
 
         {viewMode === "grid" ? (
           /*
