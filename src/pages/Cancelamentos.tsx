@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from "react";
+import { useMemo, useCallback } from "react";
 import { usePageFilters } from "@/hooks/usePageFilters";
 import { FAIXAS_AGING } from "@/types/evento";
 import { safeParse } from "@/lib/safeDate";
@@ -103,10 +103,17 @@ const Cancelamentos = () => {
     cohortMetric: "qtd" as "qtd" | "mrr" | "ltv",
     sortField: "churn_risk_score" as SortField,
     sortDir: "desc" as SortDir,
+    selectedClienteId: "" as string,
   });
   const { plano, cidade, bairro, bucket, churnDimension, periodo, cohortMetric, sortField, sortDir } = filters;
 
-  const [selectedCliente, setSelectedCliente] = useState<ChurnStatus | null>(null);
+  const selectedCliente = useMemo<ChurnStatus | null>(() => {
+    const id = parseInt(filters.selectedClienteId, 10);
+    if (!id) return null;
+    return churnStatus.find(c => c.cliente_id === id) || null;
+  }, [filters.selectedClienteId, churnStatus]);
+  const setSelectedCliente = (c: ChurnStatus | null) =>
+    setFilter("selectedClienteId", c ? String(c.cliente_id) : "");
 
   // Total de clientes únicos — agora vem de churn_status (mesma fonte dos cancelados)
   const totalClientesBase = useMemo(() => {
@@ -1157,7 +1164,7 @@ const Cancelamentos = () => {
           workflow={workflowMap.get(selectedCliente.cliente_id)}
           events={selectedEvents}
           chamadosCliente={selectedChamados}
-          onClose={() => setSelectedCliente(null)}
+          onClose={() => setFilter("selectedClienteId", "")}
           onStartTreatment={() => addToWorkflow(selectedCliente.cliente_id)}
           onUpdateStatus={(s) => updateStatus(selectedCliente.cliente_id, s)}
           onUpdateTags={(t) => updateTags(selectedCliente.cliente_id, t)}

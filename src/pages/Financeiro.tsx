@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from "react";
+import { useMemo, useCallback } from "react";
 import { usePageFilters } from "@/hooks/usePageFilters";
 import { useNavigate } from "react-router-dom";
 import { useActiveIsp } from "@/hooks/useActiveIsp";
@@ -68,7 +68,8 @@ const Financeiro = () => {
   const { getBucket } = useRiskBucketConfig();
   const { workflowMap, addToWorkflow, updateStatus, updateTags, updateOwner } = useCrmWorkflow();
   const { chamados } = useChamados();
-  const [selectedClienteId, setSelectedClienteId] = useState<number | null>(null);
+  const selectedClienteId = filters.selectedClienteId ? parseInt(filters.selectedClienteId, 10) || null : null;
+  const setSelectedClienteId = (id: number | null) => setFilter("selectedClienteId", id ? String(id) : "");
 
   const churnMap = useMemo(() => {
     const m = new Map<number, { score: number; bucket: string }>();
@@ -105,6 +106,7 @@ const Financeiro = () => {
     ordemPlanoDecrescente: true as boolean,
     sortColuna: "churnScore" as SortColumn,
     sortDir: "desc" as "asc" | "desc",
+    selectedClienteId: "" as string,
   });
   const { periodo, plano, metodo, filial, ordemPlanoDecrescente, sortColuna, sortDir } = filters;
 

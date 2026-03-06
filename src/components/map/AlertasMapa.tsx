@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef } from "react";
-import { MapContainer, TileLayer, CircleMarker, Popup, Rectangle, useMap, Tooltip as LeafletTooltip } from "react-leaflet";
+import { MapContainer, TileLayer, CircleMarker, Popup, Rectangle, useMap, useMapEvents, Tooltip as LeafletTooltip } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 
 interface MapPoint {
@@ -26,6 +26,7 @@ interface AlertasMapaProps {
   disableScrollZoom?: boolean;
   fixedBounds?: { minLat: number; maxLat: number; minLng: number; maxLng: number };
   churnPeriodDays?: string; // "7" | "30" | "90" | "365" | "todos"
+  persistKey?: string; // sessionStorage key for zoom/center persistence
 }
 
 // ── FitToBounds: fits map to fixedBounds when it changes (ISP switch), NOT on filter change ──
@@ -106,12 +107,53 @@ function SmartFitBounds({ points }: { points: { lat: number; lng: number }[] }) 
   return null;
 }
 
+// ── PersistMapView: saves/restores map zoom+center to sessionStorage ──
+// Save: on every moveend/zoomend
+// Restore: on mount (runs after FitToBounds, so saved view wins when returning to same ISP)
+function PersistMapView({ persistKey }: { persistKey: string }) {
+  const map = useMap();
+  const ssKey = `uf_map_view_${persistKey}`;
+  const hasMounted = useRef(false);
+
+  // Restore saved view on mount / when persistKey changes
+  useEffect(() => {
+    hasMounted.current = false; // allow restore when key changes (ISP/filial switch)
+  }, [ssKey]);
+
+  useEffect(() => {
+    if (hasMounted.current) return;
+    hasMounted.current = true;
+    try {
+      const stored = sessionStorage.getItem(ssKey);
+      if (!stored) return;
+      const { lat, lng, zoom } = JSON.parse(stored);
+      if (typeof lat === "number" && typeof lng === "number" && typeof zoom === "number") {
+        map.setView([lat, lng], zoom, { animate: false });
+      }
+    } catch {}
+  }, [map, ssKey]);
+
+  // Persist on every pan/zoom
+  useMapEvents({
+    moveend: () => {
+      try {
+        const c = map.getCenter();
+        sessionStorage.setItem(ssKey, JSON.stringify({ lat: c.lat, lng: c.lng, zoom: map.getZoom() }));
+      } catch {}
+    },
+  });
+
+  return null;
+}
+
 // ── SmartGridFocus: zoom travado no square mais quente, 10×10 squares visíveis ──
 // Dispara uma vez por ISP (boundsKey). Nunca re-dispara em troca de filtro.
-function SmartGridFocus({ validPoints, gridBounds, rows, cols }: {
+// Skips if a saved view already exists for persistKey (user navigated back).
+function SmartGridFocus({ validPoints, gridBounds, rows, cols, persistKey }: {
   validPoints: MapPoint[];
   gridBounds: { minLat: number; maxLat: number; minLng: number; maxLng: number };
   rows: number; cols: number;
+  persistKey?: string;
 }) {
   const map = useMap();
   const hasFocused = useRef('');
@@ -122,6 +164,12 @@ function SmartGridFocus({ validPoints, gridBounds, rows, cols }: {
     if (validPoints.length === 0) return;
     // Já focou para este ISP — ignora troca de filtro
     if (hasFocused.current === boundsKey) return;
+    // Usuário voltou à página com saved view — não sobrescrever
+    if (persistKey) {
+      try {
+        if (sessionStorage.getItem(`uf_map_view_${persistKey}`)) return;
+      } catch {}
+    }
     hasFocused.current = boundsKey;
 
     const cellLat = (maxLat - minLat) / rows;
@@ -158,7 +206,7 @@ function SmartGridFocus({ validPoints, gridBounds, rows, cols }: {
       [[centerLat - halfLat, centerLng - halfLng], [centerLat + halfLat, centerLng + halfLng]],
       { animate: true, padding: [4, 4] }
     );
-  }, [boundsKey, validPoints, map, minLat, maxLat, minLng, maxLng, rows, cols]);
+  }, [boundsKey, validPoints, map, minLat, maxLat, minLng, maxLng, rows, cols, persistKey]);
 
   return null;
 }
@@ -365,7 +413,7 @@ function GridSquares({ points, filter, bounds, rows, cols }: {
 
 // ── Main Component ──
 
-export function AlertasMapa({ data, activeFilter, viewMode = "grid", height, disableScrollZoom = false, fixedBounds, churnPeriodDays }: AlertasMapaProps) {
+export function AlertasMapa({ data, activeFilter, viewMode = "grid", height, disableScrollZoom = false, fixedBounds, churnPeriodDays, persistKey }: AlertasMapaProps) {
   const validPoints = useMemo(() => {
     return data.filter((p) => {
       if (p.geo_lat === undefined || p.geo_lng === undefined || isNaN(p.geo_lat) || isNaN(p.geo_lng) || p.geo_lat === 0 || p.geo_lng === 0) return false;
@@ -478,8 +526,10 @@ export function AlertasMapa({ data, activeFilter, viewMode = "grid", height, dis
             gridBounds={gridBounds}
             rows={rows}
             cols={cols}
+            persistKey={persistKey}
           />
         )}
+        {persistKey && <PersistMapView persistKey={persistKey} />}
 
         {viewMode === "grid" ? (
           /*
