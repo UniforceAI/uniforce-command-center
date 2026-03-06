@@ -35,6 +35,7 @@ const Index = () => {
 
   const [selectedCliente, setSelectedCliente] = useState<Chamado | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [selectedCrmClienteId, setSelectedCrmClienteId] = useState<number | null>(null);
 
   // Filtros — persisted in sessionStorage for the session
   const { filters, setFilter } = usePageFilters("chamados-frequentes", {
@@ -42,10 +43,7 @@ const Index = () => {
     status: "todos" as string,
     urgencia: "todas" as string,
     setor: "todos" as string,
-    selectedCrmClienteId: "" as string,
   });
-
-  const selectedCrmClienteId = filters.selectedCrmClienteId ? parseInt(filters.selectedCrmClienteId, 10) || null : null;
   const { periodo, status, urgencia, setor } = filters;
 
   // Transform raw chamados from hook into Chamado[] type with dedup
@@ -222,8 +220,8 @@ const Index = () => {
     const clienteId = typeof chamado["ID Cliente"] === 'string'
       ? parseInt(chamado["ID Cliente"], 10)
       : chamado["ID Cliente"];
-    setFilter("selectedCrmClienteId", String(clienteId));
-  }, [setFilter]);
+    setSelectedCrmClienteId(clienteId);
+  }, []);
 
   const selectedCrmCliente = useMemo(() => {
     if (!selectedCrmClienteId) return null;
@@ -471,7 +469,7 @@ const Index = () => {
           workflow={workflowMap.get(selectedCrmCliente.cliente_id)}
           events={selectedCrmEvents}
           chamadosCliente={selectedCrmChamados}
-          onClose={() => setFilter("selectedCrmClienteId", "")}
+          onClose={() => setSelectedCrmClienteId(null)}
           onStartTreatment={async () => {
             await addToWorkflow(selectedCrmCliente.cliente_id);
           }}

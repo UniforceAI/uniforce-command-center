@@ -154,30 +154,18 @@ const VisaoGeral = () => {
     bairro: "todos" as string,
     plano: "todos" as string,
     filial: "todos" as string,
-    mapViewMode: "grid" as string,
-    mapTab: "chamados" as string,
-    mapLightboxOpen: "false" as string,
-    selectedClienteRiscoId: "" as string,
   });
   const { periodo, uf, cidade, bairro, plano, filial } = filters;
-  const mapViewMode = filters.mapViewMode as "markers" | "grid";
-  const mapTab = filters.mapTab;
-  const mapLightboxOpen = filters.mapLightboxOpen === "true";
   const filialIdForCoverage = filial === "todos" ? null : filial;
   const { bounds: ispCoverageBounds, isRecalculating: coverageRecalculating } =
     useIspCoverage(ispId, filialIdForCoverage);
+  const [mapTab, setMapTab] = useState("chamados");
   const [churnChartMode, setChurnChartMode] = useState<"volume" | "taxa">("volume");
   const [geoMetric, setGeoMetric] = useState<GeoMetric>("financeiro");
   const [fatoresMode, setFatoresMode] = useState<"risco" | "cancelados">("risco");
-
-  // selectedClienteRisco: derived from persisted ID — reopens CRM drawer after tab navigation
-  const selectedClienteRisco = useMemo<ChurnStatus | null>(() => {
-    const id = parseInt(filters.selectedClienteRiscoId, 10);
-    if (!id) return null;
-    return churnStatus.find(c => c.cliente_id === id) || null;
-  }, [filters.selectedClienteRiscoId, churnStatus]);
-  const setSelectedClienteRisco = (c: ChurnStatus | null) =>
-    setFilter("selectedClienteRiscoId", c ? String(c.cliente_id) : "");
+  const [selectedClienteRisco, setSelectedClienteRisco] = useState<ChurnStatus | null>(null);
+  const [mapLightboxOpen, setMapLightboxOpen] = useState(false);
+  const [mapViewMode, setMapViewMode] = useState<"markers" | "grid">("markers");
 
   // Mapeamento de IDs de cidade para nomes
   const cidadeIdMap: Record<string, string> = {
@@ -1287,23 +1275,23 @@ const VisaoGeral = () => {
                         {/* Grid/Markers toggle */}
                         <div className="flex gap-1 bg-muted rounded-md p-0.5">
                           <button
-                            onClick={() => setFilter("mapViewMode", "grid")}
+                            onClick={() => setMapViewMode("grid")}
                             title="Mapa de quadrantes"
                             className={`p-1 rounded text-xs transition-colors ${mapViewMode === "grid" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-background"}`}
                           >
                             <Grid3X3 className="h-3.5 w-3.5" />
                           </button>
                           <button
-                            onClick={() => setFilter("mapViewMode", "markers")}
+                            onClick={() => setMapViewMode("markers")}
                             title="Marcadores individuais"
                             className={`p-1 rounded text-xs transition-colors ${mapViewMode === "markers" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-background"}`}
                           >
                             <MapPin className="h-3.5 w-3.5" />
                           </button>
                         </div>
-                        <MapTabs activeTab={mapTab} onTabChange={(t) => setFilter("mapTab", t)} availableTabs={["chamados", "vencido", "churn"]} />
+                        <MapTabs activeTab={mapTab} onTabChange={setMapTab} availableTabs={["chamados", "vencido", "churn"]} />
                         <button
-                          onClick={() => setFilter("mapLightboxOpen", "true")}
+                          onClick={() => setMapLightboxOpen(true)}
                           className="p-1.5 rounded-md hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
                           title="Expandir mapa"
                         >
@@ -1322,7 +1310,6 @@ const VisaoGeral = () => {
                         disableScrollZoom={true}
                         churnPeriodDays={periodo}
                         fixedBounds={ispCoverageBounds ?? allMapBounds}
-                        persistKey={`${ispId}_${filial}`}
                       />
                     )}
                     {mapLightboxOpen && (
@@ -1337,7 +1324,7 @@ const VisaoGeral = () => {
 
             {/* Map Lightbox */}
             {mapLightboxOpen && (
-              <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4" onClick={() => setFilter("mapLightboxOpen", "false")}>
+              <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4" onClick={() => setMapLightboxOpen(false)}>
                 <div className="relative w-full max-w-[95vw] h-[85vh] bg-card rounded-xl overflow-hidden border shadow-2xl" onClick={(e) => e.stopPropagation()}>
                   <div className="flex items-center justify-between px-4 py-3 border-b bg-card">
                     <div className="flex items-center gap-3">
@@ -1347,21 +1334,21 @@ const VisaoGeral = () => {
                       </CardTitle>
                       <div className="flex gap-1 bg-muted rounded-md p-0.5">
                         <button
-                          onClick={() => setFilter("mapViewMode", "grid")}
+                          onClick={() => setMapViewMode("grid")}
                           className={`p-1 rounded text-xs transition-colors ${mapViewMode === "grid" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-background"}`}
                         >
                           <Grid3X3 className="h-3.5 w-3.5" />
                         </button>
                         <button
-                          onClick={() => setFilter("mapViewMode", "markers")}
+                          onClick={() => setMapViewMode("markers")}
                           className={`p-1 rounded text-xs transition-colors ${mapViewMode === "markers" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-background"}`}
                         >
                           <MapPin className="h-3.5 w-3.5" />
                         </button>
                       </div>
-                      <MapTabs activeTab={mapTab} onTabChange={(t) => setFilter("mapTab", t)} availableTabs={["chamados", "vencido", "churn"]} />
+                      <MapTabs activeTab={mapTab} onTabChange={setMapTab} availableTabs={["chamados", "vencido", "churn"]} />
                     </div>
-                    <button onClick={() => setFilter("mapLightboxOpen", "false")} className="p-2 rounded-md hover:bg-muted transition-colors">
+                    <button onClick={() => setMapLightboxOpen(false)} className="p-2 rounded-md hover:bg-muted transition-colors">
                       <X className="h-5 w-5" />
                     </button>
                   </div>
@@ -1373,7 +1360,6 @@ const VisaoGeral = () => {
                       height="100%"
                       churnPeriodDays={periodo}
                       fixedBounds={ispCoverageBounds ?? allMapBounds}
-                      persistKey={`${ispId}_${filial}_lightbox`}
                     />
                   </div>
                 </div>
@@ -1478,7 +1464,7 @@ const VisaoGeral = () => {
           workflow={workflowMap.get(selectedClienteRisco.cliente_id)}
           events={selectedClienteRiscoEvents}
           chamadosCliente={selectedClienteRiscoChamados}
-          onClose={() => setFilter("selectedClienteRiscoId", "")}
+          onClose={() => setSelectedClienteRisco(null)}
           onStartTreatment={async () => {
             await handleStartTreatmentVG(selectedClienteRisco);
           }}
