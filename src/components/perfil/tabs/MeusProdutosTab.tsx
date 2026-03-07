@@ -337,9 +337,10 @@ export function MeusProdutosTab() {
             })}
           </div>
         )}
+      </div>
       </div>}
 
-      {/* ─── Add-ons (visível apenas fora do modo Asaas, ou em test mode) ─── */}
+      {/* Add-ons (visível apenas fora do modo Asaas, ou em test mode) */}
       {(!isAsaasLegacy || testMode) && catalog && catalog.addons.length > 0 && (
         <div>
           <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
