@@ -58,7 +58,7 @@ export function MeusProdutosTab() {
   const [testMode, setTestMode] = useState(false);
 
   const { data: subscriptionData, isLoading: subLoading, refetch: refetchSub } = useStripeSubscription();
-  const { data: catalog, isLoading: catalogLoading } = useStripeProducts();
+  const { data: catalog, isLoading: catalogLoading } = useStripeProducts(testMode);
   const checkout = useStripeCheckout();
   const portal = useStripeCustomerPortal();
 
