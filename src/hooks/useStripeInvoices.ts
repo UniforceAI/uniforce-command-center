@@ -1,8 +1,9 @@
 // src/hooks/useStripeInvoices.ts
-// Hook TanStack Query para buscar histórico de faturas Stripe do ISP
-
 import { useQuery } from "@tanstack/react-query";
 import { externalSupabase } from "@/integrations/supabase/external-client";
+
+const FUNCTIONS_URL = "https://yqdqmudsnjhixtxldqwi.supabase.co/functions/v1";
+const ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlxZHFtdWRzbmpoaXh0eGxkcXdpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTY0MjEwMzEsImV4cCI6MjA3MTk5NzAzMX0.UsrIuEgtJVdhZ0b76VLOjT1zVn2-OWeORGFoy487MfY";
 
 export interface StripeInvoiceLine {
   description: string;
@@ -28,19 +29,24 @@ export interface StripeInvoice {
   lines: StripeInvoiceLine[];
 }
 
-export function useStripeInvoices() {
+export function useStripeInvoices(testMode = false) {
   return useQuery<{ invoices: StripeInvoice[] }>({
-    queryKey: ["stripe-invoices"],
+    queryKey: ["stripe-invoices", testMode],
     queryFn: async () => {
-      const token = (await externalSupabase.auth.getSession()).data.session?.access_token ?? null;
-
-      const { data, error } = await externalSupabase.functions.invoke("stripe-invoices", {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      const token = (await externalSupabase.auth.getSession()).data.session?.access_token;
+      const res = await fetch(`${FUNCTIONS_URL}/stripe-invoices`, {
+        method: "POST",
+        headers: {
+          "apikey": ANON_KEY,
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          ...(testMode ? { "X-Stripe-Test-Mode": "true" } : {}),
+        },
       });
-      if (error) throw error;
-      return data as { invoices: StripeInvoice[] };
+      if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`);
+      return res.json() as Promise<{ invoices: StripeInvoice[] }>;
     },
-    staleTime: 1000 * 60 * 10, // 10 minutos
+    staleTime: 1000 * 60 * 10,
     retry: 2,
   });
 }
