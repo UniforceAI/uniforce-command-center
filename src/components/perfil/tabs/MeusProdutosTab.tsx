@@ -55,8 +55,8 @@ export function MeusProdutosTab() {
   // ISP uniforce é o ambiente de desenvolvimento — usa test mode automaticamente
   const testMode = ispId === "uniforce";
 
-  const { data: subscriptionData, isLoading: subLoading, refetch: refetchSub } = useStripeSubscription();
-  const { data: catalog, isLoading: catalogLoading } = useStripeProducts(testMode);
+  const { data: subscriptionData, isLoading: subLoading, isError: subError } = useStripeSubscription();
+  const { data: catalog, isLoading: catalogLoading, isError: catalogError, error: catalogErrorObj } = useStripeProducts(testMode);
   const checkout = useStripeCheckout();
   const portal = useStripeCustomerPortal();
 
@@ -119,6 +119,20 @@ export function MeusProdutosTab() {
           <div className="flex-1 min-w-0">
             <p className="text-sm font-medium text-amber-800">Ambiente de Desenvolvimento — Modo Teste Stripe</p>
             <p className="text-xs text-muted-foreground">Nenhuma cobrança real. Cartão de teste: 4242 4242 4242 4242 · exp 12/34 · cvv 123</p>
+          </div>
+        </div>
+      )}
+
+      {/* ─── Debug: erro no carregamento (temporário) ─── */}
+      {(subError || catalogError) && (
+        <div className="flex items-start gap-2 p-3 rounded-lg bg-red-50 border border-red-200 text-sm text-red-700">
+          <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+          <div>
+            <p className="font-medium">Erro ao carregar dados Stripe</p>
+            <p className="text-xs mt-0.5">
+              {subError && "stripe-subscription falhou. "}
+              {catalogError && `stripe-list-products falhou: ${(catalogErrorObj as Error)?.message || "erro desconhecido"}`}
+            </p>
           </div>
         </div>
       )}
