@@ -81,14 +81,7 @@ const App = () => (
                 </ProtectedRoute>
               }
             />
-            <Route
-              path="/onboarding"
-              element={
-                <ProtectedRoute requireSelectedIsp={false}>
-                  <Onboarding />
-                </ProtectedRoute>
-              }
-            />
+              {/* Onboarding route removed — page no longer exists */}
             <Route
               path="/"
               element={

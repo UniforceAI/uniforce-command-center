@@ -36,7 +36,7 @@ const PARALLEL_LIMIT = 6;   // max simultaneous requests per round
  */
 async function fetchEventosBatches(
   count: number,
-  buildQuery: (from: number, to: number) => ReturnType<typeof externalSupabase.from>
+  buildQuery: (from: number, to: number) => any
 ): Promise<any[]> {
   const total = Math.min(count, MAX_RECORDS);
   const totalPages = Math.ceil(total / BATCH_SIZE);
