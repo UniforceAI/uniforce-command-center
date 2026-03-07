@@ -2,7 +2,6 @@
 // Hook TanStack Query para buscar histórico de faturas Stripe do ISP
 
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
 import { externalSupabase } from "@/integrations/supabase/external-client";
 
 export interface StripeInvoiceLine {
@@ -33,13 +32,9 @@ export function useStripeInvoices() {
   return useQuery<{ invoices: StripeInvoice[] }>({
     queryKey: ["stripe-invoices"],
     queryFn: async () => {
-      const { data: sessData } = await externalSupabase.auth.refreshSession();
-      const token =
-        sessData?.session?.access_token ??
-        (await externalSupabase.auth.getSession()).data.session?.access_token ??
-        null;
+      const token = (await externalSupabase.auth.getSession()).data.session?.access_token ?? null;
 
-      const { data, error } = await supabase.functions.invoke("stripe-invoices", {
+      const { data, error } = await externalSupabase.functions.invoke("stripe-invoices", {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
       if (error) throw error;
