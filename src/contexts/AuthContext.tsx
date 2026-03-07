@@ -68,8 +68,6 @@ export const useAuth = () => useContext(AuthContext);
 // ─────────────────────────────────────────────────────────────
 
 const SUPER_ADMIN_DOMAINS = ["uniforce.com.br"];
-const UNIFORCE_SENTINEL_ISP = "uniforce";
-
 const DOMAIN_ISP_FALLBACK: Record<
   string,
   { isp_id: string; isp_nome: string; instancia_isp: string }
@@ -103,7 +101,6 @@ async function loadAvailableIsps(): Promise<IspOption[]> {
       .from("isps")
       .select("isp_id, isp_nome, instancia_isp")
       .eq("ativo", true)
-      .neq("isp_id", UNIFORCE_SENTINEL_ISP)
       .order("isp_nome");
 
     if (error || !data?.length) return [];
