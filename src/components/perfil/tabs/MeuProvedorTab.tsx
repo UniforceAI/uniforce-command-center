@@ -85,10 +85,13 @@ export function MeuProvedorTab({ onProfileLoaded }: MeuProvedorTabProps) {
           setNotFound(true);
           setForm({ ...EMPTY_FORM, nome_fantasia: ispNome });
           setOriginalForm({ ...EMPTY_FORM, nome_fantasia: ispNome });
+          onProfileLoaded?.({ leadStatus: "" });
         }
       } catch (err) {
         console.error("Failed to load profile from Notion:", err);
-        toast({ title: "Erro ao carregar perfil", description: "Não foi possível buscar os dados.", variant: "destructive" });
+        const msg = err instanceof Error ? err.message : "Não foi possível buscar os dados.";
+        toast({ title: "Erro ao carregar perfil", description: msg, variant: "destructive" });
+        onProfileLoaded?.({ leadStatus: "" });
       } finally {
         setLoading(false);
       }
@@ -139,7 +142,8 @@ export function MeuProvedorTab({ onProfileLoaded }: MeuProvedorTabProps) {
       toast({ title: "Perfil salvo", description: "Os dados foram atualizados com sucesso." });
     } catch (err) {
       console.error("Failed to save profile:", err);
-      toast({ title: "Erro ao salvar", description: "Não foi possível atualizar os dados.", variant: "destructive" });
+      const msg = err instanceof Error ? err.message : "Não foi possível atualizar os dados.";
+      toast({ title: "Erro ao salvar", description: msg, variant: "destructive" });
     } finally {
       setSaving(false);
     }
