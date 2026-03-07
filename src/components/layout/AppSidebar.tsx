@@ -117,7 +117,7 @@ export function AppSidebar() {
                       <SidebarMenuSub>
                         {configSubItems.map((sub) => (
                           <SidebarMenuSubItem key={sub.title}>
-                            <SidebarMenuSubButton asChild isActive={location.pathname === sub.url || location.pathname.startsWith(sub.url + "?")}>
+                            <SidebarMenuSubButton asChild isActive={location.pathname === sub.url}>
                               <NavLink to={sub.url}>
                                 <sub.icon className="h-3.5 w-3.5" />
                                 <span>{sub.title}</span>
