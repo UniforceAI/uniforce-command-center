@@ -1,4 +1,4 @@
-import { AlertTriangle, ThumbsUp, LayoutDashboard, DollarSign, UserX, XCircle, PanelLeftClose, PanelLeft, Settings, SlidersHorizontal, Building2, Users } from "lucide-react";
+import { AlertTriangle, ThumbsUp, LayoutDashboard, DollarSign, UserX, XCircle, PanelLeftClose, Settings, SlidersHorizontal, Building2 } from "lucide-react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import {
   Sidebar,
@@ -12,8 +12,8 @@ import {
   SidebarMenuSub,
   SidebarMenuSubButton,
   SidebarMenuSubItem,
-  useSidebar } from
-"@/components/ui/sidebar";
+  useSidebar,
+} from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { ChevronRight } from "lucide-react";
@@ -22,19 +22,18 @@ import uniforceLogo from "@/assets/uniforce-logo.png";
 import unforceIcon from "@/assets/uniforce-icon.png";
 
 const menuItems = [
-{ title: "Visão Geral", url: "/", icon: LayoutDashboard },
-{ title: "Financeiro", url: "/financeiro", icon: DollarSign },
-{ title: "Chamados Frequentes", url: "/chamados", icon: AlertTriangle },
-{ title: "Clientes em Risco", url: "/crm", icon: UserX },
-{ title: "Cancelamentos", url: "/cancelamentos", icon: XCircle },
-{ title: "NPS", url: "/nps", icon: ThumbsUp }];
-
+  { title: "Visão Geral",         url: "/",             icon: LayoutDashboard },
+  { title: "Financeiro",          url: "/financeiro",   icon: DollarSign },
+  { title: "Chamados Frequentes", url: "/chamados",     icon: AlertTriangle },
+  { title: "Clientes em Risco",   url: "/crm",          icon: UserX },
+  { title: "Cancelamentos",       url: "/cancelamentos",icon: XCircle },
+  { title: "NPS",                 url: "/nps",          icon: ThumbsUp },
+];
 
 const configSubItems = [
-{ title: "Perfil do Provedor", url: "/configuracoes/perfil", icon: Building2 },
-{ title: "Contas de Acesso", url: "/configuracoes/contas", icon: Users },
-{ title: "Setup do Provedor", url: "/configuracoes", icon: SlidersHorizontal }];
-
+  { title: "Meu Provedor",     url: "/configuracoes/perfil", icon: Building2 },
+  { title: "Setup do Provedor", url: "/configuracoes",       icon: SlidersHorizontal },
+];
 
 export function AppSidebar() {
   const { state, toggleSidebar } = useSidebar();
@@ -48,52 +47,42 @@ export function AppSidebar() {
   return (
     <Sidebar collapsible="icon" className="border-r border-border/50">
       <SidebarContent className="bg-slate-100">
+
         {/* Logo + Toggle */}
         <div className="px-3 py-5 flex items-center justify-center gap-2">
-          {collapsed ?
-          <button onClick={() => {toggleSidebar();navigate("/");}} className="mx-auto cursor-pointer">
+          {collapsed ? (
+            <button onClick={() => { toggleSidebar(); navigate("/"); }} className="mx-auto cursor-pointer">
               <img src={unforceIcon} alt="Uniforce" className="h-8 w-auto object-contain" />
-            </button> :
-
-          <div className="flex items-center justify-between w-full">
+            </button>
+          ) : (
+            <div className="flex items-center justify-between w-full">
               <button onClick={() => navigate("/")} className="cursor-pointer mx-auto">
                 <img src={uniforceLogo} alt="Uniforce" className="h-9" />
               </button>
-              <Button
-              variant="ghost"
-              size="sm"
-              onClick={toggleSidebar}
-              className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground shrink-0">
-
+              <Button variant="ghost" size="sm" onClick={toggleSidebar} className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground shrink-0">
                 <PanelLeftClose className="h-4 w-4" />
               </Button>
             </div>
-          }
+          )}
         </div>
 
+        {/* Main nav */}
         <SidebarGroup>
           <SidebarGroupLabel className={collapsed ? "sr-only" : "text-[10px] uppercase tracking-widest text-muted-foreground/60 font-semibold"}>
             Meu Provedor
           </SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {menuItems.map((item) => {
-                const isActive = location.pathname === item.url;
-                return (
-                  <SidebarMenuItem key={item.title}>
-                    <SidebarMenuButton
-                      asChild
-                      isActive={isActive}
-                      tooltip={item.title}>
-
-                      <NavLink to={item.url} className={collapsed ? "" : "text-[18px]"}>
-                        <item.icon className={collapsed ? "!h-[24px] !w-[24px]" : "h-5 w-5"} />
-                        <span>{item.title}</span>
-                      </NavLink>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>);
-
-              })}
+              {menuItems.map((item) => (
+                <SidebarMenuItem key={item.title}>
+                  <SidebarMenuButton asChild isActive={location.pathname === item.url} tooltip={item.title}>
+                    <NavLink to={item.url} className={collapsed ? "" : "text-[18px]"}>
+                      <item.icon className={collapsed ? "!h-[24px] !w-[24px]" : "h-5 w-5"} />
+                      <span>{item.title}</span>
+                    </NavLink>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
@@ -105,28 +94,20 @@ export function AppSidebar() {
           </SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {collapsed ?
-              <SidebarMenuItem>
-                  <SidebarMenuButton
-                  asChild
-                  isActive={isConfigActive}
-                  tooltip="Configurações">
-
-                    <NavLink to="/configuracoes">
+              {collapsed ? (
+                <SidebarMenuItem>
+                  <SidebarMenuButton asChild isActive={isConfigActive} tooltip="Configurações">
+                    <NavLink to="/configuracoes/perfil">
                       <Settings className="!h-[24px] !w-[24px]" />
                       <span>Configurações</span>
                     </NavLink>
                   </SidebarMenuButton>
-                </SidebarMenuItem> :
-
-              <Collapsible open={configOpen} onOpenChange={setConfigOpen}>
+                </SidebarMenuItem>
+              ) : (
+                <Collapsible open={configOpen} onOpenChange={setConfigOpen}>
                   <SidebarMenuItem>
                     <CollapsibleTrigger asChild>
-                      <SidebarMenuButton
-                      isActive={isConfigActive}
-                      tooltip="Configurações"
-                      className="w-full">
-
+                      <SidebarMenuButton isActive={isConfigActive} tooltip="Configurações" className="w-full">
                         <Settings className="h-5 w-5" />
                         <span>Configurações</span>
                         <ChevronRight className={`ml-auto h-3 w-3 transition-transform ${configOpen ? "rotate-90" : ""}`} />
@@ -134,28 +115,26 @@ export function AppSidebar() {
                     </CollapsibleTrigger>
                     <CollapsibleContent>
                       <SidebarMenuSub>
-                        {configSubItems.map((sub) =>
-                      <SidebarMenuSubItem key={sub.title}>
-                            <SidebarMenuSubButton
-                          asChild
-                          isActive={location.pathname === sub.url || (sub.url === "/configuracoes" && location.pathname === "/configuracoes")}>
-
+                        {configSubItems.map((sub) => (
+                          <SidebarMenuSubItem key={sub.title}>
+                            <SidebarMenuSubButton asChild isActive={location.pathname === sub.url || location.pathname.startsWith(sub.url + "?")}>
                               <NavLink to={sub.url}>
                                 <sub.icon className="h-3.5 w-3.5" />
                                 <span>{sub.title}</span>
                               </NavLink>
                             </SidebarMenuSubButton>
                           </SidebarMenuSubItem>
-                      )}
+                        ))}
                       </SidebarMenuSub>
                     </CollapsibleContent>
                   </SidebarMenuItem>
                 </Collapsible>
-              }
+              )}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
-      </SidebarContent>
-    </Sidebar>);
 
+      </SidebarContent>
+    </Sidebar>
+  );
 }
