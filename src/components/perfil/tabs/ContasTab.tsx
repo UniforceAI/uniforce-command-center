@@ -57,6 +57,7 @@ const ASSIGNABLE_ROLES_ADMIN: AppRole[] = ["admin", "support_staff", "user"];
 const ASSIGNABLE_ROLES_SUPER: AppRole[] = ["super_admin", "admin", "support_staff", "user"];
 
 const EDGE_FN_URL = `https://ohvddptghpcrenxdpyxm.supabase.co/functions/v1/manage-users`;
+const RESET_REDIRECT = "https://attendant-analytics.lovable.app/reset-senha";
 
 // ─── Edge Function Helper ─────────────────────────────────────────────────────
 
@@ -93,24 +94,37 @@ export function ContasTab() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
 
-  // Create dialog state
+  // ── Create dialog ──────────────────────────────────────────────────────────
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [createForm, setCreateForm] = useState({ full_name: "", email: "", password: "", role: "user" as AppRole });
-  const [showPassword, setShowPassword] = useState(false);
+  const [showCreatePwd, setShowCreatePwd] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [createSuccess, setCreateSuccess] = useState(false);
 
-  // Edit dialog state
+  // ── Edit role dialog ───────────────────────────────────────────────────────
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editingAccount, setEditingAccount] = useState<UserAccount | null>(null);
   const [formRole, setFormRole] = useState<AppRole>("user");
   const [isSaving, setIsSaving] = useState(false);
 
-  // Delete dialog state
+  // ── Delete dialog ──────────────────────────────────────────────────────────
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [accountToDelete, setAccountToDelete] = useState<UserAccount | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteConfirmEmail, setDeleteConfirmEmail] = useState("");
+
+  // ── Change own password dialog ─────────────────────────────────────────────
+  const [pwdDialogOpen, setPwdDialogOpen] = useState(false);
+  const [pwdForm, setPwdForm] = useState({ password: "", confirm: "" });
+  const [showNewPwd, setShowNewPwd] = useState(false);
+  const [isChangingPwd, setIsChangingPwd] = useState(false);
+  const [pwdSuccess, setPwdSuccess] = useState(false);
+
+  // ── Admin: reset other user's password (send email) ───────────────────────
+  const [resetEmailDialogOpen, setResetEmailDialogOpen] = useState(false);
+  const [accountToReset, setAccountToReset] = useState<UserAccount | null>(null);
+  const [isSendingReset, setIsSendingReset] = useState(false);
+  const [resetSent, setResetSent] = useState(false);
 
   // ── Data ──────────────────────────────────────────────────────────────────
 
@@ -161,7 +175,7 @@ export function ContasTab() {
 
   const resetCreateForm = () => {
     setCreateForm({ full_name: "", email: "", password: "", role: "user" });
-    setShowPassword(false);
+    setShowCreatePwd(false);
     setCreateSuccess(false);
   };
 
@@ -205,7 +219,7 @@ export function ContasTab() {
     }
   };
 
-  // ── Edit ──────────────────────────────────────────────────────────────────
+  // ── Edit role ─────────────────────────────────────────────────────────────
 
   const openEditDialog = (account: UserAccount) => {
     setEditingAccount(account);
@@ -253,6 +267,63 @@ export function ContasTab() {
     }
   };
 
+  // ── Change own password ───────────────────────────────────────────────────
+
+  const resetPwdForm = () => {
+    setPwdForm({ password: "", confirm: "" });
+    setShowNewPwd(false);
+    setPwdSuccess(false);
+  };
+
+  const handleChangeOwnPassword = async () => {
+    const { password, confirm } = pwdForm;
+    if (password !== confirm) {
+      toast({ title: "As senhas não coincidem", variant: "destructive" });
+      return;
+    }
+    if (password.length < 6) {
+      toast({ title: "A senha deve ter pelo menos 6 caracteres", variant: "destructive" });
+      return;
+    }
+    setIsChangingPwd(true);
+    try {
+      const { error } = await externalSupabase.auth.updateUser({ password });
+      if (error) throw error;
+      setPwdSuccess(true);
+      toast({ title: "Senha alterada!", description: "Sua senha foi atualizada com sucesso." });
+      setTimeout(() => { setPwdDialogOpen(false); resetPwdForm(); }, 1500);
+    } catch (err: any) {
+      toast({ title: "Erro ao alterar senha", description: err.message, variant: "destructive" });
+    } finally {
+      setIsChangingPwd(false);
+    }
+  };
+
+  // ── Admin: send reset email to other user ─────────────────────────────────
+
+  const openResetEmailDialog = (account: UserAccount) => {
+    setAccountToReset(account);
+    setResetSent(false);
+    setResetEmailDialogOpen(true);
+  };
+
+  const handleSendResetEmail = async () => {
+    if (!accountToReset?.email) return;
+    setIsSendingReset(true);
+    try {
+      const { error } = await externalSupabase.auth.resetPasswordForEmail(accountToReset.email, {
+        redirectTo: RESET_REDIRECT,
+      });
+      if (error) throw error;
+      setResetSent(true);
+      toast({ title: "Email enviado!", description: `Link de redefinição enviado para ${accountToReset.email}.` });
+    } catch (err: any) {
+      toast({ title: "Erro ao enviar email", description: err.message, variant: "destructive" });
+    } finally {
+      setIsSendingReset(false);
+    }
+  };
+
   // ── Derived ───────────────────────────────────────────────────────────────
 
   const filteredAccounts = accounts.filter((a) => {
@@ -261,6 +332,7 @@ export function ContasTab() {
   });
 
   const assignableRoles = isSuperAdmin ? ASSIGNABLE_ROLES_SUPER : ASSIGNABLE_ROLES_ADMIN;
+  const pwdMismatch = pwdForm.password.length > 0 && pwdForm.confirm.length > 0 && pwdForm.password !== pwdForm.confirm;
 
   // ── Access guard ──────────────────────────────────────────────────────────
 
@@ -410,20 +482,33 @@ export function ContasTab() {
                             <TableCell>
                               <DropdownMenu>
                                 <DropdownMenuTrigger asChild>
-                                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0" disabled={isCurrentUser}>
+                                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
                                     <MoreHorizontal className="h-4 w-4" />
                                   </Button>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end">
-                                  <DropdownMenuItem onClick={() => openEditDialog(account)}>
-                                    <Pencil className="h-3.5 w-3.5 mr-2" />
-                                    Alterar perfil
-                                  </DropdownMenuItem>
-                                  <DropdownMenuSeparator />
-                                  <DropdownMenuItem onClick={() => openDeleteDialog(account)} className="text-destructive focus:text-destructive">
-                                    <Trash2 className="h-3.5 w-3.5 mr-2" />
-                                    Excluir conta
-                                  </DropdownMenuItem>
+                                  {isCurrentUser ? (
+                                    <DropdownMenuItem onClick={() => { resetPwdForm(); setPwdDialogOpen(true); }}>
+                                      <KeyRound className="h-3.5 w-3.5 mr-2" />
+                                      Alterar minha senha
+                                    </DropdownMenuItem>
+                                  ) : (
+                                    <>
+                                      <DropdownMenuItem onClick={() => openEditDialog(account)}>
+                                        <Pencil className="h-3.5 w-3.5 mr-2" />
+                                        Alterar perfil
+                                      </DropdownMenuItem>
+                                      <DropdownMenuItem onClick={() => openResetEmailDialog(account)}>
+                                        <Mail className="h-3.5 w-3.5 mr-2" />
+                                        Redefinir senha
+                                      </DropdownMenuItem>
+                                      <DropdownMenuSeparator />
+                                      <DropdownMenuItem onClick={() => openDeleteDialog(account)} className="text-destructive focus:text-destructive">
+                                        <Trash2 className="h-3.5 w-3.5 mr-2" />
+                                        Excluir conta
+                                      </DropdownMenuItem>
+                                    </>
+                                  )}
                                 </DropdownMenuContent>
                               </DropdownMenu>
                             </TableCell>
@@ -483,12 +568,12 @@ export function ContasTab() {
                   <KeyRound className="h-3.5 w-3.5" /> Senha inicial
                 </Label>
                 <div className="relative">
-                  <Input id="ct-password" type={showPassword ? "text" : "password"} placeholder="Mínimo 6 caracteres"
+                  <Input id="ct-password" type={showCreatePwd ? "text" : "password"} placeholder="Mínimo 6 caracteres"
                     value={createForm.password} onChange={(e) => setCreateForm((f) => ({ ...f, password: e.target.value }))}
                     className="h-9 pr-10" minLength={6} />
-                  <button type="button" onClick={() => setShowPassword(!showPassword)}
+                  <button type="button" onClick={() => setShowCreatePwd(!showCreatePwd)}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors">
-                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    {showCreatePwd ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
                 </div>
                 <p className="text-[11px] text-muted-foreground">O colaborador poderá alterar a senha após o primeiro login.</p>
@@ -577,6 +662,134 @@ export function ContasTab() {
               disabled={isDeleting || deleteConfirmEmail !== accountToDelete?.email}>
               {isDeleting ? "Excluindo..." : "Excluir permanentemente"}
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Change Own Password Dialog ─────────────────────────────────────── */}
+      <Dialog open={pwdDialogOpen} onOpenChange={(open) => { if (!open) resetPwdForm(); setPwdDialogOpen(open); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <KeyRound className="h-5 w-5 text-primary" />
+              Alterar minha senha
+            </DialogTitle>
+            <DialogDescription>
+              Defina uma nova senha para sua conta. A alteração entra em vigor imediatamente.
+            </DialogDescription>
+          </DialogHeader>
+
+          {pwdSuccess ? (
+            <div className="flex flex-col items-center gap-4 py-6">
+              <div className="h-16 w-16 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
+                <CheckCircle className="h-8 w-8 text-green-600 dark:text-green-400" />
+              </div>
+              <div className="text-center">
+                <p className="font-semibold text-lg">Senha alterada!</p>
+                <p className="text-sm text-muted-foreground mt-1">Sua senha foi atualizada com sucesso.</p>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-4 py-2">
+              <div className="space-y-2">
+                <Label htmlFor="new-pwd" className="text-xs flex items-center gap-1.5">
+                  <KeyRound className="h-3.5 w-3.5" /> Nova senha
+                </Label>
+                <div className="relative">
+                  <Input
+                    id="new-pwd"
+                    type={showNewPwd ? "text" : "password"}
+                    placeholder="Mínimo 6 caracteres"
+                    value={pwdForm.password}
+                    onChange={(e) => setPwdForm((f) => ({ ...f, password: e.target.value }))}
+                    className="h-9 pr-10"
+                    minLength={6}
+                    autoComplete="new-password"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowNewPwd((v) => !v)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    {showNewPwd ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="confirm-pwd" className="text-xs flex items-center gap-1.5">
+                  <KeyRound className="h-3.5 w-3.5" /> Confirmar nova senha
+                </Label>
+                <Input
+                  id="confirm-pwd"
+                  type="password"
+                  placeholder="Repita a nova senha"
+                  value={pwdForm.confirm}
+                  onChange={(e) => setPwdForm((f) => ({ ...f, confirm: e.target.value }))}
+                  className="h-9"
+                  minLength={6}
+                  autoComplete="new-password"
+                />
+              </div>
+              {pwdMismatch && (
+                <p className="text-xs text-destructive flex items-center gap-1.5">
+                  <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                  As senhas não coincidem.
+                </p>
+              )}
+            </div>
+          )}
+
+          {!pwdSuccess && (
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setPwdDialogOpen(false)} disabled={isChangingPwd}>
+                Cancelar
+              </Button>
+              <Button
+                onClick={handleChangeOwnPassword}
+                disabled={isChangingPwd || !pwdForm.password || !pwdForm.confirm || pwdMismatch}
+              >
+                {isChangingPwd ? "Salvando..." : "Salvar nova senha"}
+              </Button>
+            </DialogFooter>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Admin: Reset Other User's Password Dialog ─────────────────────── */}
+      <Dialog open={resetEmailDialogOpen} onOpenChange={(open) => { if (!open) { setAccountToReset(null); setResetSent(false); } setResetEmailDialogOpen(open); }}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Mail className="h-5 w-5 text-primary" />
+              Redefinir senha
+            </DialogTitle>
+            <DialogDescription>
+              {resetSent
+                ? `Email enviado para ${accountToReset?.email}. Verifique a caixa de entrada.`
+                : `Um link de redefinição será enviado para ${accountToReset?.email}. O link expira em 24 horas.`}
+            </DialogDescription>
+          </DialogHeader>
+
+          {resetSent ? (
+            <div className="flex flex-col items-center gap-4 py-4">
+              <div className="h-14 w-14 rounded-full bg-primary/10 flex items-center justify-center">
+                <Mail className="h-7 w-7 text-primary" />
+              </div>
+              <p className="text-sm text-muted-foreground text-center">
+                Peça ao colaborador que verifique também a pasta de spam.
+              </p>
+            </div>
+          ) : null}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setResetEmailDialogOpen(false)} disabled={isSendingReset}>
+              {resetSent ? "Fechar" : "Cancelar"}
+            </Button>
+            {!resetSent && (
+              <Button onClick={handleSendResetEmail} disabled={isSendingReset}>
+                {isSendingReset ? "Enviando..." : "Enviar link"}
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
