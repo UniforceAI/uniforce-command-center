@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
-import { useChurnScoreConfig, CHURN_SCORE_DEFAULTS, ChurnScoreConfig } from "@/contexts/ChurnScoreConfigContext";
+import { useChurnScoreConfig, ChurnScoreConfig } from "@/contexts/ChurnScoreConfigContext";
 import { useRiskBucketConfig } from "@/hooks/useRiskBucketConfig";
 import { useChurnData } from "@/hooks/useChurnData";
 import { useChurnScore } from "@/hooks/useChurnScore";
@@ -16,12 +16,12 @@ import { useToast } from "@/hooks/use-toast";
 import { IspActions } from "@/components/shared/IspActions";
 import SetupChamados from "./SetupChamados";
 import {
-  Settings2, RotateCcw, Save, Info, ChevronRight, ChevronLeft,
+  Settings2, Save, Info, ChevronRight, ChevronLeft, X,
   Sparkles, CheckCircle, AlertTriangle, Lightbulb, Pencil,
   ShieldAlert, SlidersHorizontal, Headphones,
 } from "lucide-react";
 
-// ─── Types & Constants ────────────────────────────────────────────────────────
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 interface GatilhoField {
   key: keyof ChurnScoreConfig;
@@ -34,29 +34,31 @@ interface GatilhoField {
   color: string;
 }
 
+type BucketForm = { ok_max: number; alert_min: number; alert_max: number; critical_min: number };
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+
 const GATILHOS_FINANCEIRO: GatilhoField[] = [
-  { key: "finAtraso1a5",   label: "1–5 dias em atraso",    description: "Pontuação quando o cliente possui fatura com 1 a 5 dias de atraso.",    example: "Ex: 3 dias em atraso = 5pts (padrão)",    defaultVal: 5,  min: 0, max: 30, color: "bg-yellow-100 text-yellow-800 border-yellow-200" },
-  { key: "finAtraso6a15",  label: "6–15 dias em atraso",   description: "Pontuação quando o atraso está entre 6 e 15 dias.",                       example: "Ex: 10 dias em atraso = 10pts (padrão)",  defaultVal: 10, min: 0, max: 40, color: "bg-orange-100 text-orange-800 border-orange-200" },
-  { key: "finAtraso16a30", label: "16–30 dias em atraso",  description: "Pontuação quando o atraso está entre 16 e 30 dias.",                       example: "Ex: 20 dias em atraso = 15pts (padrão)",  defaultVal: 15, min: 0, max: 40, color: "bg-orange-100 text-orange-800 border-orange-200" },
-  { key: "finAtraso31a60", label: "31–60 dias em atraso",  description: "Pontuação quando o atraso está entre 31 e 60 dias.",                       example: "Ex: 45 dias em atraso = 20pts (padrão)",  defaultVal: 20, min: 0, max: 50, color: "bg-red-100 text-red-800 border-red-200" },
-  { key: "finAtraso60plus",label: "60+ dias em atraso",    description: "Pontuação quando o atraso ultrapassa 60 dias.",                            example: "Ex: 90 dias em atraso = 25pts (padrão)",  defaultVal: 25, min: 0, max: 50, color: "bg-red-100 text-red-800 border-red-200" },
-  { key: "financeiroTeto", label: "Teto máximo do pilar Financeiro", description: "Limite máximo de pontos que o pilar financeiro pode contribuir ao Churn Score.", example: "Independente da faixa, nunca ultrapassará este valor.", defaultVal: 30, min: 0, max: 60, color: "bg-destructive/10 text-destructive border-destructive/20" },
+  { key: "finAtraso1a5",    label: "1–5 dias em atraso",            description: "Pontuação quando o cliente possui fatura com 1 a 5 dias de atraso.",                          example: "Ex: 3 dias = 5pts (padrão)",            defaultVal: 5,  min: 0, max: 30, color: "bg-yellow-100 text-yellow-800 border-yellow-200" },
+  { key: "finAtraso6a15",   label: "6–15 dias em atraso",           description: "Pontuação quando o atraso está entre 6 e 15 dias.",                                            example: "Ex: 10 dias = 10pts (padrão)",           defaultVal: 10, min: 0, max: 40, color: "bg-orange-100 text-orange-800 border-orange-200" },
+  { key: "finAtraso16a30",  label: "16–30 dias em atraso",          description: "Pontuação quando o atraso está entre 16 e 30 dias.",                                            example: "Ex: 20 dias = 15pts (padrão)",           defaultVal: 15, min: 0, max: 40, color: "bg-orange-100 text-orange-800 border-orange-200" },
+  { key: "finAtraso31a60",  label: "31–60 dias em atraso",          description: "Pontuação quando o atraso está entre 31 e 60 dias.",                                            example: "Ex: 45 dias = 20pts (padrão)",           defaultVal: 20, min: 0, max: 50, color: "bg-red-100 text-red-800 border-red-200" },
+  { key: "finAtraso60plus", label: "60+ dias em atraso",            description: "Pontuação quando o atraso ultrapassa 60 dias.",                                                 example: "Ex: 90 dias = 25pts (padrão)",           defaultVal: 25, min: 0, max: 50, color: "bg-red-100 text-red-800 border-red-200" },
+  { key: "financeiroTeto",  label: "Teto máximo — pilar Financeiro", description: "Limite máximo que o pilar financeiro pode contribuir ao Churn Score.",                        example: "Nunca ultrapassa este valor.",           defaultVal: 30, min: 0, max: 60, color: "bg-destructive/10 text-destructive border-destructive/20" },
 ];
 
 const GATILHOS_SUPORTE: GatilhoField[] = [
-  { key: "chamados30dBase",  label: "+2 Chamados em 30 dias",        description: "Pontuação base quando o cliente acumula 2 ou mais chamados nos últimos 30 dias.", example: "Ex: 2 chamados = 25pts (padrão)", defaultVal: 25, min: 0, max: 50, color: "bg-orange-100 text-orange-800 border-orange-200" },
-  { key: "chamadoAdicional", label: "Chamado adicional (acima de 2)", description: "Pontos extras somados por cada chamado acima de 2 nos últimos 30 dias.",           example: "Ex: 3 chamados = base + 5pts · 4 chamados = base + 10pts", defaultVal: 5, min: 0, max: 30, color: "bg-yellow-100 text-yellow-800 border-yellow-200" },
+  { key: "chamados30dBase",  label: "+2 Chamados em 30 dias",        description: "Pontuação base quando o cliente acumula 2 ou mais chamados nos últimos 30 dias.", example: "Ex: 2 chamados = 25pts (padrão)",                  defaultVal: 25, min: 0, max: 50, color: "bg-orange-100 text-orange-800 border-orange-200" },
+  { key: "chamadoAdicional", label: "Chamado adicional (acima de 2)", description: "Pontos extras por cada chamado acima de 2 nos últimos 30 dias.",               example: "Ex: 3 ch. = base+5pts · 4 ch. = base+10pts",      defaultVal: 5,  min: 0, max: 30, color: "bg-yellow-100 text-yellow-800 border-yellow-200" },
 ];
 
 const GATILHOS_OUTROS: GatilhoField[] = [
-  { key: "npsDetrator",   label: "NPS Detrator",         description: "Pontuação adicionada quando o cliente possui avaliação NPS como Detrator (nota ≤ 6).",        example: "Ex: NPS nota 3 = +30pts (padrão)",              defaultVal: 30, min: 0, max: 50, color: "bg-orange-100 text-orange-800 border-orange-200" },
-  { key: "qualidade",     label: "Qualidade de Sinal",   description: "Peso máximo do pilar de Qualidade de sinal/serviço no Churn Score.",                            example: "Ex: problemas técnicos recorrentes = até 20pts", defaultVal: 20, min: 0, max: 40, color: "bg-purple-100 text-purple-800 border-purple-200" },
-  { key: "comportamental",label: "Comportamental",       description: "Peso máximo do pilar Comportamental (padrão de uso e engajamento) no Churn Score.",              example: "Ex: baixo engajamento = até 20pts (padrão)",     defaultVal: 20, min: 0, max: 40, color: "bg-blue-100 text-blue-800 border-blue-200" },
+  { key: "npsDetrator",    label: "NPS Detrator",        description: "Pontuação quando o cliente possui avaliação NPS Detrator (nota ≤ 6).",       example: "Ex: NPS nota 3 = +30pts (padrão)",              defaultVal: 30, min: 0, max: 50, color: "bg-orange-100 text-orange-800 border-orange-200" },
+  { key: "qualidade",      label: "Qualidade de Sinal",  description: "Peso máximo do pilar de Qualidade de sinal/serviço no Churn Score.",          example: "Ex: problemas recorrentes = até 20pts",          defaultVal: 20, min: 0, max: 40, color: "bg-purple-100 text-purple-800 border-purple-200" },
+  { key: "comportamental", label: "Comportamental",      description: "Peso máximo do pilar Comportamental (padrão de uso e engajamento).",           example: "Ex: baixo engajamento = até 20pts (padrão)",    defaultVal: 20, min: 0, max: 40, color: "bg-blue-100 text-blue-800 border-blue-200" },
 ];
 
-type BucketForm = { ok_max: number; alert_min: number; alert_max: number; critical_min: number };
-
-// ─── GatilhoRow ──────────────────────────────────────────────────────────────
+// ─── GatilhoRow ───────────────────────────────────────────────────────────────
 
 function GatilhoRow({ g, value, onChange }: {
   g: GatilhoField;
@@ -85,7 +87,7 @@ function GatilhoRow({ g, value, onChange }: {
   );
 }
 
-// ─── ConfigRow (view mode display) ───────────────────────────────────────────
+// ─── ConfigRow (read-only summary) ───────────────────────────────────────────
 
 function ConfigRow({ label, value, dotColor }: { label: string; value: number; dotColor: string }) {
   return (
@@ -106,28 +108,25 @@ function EfficiencyCard() {
   const { getScoreTotalReal } = useChurnScore();
   const { getBucket } = useRiskBucketConfig();
 
-  const cancelados = useMemo(() => {
-    return getCancelados(churnStatus).map((c) => ({
-      ...c,
-      churn_risk_score: getScoreTotalReal(c),
+  const { critico, alerta, total } = useMemo(() => {
+    if (isLoading) return { critico: { qtd: 0, pct: 0 }, alerta: { qtd: 0, pct: 0 }, total: 0 };
+    const cancelados = getCancelados(churnStatus).map((c) => ({
+      ...c, churn_risk_score: getScoreTotalReal(c),
     }));
-  }, [churnStatus, getScoreTotalReal]);
-
-  const dist = useMemo(() => {
-    const counts: Record<string, number> = { "CRÍTICO": 0, "ALERTA": 0, "OK": 0 };
-    cancelados.forEach((c) => { counts[getBucket(c.churn_risk_score)]++; });
-    const total = cancelados.length;
+    const n = cancelados.length;
+    const cnt: Record<string, number> = { "CRÍTICO": 0, "ALERTA": 0, "OK": 0 };
+    cancelados.forEach((c) => { cnt[getBucket(c.churn_risk_score)]++; });
     return {
-      critico: { qtd: counts["CRÍTICO"], pct: total > 0 ? Math.round((counts["CRÍTICO"] / total) * 100) : 0 },
-      alerta:  { qtd: counts["ALERTA"],  pct: total > 0 ? Math.round((counts["ALERTA"]  / total) * 100) : 0 },
-      total,
+      critico: { qtd: cnt["CRÍTICO"], pct: n > 0 ? Math.round((cnt["CRÍTICO"] / n) * 100) : 0 },
+      alerta:  { qtd: cnt["ALERTA"],  pct: n > 0 ? Math.round((cnt["ALERTA"]  / n) * 100) : 0 },
+      total: n,
     };
-  }, [cancelados, getBucket]);
+  }, [churnStatus, isLoading, getScoreTotalReal, getBucket]);
 
   if (isLoading) {
     return (
       <Card>
-        <CardContent className="py-10 flex items-center justify-center">
+        <CardContent className="py-10 flex justify-center">
           <div className="h-[2px] w-24 bg-muted rounded-full overflow-hidden">
             <div className="h-full w-3/5 animate-pulse rounded-full bg-primary/40" />
           </div>
@@ -136,17 +135,16 @@ function EfficiencyCard() {
     );
   }
 
-  const alertados = dist.critico.qtd + dist.alerta.qtd;
-  const eficiencia = dist.total > 0 ? Math.round((alertados / dist.total) * 100) : 0;
+  const alertados = critico.qtd + alerta.qtd;
+  const eficiencia = total > 0 ? Math.round((alertados / total) * 100) : 0;
 
-  const getLevel = (pct: number) => {
-    if (pct >= 60) return { label: "Excelente",     color: "hsl(142 71% 45%)",        icon: Sparkles,       tip: null };
-    if (pct >= 40) return { label: "Muito Bom",     color: "hsl(var(--primary))",     icon: CheckCircle,    tip: null };
-    if (pct >= 20) return { label: "Bom",           color: "hsl(38 92% 50%)",         icon: CheckCircle,    tip: "Ajuste os pesos dos pilares para capturar mais sinais de risco." };
-    return          { label: "Pode Melhorar", color: "hsl(var(--destructive))",  icon: AlertTriangle,  tip: "Recomendamos ativar os agentes NPS Check e/ou Smart Cobrança para clientes com deficiência acima de 50%." };
-  };
+  type Level = { label: string; color: string; icon: typeof Sparkles; tip: string | null };
+  const level: Level =
+    eficiencia >= 60 ? { label: "Excelente",     color: "hsl(142 71% 45%)",       icon: Sparkles,      tip: null } :
+    eficiencia >= 40 ? { label: "Muito Bom",     color: "hsl(var(--primary))",    icon: CheckCircle,   tip: null } :
+    eficiencia >= 20 ? { label: "Bom",           color: "hsl(38 92% 50%)",        icon: CheckCircle,   tip: "Ajuste os pesos dos pilares para capturar mais sinais de risco." } :
+                       { label: "Pode Melhorar", color: "hsl(var(--destructive))", icon: AlertTriangle, tip: "Recomendamos ativar os agentes NPS Check e/ou Smart Cobrança." };
 
-  const level = getLevel(eficiencia);
   const LevelIcon = level.icon;
 
   return (
@@ -170,9 +168,9 @@ function EfficiencyCard() {
         </div>
         <Progress value={eficiencia} className="h-3" style={{ ["--progress-color" as any]: level.color }} />
         <div className="space-y-1.5 text-xs text-muted-foreground">
-          <div className="flex justify-between"><span>Crítico</span><span className="font-semibold text-foreground">{dist.critico.qtd} ({dist.critico.pct}%)</span></div>
-          <div className="flex justify-between"><span>Alerta</span><span className="font-semibold text-foreground">{dist.alerta.qtd} ({dist.alerta.pct}%)</span></div>
-          <div className="flex justify-between"><span>OK (não alertados)</span><span className="font-semibold text-foreground">{dist.total - alertados}</span></div>
+          <div className="flex justify-between"><span>Crítico</span><span className="font-semibold text-foreground">{critico.qtd} ({critico.pct}%)</span></div>
+          <div className="flex justify-between"><span>Alerta</span><span className="font-semibold text-foreground">{alerta.qtd} ({alerta.pct}%)</span></div>
+          <div className="flex justify-between"><span>OK (não alertados)</span><span className="font-semibold text-foreground">{total - alertados}</span></div>
         </div>
         {level.tip && (
           <div className="flex items-start gap-2 p-2.5 rounded-lg bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800">
@@ -182,7 +180,7 @@ function EfficiencyCard() {
         )}
         <p className="text-[10px] text-muted-foreground flex items-center gap-1">
           <Info className="h-3 w-3" />
-          {alertados} de {dist.total} cancelados foram alertados
+          {alertados} de {total} cancelados foram alertados
         </p>
       </CardContent>
     </Card>
@@ -191,9 +189,9 @@ function EfficiencyCard() {
 
 // ─── View Mode ────────────────────────────────────────────────────────────────
 
-function ChurnViewMode({ config, bucketForm, onEdit }: {
+function ChurnViewMode({ config, bucket, onEdit }: {
   config: ChurnScoreConfig;
-  bucketForm: BucketForm;
+  bucket: BucketForm;
   onEdit: () => void;
 }) {
   return (
@@ -201,7 +199,7 @@ function ChurnViewMode({ config, bucketForm, onEdit }: {
       <div className="flex items-start justify-between gap-4">
         <div>
           <h2 className="text-lg font-semibold">Setup vigente</h2>
-          <p className="text-sm text-muted-foreground">Configuração atual aplicada em todo o sistema em tempo real.</p>
+          <p className="text-sm text-muted-foreground">Configuração atual aplicada em tempo real em todo o sistema.</p>
         </div>
         <Button onClick={onEdit} className="gap-2 shrink-0">
           <Pencil className="h-4 w-4" />
@@ -211,7 +209,6 @@ function ChurnViewMode({ config, bucketForm, onEdit }: {
 
       <EfficiencyCard />
 
-      {/* Pillar summary */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card>
           <CardHeader className="pb-2">
@@ -219,10 +216,10 @@ function ChurnViewMode({ config, bucketForm, onEdit }: {
             <CardDescription className="text-xs">Faixas por dias em atraso · Teto: {config.financeiroTeto} pts</CardDescription>
           </CardHeader>
           <CardContent className="space-y-2">
-            <ConfigRow label="1–5 dias"   value={config.finAtraso1a5}   dotColor="bg-yellow-400" />
-            <ConfigRow label="6–15 dias"  value={config.finAtraso6a15}  dotColor="bg-orange-400" />
-            <ConfigRow label="16–30 dias" value={config.finAtraso16a30} dotColor="bg-orange-500" />
-            <ConfigRow label="31–60 dias" value={config.finAtraso31a60} dotColor="bg-red-400" />
+            <ConfigRow label="1–5 dias"   value={config.finAtraso1a5}    dotColor="bg-yellow-400" />
+            <ConfigRow label="6–15 dias"  value={config.finAtraso6a15}   dotColor="bg-orange-400" />
+            <ConfigRow label="16–30 dias" value={config.finAtraso16a30}  dotColor="bg-orange-500" />
+            <ConfigRow label="31–60 dias" value={config.finAtraso31a60}  dotColor="bg-red-400" />
             <ConfigRow label="60+ dias"   value={config.finAtraso60plus} dotColor="bg-red-600" />
           </CardContent>
         </Card>
@@ -230,11 +227,11 @@ function ChurnViewMode({ config, bucketForm, onEdit }: {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm">🎧 Suporte</CardTitle>
-            <CardDescription className="text-xs">Chamados recorrentes nos últimos 30 dias</CardDescription>
+            <CardDescription className="text-xs">Chamados recorrentes em 30 dias</CardDescription>
           </CardHeader>
           <CardContent className="space-y-2">
-            <ConfigRow label="2+ chamados (base)"  value={config.chamados30dBase}  dotColor="bg-orange-400" />
-            <ConfigRow label="Por chamado extra"   value={config.chamadoAdicional} dotColor="bg-yellow-400" />
+            <ConfigRow label="2+ chamados (base)" value={config.chamados30dBase}  dotColor="bg-orange-400" />
+            <ConfigRow label="Por chamado extra"  value={config.chamadoAdicional} dotColor="bg-yellow-400" />
           </CardContent>
         </Card>
 
@@ -244,29 +241,28 @@ function ChurnViewMode({ config, bucketForm, onEdit }: {
             <CardDescription className="text-xs">Pesos máximos por pilar</CardDescription>
           </CardHeader>
           <CardContent className="space-y-2">
-            <ConfigRow label="NPS Detrator"     value={config.npsDetrator}    dotColor="bg-orange-400" />
-            <ConfigRow label="Qualidade Sinal"  value={config.qualidade}      dotColor="bg-purple-400" />
-            <ConfigRow label="Comportamental"   value={config.comportamental} dotColor="bg-blue-400" />
+            <ConfigRow label="NPS Detrator"    value={config.npsDetrator}    dotColor="bg-orange-400" />
+            <ConfigRow label="Qualidade Sinal" value={config.qualidade}      dotColor="bg-purple-400" />
+            <ConfigRow label="Comportamental"  value={config.comportamental} dotColor="bg-blue-400" />
           </CardContent>
         </Card>
       </div>
 
-      {/* Risk bucket visualization */}
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-sm">🎯 Classificação de Risco</CardTitle>
-          <CardDescription className="text-xs">Faixas de pontuação que determinam OK, Alerta ou Crítico</CardDescription>
+          <CardDescription className="text-xs">Pontos de corte que determinam OK, Alerta ou Crítico</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="flex items-center gap-0 h-7 rounded-full overflow-hidden text-[10px] font-bold text-center">
-            <div className="bg-green-400 h-full flex items-center justify-center px-2" style={{ flex: bucketForm.ok_max }}>
-              OK ≤{bucketForm.ok_max}
+          <div className="flex h-7 rounded-full overflow-hidden text-[10px] font-bold text-center">
+            <div className="bg-green-400 h-full flex items-center justify-center px-2" style={{ flex: bucket.ok_max }}>
+              OK ≤{bucket.ok_max}
             </div>
-            <div className="bg-yellow-400 h-full flex items-center justify-center px-2" style={{ flex: Math.max(1, bucketForm.alert_max - bucketForm.alert_min + 1) }}>
-              Alerta {bucketForm.alert_min}–{bucketForm.alert_max}
+            <div className="bg-yellow-400 h-full flex items-center justify-center px-2" style={{ flex: Math.max(1, bucket.alert_max - bucket.alert_min + 1) }}>
+              Alerta {bucket.alert_min}–{bucket.alert_max}
             </div>
             <div className="bg-red-400 text-white h-full flex items-center justify-center px-2" style={{ flex: 100 }}>
-              Crítico ≥{bucketForm.critical_min}
+              Crítico ≥{bucket.critical_min}
             </div>
           </div>
         </CardContent>
@@ -277,10 +273,16 @@ function ChurnViewMode({ config, bucketForm, onEdit }: {
 
 // ─── Wizard ───────────────────────────────────────────────────────────────────
 
+const STEP_LABELS = [
+  "Financeiro — Faixas por Dias em Atraso",
+  "Suporte — Chamados",
+  "NPS, Sinal e Comportamento",
+] as const;
+
 interface WizardProps {
   step: 1 | 2 | 3;
   form: ChurnScoreConfig;
-  bucketForm: BucketForm;
+  bucket: BucketForm;
   onChangeForm: (key: keyof ChurnScoreConfig, raw: string) => void;
   onChangeBucket: (key: keyof BucketForm, raw: string) => void;
   onNext: () => void;
@@ -289,23 +291,15 @@ interface WizardProps {
   onCancel: () => void;
 }
 
-const STEP_LABELS = [
-  "Financeiro — Faixas por Dias em Atraso",
-  "Suporte — Chamados",
-  "NPS, Sinal e Comportamento",
-];
-
-function ChurnWizard({ step, form, bucketForm, onChangeForm, onChangeBucket, onNext, onBack, onSave, onCancel }: WizardProps) {
+function ChurnWizard({ step, form, bucket, onChangeForm, onChangeBucket, onNext, onBack, onSave, onCancel }: WizardProps) {
   return (
     <div className="space-y-6">
-      {/* Step indicator */}
+      {/* Progress */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
-          <span className="text-sm font-medium">
-            Passo {step} de 3 — {STEP_LABELS[step - 1]}
-          </span>
-          <button onClick={onCancel} className="text-xs text-muted-foreground hover:text-foreground transition-colors">
-            Cancelar
+          <span className="text-sm font-medium">Passo {step} de 3 — {STEP_LABELS[step - 1]}</span>
+          <button onClick={onCancel} className="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1">
+            <X className="h-3.5 w-3.5" /> Cancelar
           </button>
         </div>
         <div className="flex gap-1.5">
@@ -329,57 +323,44 @@ function ChurnWizard({ step, form, bucketForm, onChangeForm, onChangeBucket, onN
                 <GatilhoRow g={g} value={form[g.key]} onChange={onChangeForm} />
               </div>
             ))}
-
             <Separator />
-
-            {/* Risk bucket thresholds */}
-            <div className="space-y-4">
+            <div className="space-y-3">
               <div>
                 <Label className="text-sm font-semibold">Classificação de Risco — Pontos de Corte</Label>
-                <p className="text-xs text-muted-foreground mt-1">Defina os limites que determinam se um cliente é OK, Alerta ou Crítico.</p>
+                <p className="text-xs text-muted-foreground mt-1">Limites que determinam se um cliente é OK, Alerta ou Crítico.</p>
               </div>
               <div className="grid grid-cols-3 gap-3">
-                <div className="rounded-lg border-2 border-green-200 bg-green-50 dark:bg-green-900/10 p-3 space-y-2">
-                  <div className="flex items-center gap-1.5">
-                    <div className="w-2.5 h-2.5 rounded-full bg-green-500" />
-                    <Label className="text-xs font-bold text-green-800 dark:text-green-400">OK</Label>
+                {[
+                  { key: "ok_max"      as const, label: "OK",      labelColor: "text-green-800  dark:text-green-400",  borderColor: "border-green-200",  bg: "bg-green-50  dark:bg-green-900/10",  dot: "bg-green-500",  prefix: "0 –", suffix: "pts" },
+                  { key: "alert_max"   as const, label: "Alerta",  labelColor: "text-yellow-800 dark:text-yellow-400", borderColor: "border-yellow-200", bg: "bg-yellow-50 dark:bg-yellow-900/10", dot: "bg-yellow-500", prefix: null,  suffix: null },
+                  { key: "critical_min"as const, label: "Crítico", labelColor: "text-red-800    dark:text-red-400",    borderColor: "border-red-200",    bg: "bg-red-50    dark:bg-red-900/10",    dot: "bg-red-500",    prefix: "≥",   suffix: "pts" },
+                ].map(({ key, label, labelColor, borderColor, bg, dot, prefix, suffix }) => (
+                  <div key={key} className={`rounded-lg border-2 ${borderColor} ${bg} p-3 space-y-2`}>
+                    <div className="flex items-center gap-1.5">
+                      <div className={`w-2.5 h-2.5 rounded-full ${dot}`} />
+                      <Label className={`text-xs font-bold ${labelColor}`}>{label}</Label>
+                    </div>
+                    {key === "alert_max" ? (
+                      <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                        <Input type="number" min={1} max={499} value={bucket.alert_min}
+                          onChange={(e) => onChangeBucket("alert_min", e.target.value)}
+                          className="w-14 h-8 text-center font-mono text-xs" />
+                        <span>a</span>
+                        <Input type="number" min={1} max={499} value={bucket.alert_max}
+                          onChange={(e) => onChangeBucket("alert_max", e.target.value)}
+                          className="w-14 h-8 text-center font-mono text-xs" />
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                        {prefix && <span>{prefix}</span>}
+                        <Input type="number" min={0} max={500} value={bucket[key]}
+                          onChange={(e) => onChangeBucket(key, e.target.value)}
+                          className="w-16 h-8 text-center font-mono font-bold text-sm" />
+                        {suffix && <span>{suffix}</span>}
+                      </div>
+                    )}
                   </div>
-                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                    <span>0 –</span>
-                    <Input type="number" min={0} max={499} value={bucketForm.ok_max}
-                      onChange={(e) => onChangeBucket("ok_max", e.target.value)}
-                      className="w-16 h-8 text-center font-mono font-bold text-sm" />
-                    <span>pts</span>
-                  </div>
-                </div>
-                <div className="rounded-lg border-2 border-yellow-200 bg-yellow-50 dark:bg-yellow-900/10 p-3 space-y-2">
-                  <div className="flex items-center gap-1.5">
-                    <div className="w-2.5 h-2.5 rounded-full bg-yellow-500" />
-                    <Label className="text-xs font-bold text-yellow-800 dark:text-yellow-400">Alerta</Label>
-                  </div>
-                  <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                    <Input type="number" min={1} max={499} value={bucketForm.alert_min}
-                      onChange={(e) => onChangeBucket("alert_min", e.target.value)}
-                      className="w-14 h-8 text-center font-mono text-xs" />
-                    <span>a</span>
-                    <Input type="number" min={1} max={499} value={bucketForm.alert_max}
-                      onChange={(e) => onChangeBucket("alert_max", e.target.value)}
-                      className="w-14 h-8 text-center font-mono text-xs" />
-                  </div>
-                </div>
-                <div className="rounded-lg border-2 border-red-200 bg-red-50 dark:bg-red-900/10 p-3 space-y-2">
-                  <div className="flex items-center gap-1.5">
-                    <div className="w-2.5 h-2.5 rounded-full bg-red-500" />
-                    <Label className="text-xs font-bold text-red-800 dark:text-red-400">Crítico</Label>
-                  </div>
-                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                    <span>≥</span>
-                    <Input type="number" min={1} max={500} value={bucketForm.critical_min}
-                      onChange={(e) => onChangeBucket("critical_min", e.target.value)}
-                      className="w-16 h-8 text-center font-mono font-bold text-sm" />
-                    <span>pts</span>
-                  </div>
-                </div>
+                ))}
               </div>
             </div>
           </CardContent>
@@ -391,7 +372,7 @@ function ChurnWizard({ step, form, bucketForm, onChangeForm, onChangeBucket, onN
         <Card>
           <CardHeader>
             <CardTitle className="text-base">🎧 Suporte — Chamados</CardTitle>
-            <CardDescription>Pontuação baseada na quantidade de chamados abertos pelo cliente nos últimos 30 dias.</CardDescription>
+            <CardDescription>Pontuação baseada nos chamados abertos pelo cliente nos últimos 30 dias.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
             {GATILHOS_SUPORTE.map((g, idx) => (
@@ -418,7 +399,7 @@ function ChurnWizard({ step, form, bucketForm, onChangeForm, onChangeBucket, onN
         <Card>
           <CardHeader>
             <CardTitle className="text-base">📊 NPS, Sinal e Comportamento</CardTitle>
-            <CardDescription>Pesos máximos de cada pilar qualitativo no Churn Score do cliente.</CardDescription>
+            <CardDescription>Pesos máximos de cada pilar qualitativo no Churn Score.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
             {GATILHOS_OUTROS.map((g, idx) => (
@@ -433,7 +414,7 @@ function ChurnWizard({ step, form, bucketForm, onChangeForm, onChangeBucket, onN
               <p className="text-2xl font-bold font-mono text-destructive">
                 {form.chamados30dBase + form.chamadoAdicional * 4 + form.npsDetrator + form.qualidade + form.comportamental + form.financeiroTeto} pts
               </p>
-              <p className="text-xs text-muted-foreground">Soma de todos os pilares no pior cenário possível.</p>
+              <p className="text-xs text-muted-foreground">Soma de todos os pilares no pior cenário.</p>
             </div>
           </CardContent>
         </Card>
@@ -442,26 +423,19 @@ function ChurnWizard({ step, form, bucketForm, onChangeForm, onChangeBucket, onN
       {/* Navigation */}
       <div className="flex items-center justify-between pt-2 pb-2">
         <div className="flex gap-2">
-          <Button variant="ghost" size="sm" onClick={onCancel} className="text-muted-foreground">
-            <RotateCcw className="h-3.5 w-3.5 mr-1.5" />
-            Cancelar
-          </Button>
           {step > 1 && (
             <Button variant="outline" onClick={onBack} className="gap-2">
-              <ChevronLeft className="h-4 w-4" />
-              Anterior
+              <ChevronLeft className="h-4 w-4" /> Anterior
             </Button>
           )}
         </div>
         {step < 3 ? (
           <Button onClick={onNext} className="gap-2">
-            Próximo
-            <ChevronRight className="h-4 w-4" />
+            Próximo <ChevronRight className="h-4 w-4" />
           </Button>
         ) : (
           <Button onClick={onSave} className="gap-2">
-            <Save className="h-4 w-4" />
-            Salvar Configuração
+            <Save className="h-4 w-4" /> Salvar Configuração
           </Button>
         )}
       </div>
@@ -472,14 +446,14 @@ function ChurnWizard({ step, form, bucketForm, onChangeForm, onChangeBucket, onN
 // ─── ChurnSetupTab ────────────────────────────────────────────────────────────
 
 function ChurnSetupTab() {
-  const { config, setConfig, resetToDefaults } = useChurnScoreConfig();
+  const { config, setConfig } = useChurnScoreConfig();
   const { config: bucketConfig, saveConfig: saveBucketConfig, isLoading: bucketLoading } = useRiskBucketConfig();
   const { toast } = useToast();
 
   const [mode, setMode] = useState<"view" | "wizard">("view");
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [form, setForm] = useState<ChurnScoreConfig>({ ...config });
-  const [bucketForm, setBucketForm] = useState<BucketForm>({
+  const [bucket, setBucket] = useState<BucketForm>({
     ok_max: bucketConfig.ok_max, alert_min: bucketConfig.alert_min,
     alert_max: bucketConfig.alert_max, critical_min: bucketConfig.critical_min,
   });
@@ -487,32 +461,33 @@ function ChurnSetupTab() {
   useEffect(() => { setForm({ ...config }); }, [config]);
   useEffect(() => {
     if (!bucketLoading) {
-      setBucketForm({ ok_max: bucketConfig.ok_max, alert_min: bucketConfig.alert_min, alert_max: bucketConfig.alert_max, critical_min: bucketConfig.critical_min });
+      setBucket({
+        ok_max: bucketConfig.ok_max, alert_min: bucketConfig.alert_min,
+        alert_max: bucketConfig.alert_max, critical_min: bucketConfig.critical_min,
+      });
     }
   }, [bucketLoading, bucketConfig]);
 
   const handleChangeForm = (key: keyof ChurnScoreConfig, raw: string) => {
     const val = parseInt(raw, 10);
-    if (isNaN(val)) return;
-    setForm((prev) => ({ ...prev, [key]: val }));
+    if (!isNaN(val)) setForm((prev) => ({ ...prev, [key]: val }));
   };
 
   const handleChangeBucket = (key: keyof BucketForm, raw: string) => {
     const val = parseInt(raw, 10);
-    if (isNaN(val) || val < 0 || val > 500) return;
-    setBucketForm((prev) => ({ ...prev, [key]: val }));
+    if (!isNaN(val) && val >= 0 && val <= 500) setBucket((prev) => ({ ...prev, [key]: val }));
   };
 
-  const handleSaveAll = async () => {
+  const handleSave = async () => {
     setConfig(form);
-    const fixed = { ...bucketForm };
-    if (fixed.alert_min <= fixed.ok_max)       fixed.alert_min   = fixed.ok_max + 1;
-    if (fixed.alert_max < fixed.alert_min)      fixed.alert_max   = fixed.alert_min;
+    const fixed = { ...bucket };
+    if (fixed.alert_min <= fixed.ok_max)       fixed.alert_min    = fixed.ok_max + 1;
+    if (fixed.alert_max < fixed.alert_min)      fixed.alert_max    = fixed.alert_min;
     if (fixed.critical_min <= fixed.alert_max)  fixed.critical_min = fixed.alert_max + 1;
     try {
       await saveBucketConfig(fixed);
-      setBucketForm(fixed);
-      toast({ title: "Configuração salva", description: "O Churn Score foi atualizado com sucesso em todo o sistema." });
+      setBucket(fixed);
+      toast({ title: "Configuração salva", description: "O Churn Score foi atualizado em todo o sistema." });
       setMode("view");
       setStep(1);
     } catch (e: any) {
@@ -522,25 +497,28 @@ function ChurnSetupTab() {
 
   const handleCancel = () => {
     setForm({ ...config });
-    setBucketForm({ ok_max: bucketConfig.ok_max, alert_min: bucketConfig.alert_min, alert_max: bucketConfig.alert_max, critical_min: bucketConfig.critical_min });
+    setBucket({
+      ok_max: bucketConfig.ok_max, alert_min: bucketConfig.alert_min,
+      alert_max: bucketConfig.alert_max, critical_min: bucketConfig.critical_min,
+    });
     setMode("view");
     setStep(1);
   };
 
   if (mode === "view") {
-    return <ChurnViewMode config={form} bucketForm={bucketForm} onEdit={() => setMode("wizard")} />;
+    return <ChurnViewMode config={form} bucket={bucket} onEdit={() => setMode("wizard")} />;
   }
 
   return (
     <ChurnWizard
       step={step}
       form={form}
-      bucketForm={bucketForm}
+      bucket={bucket}
       onChangeForm={handleChangeForm}
       onChangeBucket={handleChangeBucket}
       onNext={() => setStep((s) => Math.min(3, s + 1) as 1 | 2 | 3)}
       onBack={() => setStep((s) => Math.max(1, s - 1) as 1 | 2 | 3)}
-      onSave={handleSaveAll}
+      onSave={handleSave}
       onCancel={handleCancel}
     />
   );
@@ -563,7 +541,7 @@ export default function SetupProvedor() {
                   Setup do Provedor
                 </h1>
                 <p className="text-muted-foreground text-sm mt-0.5">
-                  Personalize as métricas e experiências de monitoramento do seu provedor
+                  Personalize as métricas e experiências de monitoramento
                 </p>
               </div>
             </div>
