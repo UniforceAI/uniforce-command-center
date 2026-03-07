@@ -69,7 +69,7 @@ export function useStripeCustomerPortal() {
       return data as { url: string };
     },
     onSuccess: (data) => {
-      window.location.href = data.url;
+      window.open(data.url, "_blank", "noopener,noreferrer");
     },
   });
 }
@@ -97,7 +97,7 @@ export function useStripeCheckout() {
       return data as { url: string; session_id: string };
     },
     onSuccess: (data) => {
-      window.location.href = data.url;
+      window.open(data.url, "_blank", "noopener,noreferrer");
     },
   });
 }
