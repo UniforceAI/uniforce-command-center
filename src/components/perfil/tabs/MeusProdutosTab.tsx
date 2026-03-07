@@ -5,8 +5,6 @@ import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Switch } from "@/components/ui/switch";
-import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -53,9 +51,9 @@ export function MeusProdutosTab() {
   const { toast } = useToast();
   const { ispId } = useActiveIsp();
   const { profile } = useAuth();
-  const isSuperAdmin = profile?.role === "super_admin";
   const [checkoutLoading, setCheckoutLoading] = useState<string | null>(null);
-  const [testMode, setTestMode] = useState(false);
+  // ISP uniforce é o ambiente de desenvolvimento — usa test mode automaticamente
+  const testMode = ispId === "uniforce";
 
   const { data: subscriptionData, isLoading: subLoading, refetch: refetchSub } = useStripeSubscription();
   const { data: catalog, isLoading: catalogLoading } = useStripeProducts(testMode);
@@ -114,21 +112,14 @@ export function MeusProdutosTab() {
   return (
     <div className="space-y-6">
 
-      {/* ─── Super-admin test mode toggle ─── */}
-      {isSuperAdmin && (
-        <div className={`flex items-center gap-3 px-4 py-3 rounded-lg border ${testMode ? "border-amber-300 bg-amber-50" : "border-border bg-muted/30"}`}>
-          <FlaskConical className={`h-4 w-4 shrink-0 ${testMode ? "text-amber-600" : "text-muted-foreground"}`} />
+      {/* ─── Banner: ambiente de desenvolvimento (apenas uniforce ISP) ─── */}
+      {testMode && (
+        <div className="flex items-center gap-3 px-4 py-3 rounded-lg border border-amber-300 bg-amber-50">
+          <FlaskConical className="h-4 w-4 shrink-0 text-amber-600" />
           <div className="flex-1 min-w-0">
-            <p className={`text-sm font-medium ${testMode ? "text-amber-800" : "text-foreground"}`}>
-              {testMode ? "Modo de Teste Ativo — cartão 4242 4242 4242 4242" : "Modo de Teste Stripe"}
-            </p>
-            <p className="text-xs text-muted-foreground">Visível apenas para super_admin. Usa sk_test_* key, sem cobranças reais.</p>
+            <p className="text-sm font-medium text-amber-800">Ambiente de Desenvolvimento — Modo Teste Stripe</p>
+            <p className="text-xs text-muted-foreground">Nenhuma cobrança real. Cartão de teste: 4242 4242 4242 4242 · exp 12/34 · cvv 123</p>
           </div>
-          <Switch
-            checked={testMode}
-            onCheckedChange={setTestMode}
-            aria-label="Ativar modo de teste"
-          />
         </div>
       )}
 
