@@ -36,9 +36,10 @@ export interface StripeProductsCatalog {
   services: StripeProduct[];
 }
 
-export function useStripeProducts() {
+// ispId: o ISP selecionado no dashboard (pode diferir do ISP do JWT para super_admins)
+export function useStripeProducts(ispId?: string | null) {
   return useQuery<StripeProductsCatalog>({
-    queryKey: ["stripe-products"],
+    queryKey: ["stripe-products", ispId],
     queryFn: async () => {
       const token = (await externalSupabase.auth.getSession()).data.session?.access_token;
       const res = await fetch(`${FUNCTIONS_URL}/stripe-list-products`, {
@@ -48,6 +49,7 @@ export function useStripeProducts() {
           "Content-Type": "application/json",
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
+        body: JSON.stringify({ target_isp_id: ispId ?? null }),
       });
       if (!res.ok) {
         const text = await res.text().catch(() => `HTTP ${res.status}`);
@@ -55,7 +57,8 @@ export function useStripeProducts() {
       }
       return res.json() as Promise<StripeProductsCatalog>;
     },
-    staleTime: 1000 * 60 * 30, // 30 minutos
+    staleTime: 1000 * 60 * 30,
     retry: 2,
+    enabled: !!ispId,
   });
 }

@@ -54,10 +54,12 @@ export function MeusProdutosTab() {
   // Test mode é automático para o ISP uniforce (detectado server-side via JWT)
   const isDevIsp = ispId === "uniforce";
 
-  const { data: subscriptionData, isLoading: subLoading } = useStripeSubscription();
-  const { data: catalog, isLoading: catalogLoading } = useStripeProducts();
-  const checkout = useStripeCheckout();
-  const portal = useStripeCustomerPortal();
+  // Passa ispId (ISP selecionado no dashboard) para todos os hooks
+  // Garante que super_admin veja dados do ISP correto, não os seus próprios
+  const { data: subscriptionData, isLoading: subLoading } = useStripeSubscription(ispId);
+  const { data: catalog, isLoading: catalogLoading } = useStripeProducts(ispId);
+  const checkout = useStripeCheckout(ispId);
+  const portal = useStripeCustomerPortal(ispId);
 
   const sub = subscriptionData?.subscription;
   const billingSource = subscriptionData?.stripe_billing_source;

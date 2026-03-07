@@ -1,6 +1,7 @@
 // stripe-subscription/index.ts
-// Supabase Edge Function — Retorna estado da assinatura Stripe do ISP autenticado
-// Test mode detectado automaticamente: isp_id='uniforce' → usa sk_test_*
+// Retorna estado da assinatura Stripe do ISP
+// target_isp_id: super_admin pode consultar outro ISP — validado server-side
+// Test mode: automático quando isp_id='uniforce'
 
 import Stripe from "https://esm.sh/stripe@14.21.0?target=deno";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2?target=deno";
@@ -11,6 +12,40 @@ const corsHeaders = {
 };
 
 const TEST_MODE_ISP_IDS = ["uniforce"];
+
+// Resolve qual ISP usar: verifica target_isp_id com autorização super_admin
+async function resolveIsp(
+  supabase: ReturnType<typeof createClient>,
+  supabaseAdmin: ReturnType<typeof createClient>,
+  targetIspId: string | null
+) {
+  const { data: ownData } = await supabase.rpc("get_isp_stripe_data");
+  const ownIsp = ownData?.[0] ?? null;
+
+  if (!targetIspId || targetIspId === ownIsp?.isp_id) {
+    return { isp: ownIsp, forbidden: false };
+  }
+
+  // ISP diferente: verificar se é super_admin
+  const { data: profile } = await supabase.from("profiles").select("role").single();
+  if (profile?.role !== "super_admin") {
+    return { isp: null, forbidden: true };
+  }
+
+  // Buscar ISP alvo com service_role (bypass RLS)
+  const { data: targetIsp } = await supabaseAdmin
+    .from("isps")
+    .select(
+      "isp_id,stripe_customer_id,stripe_test_customer_id,stripe_subscription_id," +
+      "stripe_subscription_status,stripe_product_id,stripe_price_id,stripe_product_name," +
+      "stripe_monthly_amount,stripe_current_period_start,stripe_current_period_end," +
+      "stripe_cancel_at_period_end,stripe_trial_end,stripe_billing_source"
+    )
+    .eq("isp_id", targetIspId)
+    .single();
+
+  return { isp: targetIsp ?? null, forbidden: false };
+}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -26,27 +61,35 @@ Deno.serve(async (req) => {
       });
     }
 
+    let targetIspId: string | null = null;
+    try { targetIspId = (await req.json())?.target_isp_id ?? null; } catch { /* ok */ }
+
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
       Deno.env.get("SUPABASE_ANON_KEY") ?? "",
       { global: { headers: { Authorization: authHeader } } }
     );
+    const supabaseAdmin = createClient(
+      Deno.env.get("SUPABASE_URL") ?? "",
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
+    );
 
-    const { data: ispData, error: ispError } = await supabase.rpc("get_isp_stripe_data");
-    if (ispError) throw ispError;
+    const { isp, forbidden } = await resolveIsp(supabase, supabaseAdmin, targetIspId);
 
-    const isp = ispData?.[0];
-    if (!isp) {
-      return new Response(JSON.stringify({ subscription: null, message: "ISP não encontrado" }), {
-        status: 200,
+    if (forbidden) {
+      return new Response(JSON.stringify({ error: "Forbidden" }), {
+        status: 403,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+    if (!isp) {
+      return new Response(
+        JSON.stringify({ subscription: null, message: "ISP não encontrado" }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
-    // Test mode automático por isp_id — sem dependência de custom header
     const isTestMode = TEST_MODE_ISP_IDS.includes(isp.isp_id);
-
-    // Para ISPs em test mode, usar stripe_test_customer_id e subscription correspondente
     const customerId = isTestMode
       ? (isp.stripe_test_customer_id ?? isp.stripe_customer_id)
       : isp.stripe_customer_id;

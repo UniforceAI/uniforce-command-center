@@ -1,6 +1,6 @@
 // stripe-invoices/index.ts
-// Supabase Edge Function — Retorna histórico de faturas do ISP autenticado
-// Test mode detectado automaticamente: isp_id='uniforce' → usa sk_test_* e stripe_test_customer_id
+// Retorna histórico de faturas do ISP
+// target_isp_id: super_admin pode consultar outro ISP — validado server-side
 
 import Stripe from "https://esm.sh/stripe@14.21.0?target=deno";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2?target=deno";
@@ -11,6 +11,30 @@ const corsHeaders = {
 };
 
 const TEST_MODE_ISP_IDS = ["uniforce"];
+
+async function resolveIsp(
+  supabase: ReturnType<typeof createClient>,
+  supabaseAdmin: ReturnType<typeof createClient>,
+  targetIspId: string | null
+) {
+  const { data: ownData } = await supabase.rpc("get_isp_stripe_data");
+  const ownIsp = ownData?.[0] ?? null;
+
+  if (!targetIspId || targetIspId === ownIsp?.isp_id) {
+    return ownIsp;
+  }
+
+  const { data: profile } = await supabase.from("profiles").select("role").single();
+  if (profile?.role !== "super_admin") return null;
+
+  const { data: targetIsp } = await supabaseAdmin
+    .from("isps")
+    .select("isp_id,stripe_customer_id,stripe_test_customer_id,stripe_billing_source")
+    .eq("isp_id", targetIspId)
+    .single();
+
+  return targetIsp ?? null;
+}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -26,18 +50,22 @@ Deno.serve(async (req) => {
       });
     }
 
+    let targetIspId: string | null = null;
+    try { targetIspId = (await req.json())?.target_isp_id ?? null; } catch { /* ok */ }
+
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
       Deno.env.get("SUPABASE_ANON_KEY") ?? "",
       { global: { headers: { Authorization: authHeader } } }
     );
+    const supabaseAdmin = createClient(
+      Deno.env.get("SUPABASE_URL") ?? "",
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
+    );
 
-    const { data: ispData } = await supabase.rpc("get_isp_stripe_data");
-    const isp = ispData?.[0];
-
+    const isp = await resolveIsp(supabase, supabaseAdmin, targetIspId);
     const isTestMode = TEST_MODE_ISP_IDS.includes(isp?.isp_id ?? "");
 
-    // Test mode ISPs têm customer separado
     const customerId = isTestMode
       ? (isp?.stripe_test_customer_id ?? null)
       : (isp?.stripe_customer_id ?? null);

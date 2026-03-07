@@ -32,9 +32,9 @@ export interface StripeInvoice {
   lines: StripeInvoiceLine[];
 }
 
-export function useStripeInvoices() {
+export function useStripeInvoices(ispId?: string | null) {
   return useQuery<{ invoices: StripeInvoice[] }>({
-    queryKey: ["stripe-invoices"],
+    queryKey: ["stripe-invoices", ispId],
     queryFn: async () => {
       const token = (await externalSupabase.auth.getSession()).data.session?.access_token;
       const res = await fetch(`${FUNCTIONS_URL}/stripe-invoices`, {
@@ -44,6 +44,7 @@ export function useStripeInvoices() {
           "Content-Type": "application/json",
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
+        body: JSON.stringify({ target_isp_id: ispId ?? null }),
       });
       if (!res.ok) {
         const text = await res.text().catch(() => `HTTP ${res.status}`);
@@ -51,7 +52,8 @@ export function useStripeInvoices() {
       }
       return res.json() as Promise<{ invoices: StripeInvoice[] }>;
     },
-    staleTime: 1000 * 60 * 10, // 10 minutos
+    staleTime: 1000 * 60 * 10,
     retry: 2,
+    enabled: !!ispId,
   });
 }

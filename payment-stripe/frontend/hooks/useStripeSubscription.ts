@@ -1,5 +1,6 @@
 // src/hooks/useStripeSubscription.ts
 // Hook TanStack Query para buscar a assinatura Stripe do ISP autenticado
+// ispId: o ISP selecionado no dashboard (super_admin pode ver outro ISP)
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { externalSupabase } from "@/integrations/supabase/external-client";
@@ -49,14 +50,15 @@ async function getAuthHeaders(): Promise<Record<string, string>> {
   };
 }
 
-export function useStripeSubscription() {
+export function useStripeSubscription(ispId?: string | null) {
   return useQuery<StripeSubscriptionData>({
-    queryKey: ["stripe-subscription"],
+    queryKey: ["stripe-subscription", ispId],
     queryFn: async () => {
       const headers = await getAuthHeaders();
       const res = await fetch(`${FUNCTIONS_URL}/stripe-subscription`, {
         method: "POST",
         headers,
+        body: JSON.stringify({ target_isp_id: ispId ?? null }),
       });
       if (!res.ok) {
         const text = await res.text().catch(() => `HTTP ${res.status}`);
@@ -64,12 +66,13 @@ export function useStripeSubscription() {
       }
       return res.json() as Promise<StripeSubscriptionData>;
     },
-    staleTime: 1000 * 60 * 5, // 5 minutos
+    staleTime: 1000 * 60 * 5,
     retry: 2,
+    enabled: !!ispId,
   });
 }
 
-export function useStripeCustomerPortal() {
+export function useStripeCustomerPortal(ispId?: string | null) {
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -78,23 +81,22 @@ export function useStripeCustomerPortal() {
       const res = await fetch(`${FUNCTIONS_URL}/stripe-customer-portal`, {
         method: "POST",
         headers,
-        body: JSON.stringify({ return_url: returnUrl }),
+        body: JSON.stringify({ return_url: returnUrl, target_isp_id: ispId ?? null }),
       });
       if (!res.ok) {
-        const text = await res.text().catch(() => `HTTP ${res.status}`);
-        throw new Error(`stripe-customer-portal falhou: ${text}`);
+        const body = await res.json().catch(() => null);
+        throw new Error(body?.error ?? `stripe-customer-portal falhou: HTTP ${res.status}`);
       }
       return res.json() as Promise<{ url: string }>;
     },
     onSuccess: (data) => {
-      // window.open para suporte a iframe (Lovable preview) e produção
       window.open(data.url, "_blank", "noopener,noreferrer");
-      queryClient.invalidateQueries({ queryKey: ["stripe-subscription"] });
+      queryClient.invalidateQueries({ queryKey: ["stripe-subscription", ispId] });
     },
   });
 }
 
-export function useStripeCheckout() {
+export function useStripeCheckout(ispId?: string | null) {
   return useMutation({
     mutationFn: async ({
       price_id,
@@ -109,7 +111,7 @@ export function useStripeCheckout() {
       const res = await fetch(`${FUNCTIONS_URL}/stripe-checkout`, {
         method: "POST",
         headers,
-        body: JSON.stringify({ price_id, success_url, cancel_url }),
+        body: JSON.stringify({ price_id, success_url, cancel_url, target_isp_id: ispId ?? null }),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => null);
