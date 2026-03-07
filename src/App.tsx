@@ -19,7 +19,6 @@ import ResetSenha from "./pages/ResetSenha";
 import NotFound from "./pages/NotFound";
 import VisaoGeral from "./pages/VisaoGeral";
 import Financeiro from "./pages/Financeiro";
-
 import ClientesEmRisco from "./pages/ClientesEmRisco";
 import Cancelamentos from "./pages/Cancelamentos";
 import SelecionarCliente from "./pages/SelecionarCliente";
@@ -31,10 +30,8 @@ import Onboarding from "./pages/Onboarding";
 
 // Clientes operam o dashboard por sessões longas de trabalho (8h).
 // staleTime = 8h: dados permanecem frescos durante toda a jornada sem re-fetch.
-// gcTime = 10h: cache é mantido em memória e localStorage por 2h além do staleTime,
-//   garantindo que um background refetch pós-stale complete antes da limpeza.
-// F5 / reload: CacheRefreshGuard dispara refetchQueries explicitamente,
-//   ignorando staleTime e forçando dados frescos do banco.
+// gcTime = 10h: cache mantido em memória e localStorage por 2h além do staleTime.
+// F5 / reload: CacheRefreshGuard dispara refetchQueries explicitamente.
 const EIGHT_HOURS = 1000 * 60 * 60 * 8;
 const TEN_HOURS   = 1000 * 60 * 60 * 10;
 
@@ -44,7 +41,7 @@ const queryClient = new QueryClient({
       staleTime: EIGHT_HOURS,
       gcTime: TEN_HOURS,
       refetchOnWindowFocus: false,
-      refetchOnMount: false,   // CacheRefreshGuard controla reload; navegação SPA usa cache
+      refetchOnMount: false,
       retry: 1,
     },
   },
@@ -55,8 +52,12 @@ const persister = createLocalStoragePersister();
 const persistOptions = {
   persister,
   maxAge: TEN_HOURS,
-  buster: "v5", // fase-1-perf: staleTime 8h + refetchOnMount removido dos hooks
+  buster: "v5",
 };
+
+const Protected = ({ children }: { children: React.ReactNode }) => (
+  <ProtectedRoute><MainLayout>{children}</MainLayout></ProtectedRoute>
+);
 
 const App = () => (
   <PersistQueryClientProvider client={queryClient} persistOptions={persistOptions}>
@@ -66,148 +67,45 @@ const App = () => (
       <BrowserRouter>
         <AuthProvider>
           <CacheRefreshGuard>
-          <ErrorBoundary>
-          <ChurnScoreConfigProvider>
-          <Routes>
-            <Route path="/auth" element={<Auth />} />
-            <Route path="/esqueci-senha" element={<EsqueciSenha />} />
-            <Route path="/reset-senha" element={<ResetSenha />} />
-            <Route
-              path="/selecionar-cliente"
-              element={
-                <ProtectedRoute requireSelectedIsp={false}>
-                  <SelecionarCliente />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/onboarding"
-              element={
-                <ProtectedRoute requireSelectedIsp={false}>
-                  <Onboarding />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/"
-              element={
-                <ProtectedRoute>
-                  <MainLayout>
-                    <VisaoGeral />
-                  </MainLayout>
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/chamados"
-              element={
-                <ProtectedRoute>
-                  <MainLayout>
-                    <Index />
-                  </MainLayout>
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/visao-geral"
-              element={
-                <ProtectedRoute>
-                  <MainLayout>
-                    <VisaoGeral />
-                  </MainLayout>
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/financeiro"
-              element={
-                <ProtectedRoute>
-                  <MainLayout>
-                    <Financeiro />
-                  </MainLayout>
-                </ProtectedRoute>
-              }
-            />
-            {/* churn-analytics removed — metrics moved to Cancelamentos */}
-            <Route
-              path="/crm"
-              element={
-                <ProtectedRoute>
-                  <MainLayout>
-                    <ClientesEmRisco />
-                  </MainLayout>
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/clientes-em-risco"
-              element={
-                <ProtectedRoute>
-                  <MainLayout>
-                    <ClientesEmRisco />
-                  </MainLayout>
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/cancelamentos"
-              element={
-                <ProtectedRoute>
-                  <MainLayout>
-                    <Cancelamentos />
-                  </MainLayout>
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/nps"
-              element={
-                <ProtectedRoute>
-                  <MainLayout>
-                    <NPS />
-                  </MainLayout>
-                </ProtectedRoute>
-              }
-            />
-            {/* Unified setup page — replaces /configuracoes/churn-score and /configuracoes/chamados */}
-            <Route
-              path="/configuracoes"
-              element={
-                <ProtectedRoute>
-                  <MainLayout>
-                    <SetupProvedor />
-                  </MainLayout>
-                </ProtectedRoute>
-              }
-            />
-            {/* Legacy redirects */}
-            <Route path="/configuracoes/churn-score" element={<Navigate to="/configuracoes" replace />} />
-            <Route path="/configuracoes/chamados"    element={<Navigate to="/configuracoes" replace />} />
-            <Route
-              path="/configuracoes/perfil"
-              element={
-                <ProtectedRoute>
-                  <MainLayout>
-                    <PerfilISP />
-                  </MainLayout>
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/configuracoes/contas"
-              element={
-                <ProtectedRoute>
-                  <MainLayout>
-                    <ContasAcesso />
-                  </MainLayout>
-                </ProtectedRoute>
-              }
-            />
-            <Route path="/eventos-debug" element={<EventosDebug />} />
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-          </ChurnScoreConfigProvider>
-          </ErrorBoundary>
+            <ErrorBoundary>
+              <ChurnScoreConfigProvider>
+                <Routes>
+                  {/* Public */}
+                  <Route path="/auth"          element={<Auth />} />
+                  <Route path="/esqueci-senha" element={<EsqueciSenha />} />
+                  <Route path="/reset-senha"   element={<ResetSenha />} />
+
+                  {/* Semi-protected (no ISP required) */}
+                  <Route path="/selecionar-cliente" element={<ProtectedRoute requireSelectedIsp={false}><SelecionarCliente /></ProtectedRoute>} />
+                  <Route path="/onboarding"         element={<ProtectedRoute requireSelectedIsp={false}><Onboarding /></ProtectedRoute>} />
+
+                  {/* Main dashboard */}
+                  <Route path="/"                 element={<Protected><VisaoGeral /></Protected>} />
+                  <Route path="/visao-geral"      element={<Protected><VisaoGeral /></Protected>} />
+                  <Route path="/financeiro"       element={<Protected><Financeiro /></Protected>} />
+                  <Route path="/chamados"         element={<Protected><Index /></Protected>} />
+                  <Route path="/crm"              element={<Protected><ClientesEmRisco /></Protected>} />
+                  <Route path="/clientes-em-risco"element={<Protected><ClientesEmRisco /></Protected>} />
+                  <Route path="/cancelamentos"    element={<Protected><Cancelamentos /></Protected>} />
+                  <Route path="/nps"              element={<Protected><NPS /></Protected>} />
+
+                  {/* Configurações */}
+                  <Route path="/configuracoes"        element={<Protected><SetupProvedor /></Protected>} />
+                  <Route path="/configuracoes/perfil" element={<Protected><PerfilISP /></Protected>} />
+
+                  {/* Legacy redirects */}
+                  <Route path="/configuracoes/churn-score" element={<Navigate to="/configuracoes" replace />} />
+                  <Route path="/configuracoes/chamados"    element={<Navigate to="/configuracoes" replace />} />
+                  <Route path="/configuracoes/contas"      element={<Navigate to="/configuracoes/perfil?tab=contas" replace />} />
+
+                  {/* Standalone fallback for ContasAcesso (admin deep link) */}
+                  <Route path="/configuracoes/contas-standalone" element={<Protected><ContasAcesso /></Protected>} />
+
+                  <Route path="/eventos-debug" element={<EventosDebug />} />
+                  <Route path="*" element={<NotFound />} />
+                </Routes>
+              </ChurnScoreConfigProvider>
+            </ErrorBoundary>
           </CacheRefreshGuard>
         </AuthProvider>
       </BrowserRouter>
