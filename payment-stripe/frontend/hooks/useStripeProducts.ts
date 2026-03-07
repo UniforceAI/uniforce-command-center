@@ -2,7 +2,11 @@
 // Hook TanStack Query para buscar catálogo de produtos/planos do Stripe
 
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { externalSupabase } from "@/integrations/supabase/external-client";
+
+const FUNCTIONS_URL = "https://yqdqmudsnjhixtxldqwi.supabase.co/functions/v1";
+const ANON_KEY =
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlxZHFtdWRzbmpoaXh0eGxkcXdpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTY0MjEwMzEsImV4cCI6MjA3MTk5NzAzMX0.UsrIuEgtJVdhZ0b76VLOjT1zVn2-OWeORGFoy487MfY";
 
 export interface StripePrice {
   id: string;
@@ -32,17 +36,26 @@ export interface StripeProductsCatalog {
   services: StripeProduct[];
 }
 
-export function useStripeProducts(testMode = false) {
+export function useStripeProducts() {
   return useQuery<StripeProductsCatalog>({
-    queryKey: ["stripe-products", testMode],
+    queryKey: ["stripe-products"],
     queryFn: async () => {
-      const { data, error } = await supabase.functions.invoke("stripe-list-products", {
-        headers: testMode ? { "X-Stripe-Test-Mode": "true" } : {},
+      const token = (await externalSupabase.auth.getSession()).data.session?.access_token;
+      const res = await fetch(`${FUNCTIONS_URL}/stripe-list-products`, {
+        method: "POST",
+        headers: {
+          apikey: ANON_KEY,
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
       });
-      if (error) throw error;
-      return data as StripeProductsCatalog;
+      if (!res.ok) {
+        const text = await res.text().catch(() => `HTTP ${res.status}`);
+        throw new Error(`stripe-list-products falhou: ${text}`);
+      }
+      return res.json() as Promise<StripeProductsCatalog>;
     },
-    staleTime: 1000 * 60 * 30, // 30 minutos (catálogo muda pouco)
+    staleTime: 1000 * 60 * 30, // 30 minutos
     retry: 2,
   });
 }

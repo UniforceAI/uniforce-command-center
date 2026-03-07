@@ -1,23 +1,21 @@
 // stripe-list-products/index.ts
 // Supabase Edge Function — Lista produtos e preços ativos do Stripe
-// Endpoint: GET /functions/v1/stripe-list-products
-// Auth: Não obrigatória (catálogo público de planos)
+// Auth: Opcional — se autenticado e isp_id='uniforce', usa test mode automaticamente
 
 import Stripe from "https://esm.sh/stripe@14.21.0?target=deno";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2?target=deno";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// Produtos que são planos principais (não add-ons)
+// Produtos live
 const MAIN_PLAN_IDS = [
   "prod_U41i5VULCVGKRl", // Uniforce Basic
   "prod_U41iUfju8I1C2n", // Uniforce Retention
   "prod_U41i4IUixqqdnT", // Uniforce Growth
 ];
-
-// Produtos que são add-ons mensais
 const ADDON_PRODUCT_IDS = [
   "prod_U41iBwKh8glQlZ", // NPS Check
   "prod_U41iWFzEhoLYhY", // Smart Cobrança
@@ -42,31 +40,41 @@ const TEST_ADDON_IDS = [
   "prod_U6Prk0MgkLHVfc", // Max Sales [TEST]
 ];
 
+// ISPs que usam automaticamente Stripe test mode
+const TEST_MODE_ISP_IDS = ["uniforce"];
+
 Deno.serve(async (req) => {
-  // CORS preflight
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
 
   try {
-    // Suporta test mode via query param ?test=true ou header X-Stripe-Test-Mode
-    const url = new URL(req.url);
-    const isTestMode = url.searchParams.get("test") === "true"
-      || req.headers.get("X-Stripe-Test-Mode") === "true";
+    // Detectar test mode via JWT — sem custom headers, sem query params no client
+    let isTestMode = false;
+    const authHeader = req.headers.get("Authorization");
+    if (authHeader) {
+      const supabase = createClient(
+        Deno.env.get("SUPABASE_URL") ?? "",
+        Deno.env.get("SUPABASE_ANON_KEY") ?? "",
+        { global: { headers: { Authorization: authHeader } } }
+      );
+      const { data: ispData } = await supabase.rpc("get_isp_stripe_data");
+      const ispId = ispData?.[0]?.isp_id ?? null;
+      isTestMode = TEST_MODE_ISP_IDS.includes(ispId);
+    }
 
     const stripeKey = isTestMode
       ? (Deno.env.get("STRIPE_TEST_SECRET_KEY") ?? Deno.env.get("STRIPE_SECRET_KEY") ?? "")
       : (Deno.env.get("STRIPE_SECRET_KEY") ?? "");
 
     const activePlanIds  = isTestMode ? TEST_MAIN_PLAN_IDS : MAIN_PLAN_IDS;
-    const activeAddonIds = isTestMode ? TEST_ADDON_IDS     : ADDON_PRODUCT_IDS;
+    const activeAddonIds = isTestMode ? TEST_ADDON_IDS      : ADDON_PRODUCT_IDS;
 
     const stripe = new Stripe(stripeKey, {
       apiVersion: "2024-06-20",
       httpClient: Stripe.createFetchHttpClient(),
     });
 
-    // Buscar todos os produtos ativos
     const [productsRes, pricesRes] = await Promise.all([
       stripe.products.list({ active: true, limit: 100 }),
       stripe.prices.list({ active: true, limit: 100 }),
@@ -80,7 +88,6 @@ Deno.serve(async (req) => {
       pricesByProduct[productId].push(price);
     }
 
-    // Formatar produtos
     const formatProduct = (product: Stripe.Product, type: "plan" | "addon" | "service") => {
       const prices = pricesByProduct[product.id] ?? [];
       const monthlyPrice = prices.find((p) => p.recurring?.interval === "month");
@@ -110,7 +117,7 @@ Deno.serve(async (req) => {
     const plans = productsRes.data
       .filter((p) => activePlanIds.includes(p.id))
       .map((p) => formatProduct(p, "plan"))
-      .sort((a, b) => (a.monthly_amount ?? 0) - (b.monthly_amount ?? 0)); // ordena por preço asc
+      .sort((a, b) => (a.monthly_amount ?? 0) - (b.monthly_amount ?? 0));
 
     const addons = productsRes.data
       .filter((p) => activeAddonIds.includes(p.id))
@@ -123,19 +130,13 @@ Deno.serve(async (req) => {
 
     return new Response(
       JSON.stringify({ plans, addons, services }),
-      {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-        status: 200,
-      }
+      { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 }
     );
   } catch (error) {
     console.error("stripe-list-products error:", error);
     return new Response(
       JSON.stringify({ error: "Erro ao buscar produtos do Stripe" }),
-      {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-        status: 500,
-      }
+      { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 500 }
     );
   }
 });

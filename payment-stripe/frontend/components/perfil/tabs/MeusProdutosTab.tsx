@@ -1,12 +1,9 @@
 // src/components/perfil/tabs/MeusProdutosTab.tsx
 // Aba "Meus Produtos" — exibe plano atual ou catálogo para checkout
 
-import { useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Switch } from "@/components/ui/switch";
-import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -17,7 +14,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useStripeSubscription, useStripeCheckout, useStripeCustomerPortal } from "@/hooks/useStripeSubscription";
 import { useStripeProducts } from "@/hooks/useStripeProducts";
 import { useActiveIsp } from "@/hooks/useActiveIsp";
-import { useAuth } from "@/contexts/AuthContext";
+import { useState } from "react";
 
 // Ícones por plano (baseado no nome)
 function planIcon(name: string) {
@@ -52,13 +49,13 @@ function formatDate(iso: string) {
 export function MeusProdutosTab() {
   const { toast } = useToast();
   const { ispId } = useActiveIsp();
-  const { profile } = useAuth();
-  const isSuperAdmin = profile?.role === "super_admin";
   const [checkoutLoading, setCheckoutLoading] = useState<string | null>(null);
-  const [testMode, setTestMode] = useState(false);
 
-  const { data: subscriptionData, isLoading: subLoading, refetch: refetchSub } = useStripeSubscription();
-  const { data: catalog, isLoading: catalogLoading } = useStripeProducts(testMode);
+  // Test mode é automático para o ISP uniforce (detectado server-side via JWT)
+  const isDevIsp = ispId === "uniforce";
+
+  const { data: subscriptionData, isLoading: subLoading } = useStripeSubscription();
+  const { data: catalog, isLoading: catalogLoading } = useStripeProducts();
   const checkout = useStripeCheckout();
   const portal = useStripeCustomerPortal();
 
@@ -75,7 +72,6 @@ export function MeusProdutosTab() {
         price_id: priceId,
         success_url: `${baseUrl}/configuracoes/perfil?tab=meus-produtos&success=true`,
         cancel_url: `${baseUrl}/configuracoes/perfil?tab=meus-produtos`,
-        test_mode: testMode,
       });
     } catch (err) {
       toast({
@@ -114,21 +110,16 @@ export function MeusProdutosTab() {
   return (
     <div className="space-y-6">
 
-      {/* ─── Super-admin test mode toggle ─── */}
-      {isSuperAdmin && (
-        <div className={`flex items-center gap-3 px-4 py-3 rounded-lg border ${testMode ? "border-amber-300 bg-amber-50" : "border-border bg-muted/30"}`}>
-          <FlaskConical className={`h-4 w-4 shrink-0 ${testMode ? "text-amber-600" : "text-muted-foreground"}`} />
+      {/* ─── Dev ISP banner (uniforce) ─── */}
+      {isDevIsp && (
+        <div className="flex items-center gap-3 px-4 py-3 rounded-lg border border-amber-300 bg-amber-50">
+          <FlaskConical className="h-4 w-4 shrink-0 text-amber-600" />
           <div className="flex-1 min-w-0">
-            <p className={`text-sm font-medium ${testMode ? "text-amber-800" : "text-foreground"}`}>
-              {testMode ? "Modo de Teste Ativo — cartão 4242 4242 4242 4242" : "Modo de Teste Stripe"}
+            <p className="text-sm font-medium text-amber-800">Ambiente de Desenvolvimento — Modo Teste Stripe</p>
+            <p className="text-xs text-muted-foreground">
+              Conta uniforce [DEV] usa Stripe test mode automaticamente. Cartão de teste: 4242 4242 4242 4242
             </p>
-            <p className="text-xs text-muted-foreground">Visível apenas para super_admin. Usa sk_test_* key, sem cobranças reais.</p>
           </div>
-          <Switch
-            checked={testMode}
-            onCheckedChange={setTestMode}
-            aria-label="Ativar modo de teste"
-          />
         </div>
       )}
 
@@ -261,8 +252,8 @@ export function MeusProdutosTab() {
         </Card>
       )}
 
-      {/* ─── Catálogo de Planos (oculto para Asaas, a menos que seja super_admin em test mode) ─── */}
-      {isAsaasLegacy && !testMode ? null : <div>
+      {/* ─── Catálogo de Planos (oculto para Asaas, exceto conta dev uniforce) ─── */}
+      {isAsaasLegacy && !isDevIsp ? null : <div>
         <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
           {hasActiveSub ? (
             <><ArrowUpCircle className="h-4 w-4 text-primary" /> Outros Planos Disponíveis</>
@@ -339,8 +330,8 @@ export function MeusProdutosTab() {
         )}
       </div>}
 
-      {/* Add-ons (visível apenas fora do modo Asaas, ou em test mode) */}
-      {(!isAsaasLegacy || testMode) && catalog && catalog.addons.length > 0 && (
+      {/* Add-ons */}
+      {(!isAsaasLegacy || isDevIsp) && catalog && catalog.addons.length > 0 && (
         <div>
           <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
             <Zap className="h-4 w-4 text-primary" /> Add-ons Disponíveis
