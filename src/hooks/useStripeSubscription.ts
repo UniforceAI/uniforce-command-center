@@ -1,8 +1,7 @@
 // src/hooks/useStripeSubscription.ts
-// Hook TanStack Query para buscar a assinatura Stripe do ISP autenticado
+// Hook TanStack Query para assinatura, checkout e portal Stripe do ISP
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
 import { externalSupabase } from "@/integrations/supabase/external-client";
 
 export interface StripePaymentMethod {
@@ -36,38 +35,32 @@ export interface StripeSubscriptionData {
   subscription: StripeSubscription | null;
 }
 
-async function fetchStripeToken() {
-  const { data: sessData } = await externalSupabase.auth.refreshSession();
-  return (
-    sessData?.session?.access_token ??
-    (await externalSupabase.auth.getSession()).data.session?.access_token ??
-    null
-  );
+async function getToken() {
+  const { data } = await externalSupabase.auth.getSession();
+  return data.session?.access_token ?? null;
 }
 
 export function useStripeSubscription() {
   return useQuery<StripeSubscriptionData>({
     queryKey: ["stripe-subscription"],
     queryFn: async () => {
-      const token = await fetchStripeToken();
-      const { data, error } = await supabase.functions.invoke("stripe-subscription", {
+      const token = await getToken();
+      const { data, error } = await externalSupabase.functions.invoke("stripe-subscription", {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
       if (error) throw error;
       return data as StripeSubscriptionData;
     },
-    staleTime: 1000 * 60 * 5, // 5 minutos
+    staleTime: 1000 * 60 * 5,
     retry: 2,
   });
 }
 
 export function useStripeCustomerPortal() {
-  const queryClient = useQueryClient();
-
   return useMutation({
     mutationFn: async (returnUrl: string) => {
-      const token = await fetchStripeToken();
-      const { data, error } = await supabase.functions.invoke("stripe-customer-portal", {
+      const token = await getToken();
+      const { data, error } = await externalSupabase.functions.invoke("stripe-customer-portal", {
         method: "POST",
         body: { return_url: returnUrl },
         headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -94,8 +87,8 @@ export function useStripeCheckout() {
       cancel_url: string;
       test_mode?: boolean;
     }) => {
-      const token = await fetchStripeToken();
-      const { data, error } = await supabase.functions.invoke("stripe-checkout", {
+      const token = await getToken();
+      const { data, error } = await externalSupabase.functions.invoke("stripe-checkout", {
         method: "POST",
         body: { price_id, success_url, cancel_url, test_mode },
         headers: token ? { Authorization: `Bearer ${token}` } : {},
