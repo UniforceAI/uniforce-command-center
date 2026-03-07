@@ -1,0 +1,107 @@
+// src/hooks/useStripeSubscription.ts
+// Hook TanStack Query para buscar a assinatura Stripe do ISP autenticado
+
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
+import { externalSupabase } from "@/integrations/supabase/external-client";
+
+export interface StripePaymentMethod {
+  type: string;
+  brand: string | null;
+  last4: string | null;
+  exp_month: number | null;
+  exp_year: number | null;
+}
+
+export interface StripeSubscription {
+  id: string;
+  status: "active" | "past_due" | "canceled" | "trialing" | "incomplete" | "unpaid";
+  product_id: string | null;
+  product_name: string | null;
+  price_id: string | null;
+  monthly_amount: number;
+  currency: string;
+  current_period_start: string;
+  current_period_end: string;
+  cancel_at_period_end: boolean;
+  trial_end: string | null;
+  payment_method: StripePaymentMethod | null;
+  features: string[];
+}
+
+export interface StripeSubscriptionData {
+  isp_id: string;
+  stripe_customer_id: string | null;
+  subscription: StripeSubscription | null;
+}
+
+async function fetchStripeToken() {
+  const { data: sessData } = await externalSupabase.auth.refreshSession();
+  return (
+    sessData?.session?.access_token ??
+    (await externalSupabase.auth.getSession()).data.session?.access_token ??
+    null
+  );
+}
+
+export function useStripeSubscription() {
+  return useQuery<StripeSubscriptionData>({
+    queryKey: ["stripe-subscription"],
+    queryFn: async () => {
+      const token = await fetchStripeToken();
+      const { data, error } = await supabase.functions.invoke("stripe-subscription", {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (error) throw error;
+      return data as StripeSubscriptionData;
+    },
+    staleTime: 1000 * 60 * 5, // 5 minutos
+    retry: 2,
+  });
+}
+
+export function useStripeCustomerPortal() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (returnUrl: string) => {
+      const token = await fetchStripeToken();
+      const { data, error } = await supabase.functions.invoke("stripe-customer-portal", {
+        method: "POST",
+        body: { return_url: returnUrl },
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (error) throw error;
+      return data as { url: string };
+    },
+    onSuccess: (data) => {
+      window.location.href = data.url;
+    },
+  });
+}
+
+export function useStripeCheckout() {
+  return useMutation({
+    mutationFn: async ({
+      price_id,
+      success_url,
+      cancel_url,
+    }: {
+      price_id: string;
+      success_url: string;
+      cancel_url: string;
+    }) => {
+      const token = await fetchStripeToken();
+      const { data, error } = await supabase.functions.invoke("stripe-checkout", {
+        method: "POST",
+        body: { price_id, success_url, cancel_url },
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (error) throw error;
+      return data as { url: string; session_id: string };
+    },
+    onSuccess: (data) => {
+      window.location.href = data.url;
+    },
+  });
+}
