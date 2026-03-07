@@ -400,6 +400,10 @@ export function ContasTab() {
                     <RefreshCw className={`h-3.5 w-3.5 ${isLoadingData ? "animate-spin" : ""}`} />
                     Atualizar
                   </Button>
+                  <Button variant="outline" size="sm" onClick={() => { resetPwdForm(); setPwdDialogOpen(true); }} className="gap-1.5">
+                    <KeyRound className="h-3.5 w-3.5" />
+                    Redefinir Senha
+                  </Button>
                   <Button
                     size="sm"
                     onClick={() => { resetCreateForm(); setCreateDialogOpen(true); }}
