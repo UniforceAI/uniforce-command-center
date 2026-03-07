@@ -2,7 +2,7 @@
 // Hook TanStack Query para buscar catálogo de produtos/planos do Stripe
 
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { externalSupabase } from "@/integrations/supabase/external-client";
 
 export interface StripePrice {
   id: string;
@@ -36,13 +36,17 @@ export function useStripeProducts(testMode = false) {
   return useQuery<StripeProductsCatalog>({
     queryKey: ["stripe-products", testMode],
     queryFn: async () => {
-      const { data, error } = await supabase.functions.invoke("stripe-list-products", {
-        headers: testMode ? { "X-Stripe-Test-Mode": "true" } : {},
+      const token = (await externalSupabase.auth.getSession()).data.session?.access_token;
+      const { data, error } = await externalSupabase.functions.invoke("stripe-list-products", {
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          ...(testMode ? { "X-Stripe-Test-Mode": "true" } : {}),
+        },
       });
       if (error) throw error;
       return data as StripeProductsCatalog;
     },
-    staleTime: 1000 * 60 * 30, // 30 minutos (catálogo muda pouco)
+    staleTime: 1000 * 60 * 30,
     retry: 2,
   });
 }
