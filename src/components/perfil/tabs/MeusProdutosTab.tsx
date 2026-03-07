@@ -55,7 +55,7 @@ export function MeusProdutosTab() {
   // ISP uniforce é o ambiente de desenvolvimento — usa test mode automaticamente
   const testMode = ispId === "uniforce";
 
-  const { data: subscriptionData, isLoading: subLoading, isError: subError } = useStripeSubscription();
+  const { data: subscriptionData, isLoading: subLoading, isError: subError } = useStripeSubscription(testMode);
   const { data: catalog, isLoading: catalogLoading, isError: catalogError, error: catalogErrorObj } = useStripeProducts(testMode);
   const checkout = useStripeCheckout();
   const portal = useStripeCustomerPortal();
