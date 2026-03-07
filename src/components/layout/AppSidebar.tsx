@@ -1,4 +1,4 @@
-import { AlertTriangle, ThumbsUp, LayoutDashboard, DollarSign, UserX, XCircle, PanelLeftClose, PanelLeft, Settings, SlidersHorizontal, Building2, Users, Headphones } from "lucide-react";
+import { AlertTriangle, ThumbsUp, LayoutDashboard, DollarSign, UserX, XCircle, PanelLeftClose, PanelLeft, Settings, SlidersHorizontal, Building2, Users } from "lucide-react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import {
   Sidebar,
@@ -33,8 +33,7 @@ const menuItems = [
 const configSubItems = [
 { title: "Perfil do Provedor", url: "/configuracoes/perfil", icon: Building2 },
 { title: "Contas de Acesso", url: "/configuracoes/contas", icon: Users },
-{ title: "Setup de Churn", url: "/configuracoes/churn-score", icon: SlidersHorizontal },
-{ title: "Setup de Chamados", url: "/configuracoes/chamados", icon: Headphones }];
+{ title: "Setup do Provedor", url: "/configuracoes", icon: SlidersHorizontal }];
 
 
 export function AppSidebar() {
@@ -43,7 +42,7 @@ export function AppSidebar() {
   const navigate = useNavigate();
   const collapsed = state === "collapsed";
 
-  const isConfigActive = configSubItems.some((i) => location.pathname === i.url);
+  const isConfigActive = location.pathname.startsWith("/configuracoes");
   const [configOpen, setConfigOpen] = useState(isConfigActive);
 
   return (
@@ -65,13 +64,13 @@ export function AppSidebar() {
               size="sm"
               onClick={toggleSidebar}
               className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground shrink-0">
-              
+
                 <PanelLeftClose className="h-4 w-4" />
               </Button>
             </div>
           }
         </div>
-        
+
         <SidebarGroup>
           <SidebarGroupLabel className={collapsed ? "sr-only" : "text-[10px] uppercase tracking-widest text-muted-foreground/60 font-semibold"}>
             Meu Provedor
@@ -86,7 +85,7 @@ export function AppSidebar() {
                       asChild
                       isActive={isActive}
                       tooltip={item.title}>
-                      
+
                       <NavLink to={item.url} className={collapsed ? "" : "text-[18px]"}>
                         <item.icon className={collapsed ? "!h-[24px] !w-[24px]" : "h-5 w-5"} />
                         <span>{item.title}</span>
@@ -112,8 +111,8 @@ export function AppSidebar() {
                   asChild
                   isActive={isConfigActive}
                   tooltip="Configurações">
-                  
-                    <NavLink to="/configuracoes/churn-score">
+
+                    <NavLink to="/configuracoes">
                       <Settings className="!h-[24px] !w-[24px]" />
                       <span>Configurações</span>
                     </NavLink>
@@ -127,7 +126,7 @@ export function AppSidebar() {
                       isActive={isConfigActive}
                       tooltip="Configurações"
                       className="w-full">
-                      
+
                         <Settings className="h-5 w-5" />
                         <span>Configurações</span>
                         <ChevronRight className={`ml-auto h-3 w-3 transition-transform ${configOpen ? "rotate-90" : ""}`} />
@@ -139,8 +138,8 @@ export function AppSidebar() {
                       <SidebarMenuSubItem key={sub.title}>
                             <SidebarMenuSubButton
                           asChild
-                          isActive={location.pathname === sub.url}>
-                          
+                          isActive={location.pathname === sub.url || (sub.url === "/configuracoes" && location.pathname === "/configuracoes")}>
+
                               <NavLink to={sub.url}>
                                 <sub.icon className="h-3.5 w-3.5" />
                                 <span>{sub.title}</span>
