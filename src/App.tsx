@@ -3,7 +3,7 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { ChurnScoreConfigProvider } from "@/contexts/ChurnScoreConfigContext";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
@@ -23,10 +23,9 @@ import Financeiro from "./pages/Financeiro";
 import ClientesEmRisco from "./pages/ClientesEmRisco";
 import Cancelamentos from "./pages/Cancelamentos";
 import SelecionarCliente from "./pages/SelecionarCliente";
-import ConfiguracaoChurnScore from "./pages/ConfiguracaoChurnScore";
+import SetupProvedor from "./pages/SetupProvedor";
 import PerfilISP from "./pages/PerfilISP";
 import ContasAcesso from "./pages/ContasAcesso";
-import SetupChamados from "./pages/SetupChamados";
 import EventosDebug from "./pages/EventosDebug";
 import Onboarding from "./pages/Onboarding";
 
@@ -170,16 +169,20 @@ const App = () => (
                 </ProtectedRoute>
               }
             />
+            {/* Unified setup page — replaces /configuracoes/churn-score and /configuracoes/chamados */}
             <Route
-              path="/configuracoes/churn-score"
+              path="/configuracoes"
               element={
                 <ProtectedRoute>
                   <MainLayout>
-                    <ConfiguracaoChurnScore />
+                    <SetupProvedor />
                   </MainLayout>
                 </ProtectedRoute>
               }
             />
+            {/* Legacy redirects */}
+            <Route path="/configuracoes/churn-score" element={<Navigate to="/configuracoes" replace />} />
+            <Route path="/configuracoes/chamados"    element={<Navigate to="/configuracoes" replace />} />
             <Route
               path="/configuracoes/perfil"
               element={
@@ -196,16 +199,6 @@ const App = () => (
                 <ProtectedRoute>
                   <MainLayout>
                     <ContasAcesso />
-                  </MainLayout>
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/configuracoes/chamados"
-              element={
-                <ProtectedRoute>
-                  <MainLayout>
-                    <SetupChamados />
                   </MainLayout>
                 </ProtectedRoute>
               }
