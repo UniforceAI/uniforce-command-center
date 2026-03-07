@@ -40,13 +40,16 @@ async function getToken() {
   return data.session?.access_token ?? null;
 }
 
-export function useStripeSubscription() {
+export function useStripeSubscription(testMode = false) {
   return useQuery<StripeSubscriptionData>({
-    queryKey: ["stripe-subscription"],
+    queryKey: ["stripe-subscription", testMode],
     queryFn: async () => {
       const token = await getToken();
       const { data, error } = await externalSupabase.functions.invoke("stripe-subscription", {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          ...(testMode ? { "X-Stripe-Test-Mode": "true" } : {}),
+        },
       });
       if (error) throw error;
       return data as StripeSubscriptionData;
