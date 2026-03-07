@@ -32,6 +32,7 @@ export interface StripeSubscription {
 export interface StripeSubscriptionData {
   isp_id: string;
   stripe_customer_id: string | null;
+  stripe_billing_source: "stripe" | "asaas" | null;
   subscription: StripeSubscription | null;
 }
 
@@ -86,15 +87,17 @@ export function useStripeCheckout() {
       price_id,
       success_url,
       cancel_url,
+      test_mode = false,
     }: {
       price_id: string;
       success_url: string;
       cancel_url: string;
+      test_mode?: boolean;
     }) => {
       const token = await fetchStripeToken();
       const { data, error } = await supabase.functions.invoke("stripe-checkout", {
         method: "POST",
-        body: { price_id, success_url, cancel_url },
+        body: { price_id, success_url, cancel_url, test_mode },
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
       if (error) throw error;
