@@ -32,11 +32,13 @@ export interface StripeProductsCatalog {
   services: StripeProduct[];
 }
 
-export function useStripeProducts() {
+export function useStripeProducts(testMode = false) {
   return useQuery<StripeProductsCatalog>({
-    queryKey: ["stripe-products"],
+    queryKey: ["stripe-products", testMode],
     queryFn: async () => {
-      const { data, error } = await supabase.functions.invoke("stripe-list-products");
+      const { data, error } = await supabase.functions.invoke("stripe-list-products", {
+        headers: testMode ? { "X-Stripe-Test-Mode": "true" } : {},
+      });
       if (error) throw error;
       return data as StripeProductsCatalog;
     },
