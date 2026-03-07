@@ -337,7 +337,6 @@ export function MeusProdutosTab() {
             })}
           </div>
         )}
-        </div>
       </div>}
 
       {/* Add-ons (visível apenas fora do modo Asaas, ou em test mode) */}
