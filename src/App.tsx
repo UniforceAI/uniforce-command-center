@@ -28,6 +28,7 @@ import PerfilISP from "./pages/PerfilISP";
 import ContasAcesso from "./pages/ContasAcesso";
 import SetupChamados from "./pages/SetupChamados";
 import EventosDebug from "./pages/EventosDebug";
+import Onboarding from "./pages/Onboarding";
 
 // Clientes operam o dashboard por sessões longas de trabalho (8h).
 // staleTime = 8h: dados permanecem frescos durante toda a jornada sem re-fetch.
@@ -77,6 +78,14 @@ const App = () => (
               element={
                 <ProtectedRoute requireSelectedIsp={false}>
                   <SelecionarCliente />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/onboarding"
+              element={
+                <ProtectedRoute requireSelectedIsp={false}>
+                  <Onboarding />
                 </ProtectedRoute>
               }
             />
