@@ -15,6 +15,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { useStripeInvoices } from "@/hooks/useStripeInvoices";
 import { useStripeSubscription, useStripeCustomerPortal } from "@/hooks/useStripeSubscription";
+import { useActiveIsp } from "@/hooks/useActiveIsp";
 
 function formatCurrency(amount: number, currency = "BRL") {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency }).format(amount);
@@ -62,9 +63,10 @@ function invoiceStatusBadge(status: string) {
 
 export function FinanceiroBillingTab() {
   const { toast } = useToast();
-  const { data: invoicesData, isLoading: invoicesLoading } = useStripeInvoices();
-  const { data: subscriptionData, isLoading: subLoading } = useStripeSubscription();
-  const portal = useStripeCustomerPortal();
+  const { ispId } = useActiveIsp();
+  const { data: invoicesData, isLoading: invoicesLoading } = useStripeInvoices(ispId);
+  const { data: subscriptionData, isLoading: subLoading } = useStripeSubscription(ispId);
+  const portal = useStripeCustomerPortal(ispId);
 
   const sub = subscriptionData?.subscription;
   const invoices = invoicesData?.invoices ?? [];
