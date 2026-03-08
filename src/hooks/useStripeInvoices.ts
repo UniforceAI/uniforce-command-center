@@ -53,7 +53,9 @@ export function useStripeInvoices(ispId?: string | null) {
       return res.json() as Promise<{ invoices: StripeInvoice[] }>;
     },
     staleTime: 1000 * 60 * 10,
-    retry: 2,
+    retry: 1,
+    throwOnError: false,
+    refetchOnMount: true,
     enabled: !!ispId,
   });
 }
