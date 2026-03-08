@@ -237,207 +237,225 @@ export function MeusProdutosTab() {
         </Card>
       )}
 
-      {/* ─── Plano Ativo ─── */}
-      {hasActiveSub ? (
-        <Card>
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-base flex items-center gap-2">
-                {planIcon(sub.product_name ?? "")}
-                Plano Atual
-              </CardTitle>
-              {statusBadge(sub.status)}
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {/* Nome e valor */}
-            <div className="flex items-end justify-between">
-              <div>
-                <p className="text-2xl font-bold text-foreground">{sub.product_name ?? "Plano Ativo"}</p>
-                <p className="text-sm text-muted-foreground mt-0.5">Assinatura mensal recorrente</p>
+      {/* ─── Plano Ativo (Stripe) — apenas para ISPs gerenciados pelo Stripe ─── */}
+      {!isAsaasLegacy && (
+        hasActiveSub ? (
+          <Card>
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-base flex items-center gap-2">
+                  {planIcon(sub.product_name ?? "")}
+                  Plano Atual
+                </CardTitle>
+                {statusBadge(sub.status)}
               </div>
-              <div className="text-right">
-                <p className="text-3xl font-bold text-primary">
-                  {formatCurrency(sub.monthly_amount, sub.currency)}
-                </p>
-                <p className="text-xs text-muted-foreground">/mês</p>
-              </div>
-            </div>
-
-            <Separator />
-
-            {/* Período e pagamento */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50 border">
-                <Calendar className="h-4 w-4 text-muted-foreground shrink-0" />
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {/* Nome e valor */}
+              <div className="flex items-end justify-between">
                 <div>
-                  <p className="text-xs text-muted-foreground">Próxima cobrança</p>
-                  <p className="text-sm font-medium">{formatDate(sub.current_period_end)}</p>
+                  <p className="text-2xl font-bold text-foreground">{sub.product_name ?? "Plano Ativo"}</p>
+                  <p className="text-sm text-muted-foreground mt-0.5">Assinatura mensal recorrente</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-3xl font-bold text-primary">
+                    {formatCurrency(sub.monthly_amount, sub.currency)}
+                  </p>
+                  <p className="text-xs text-muted-foreground">/mês</p>
                 </div>
               </div>
-              <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50 border">
-                <CreditCard className="h-4 w-4 text-muted-foreground shrink-0" />
+
+              <Separator />
+
+              {/* Período e pagamento */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50 border">
+                  <Calendar className="h-4 w-4 text-muted-foreground shrink-0" />
+                  <div>
+                    <p className="text-xs text-muted-foreground">Próxima cobrança</p>
+                    <p className="text-sm font-medium">{formatDate(sub.current_period_end)}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50 border">
+                  <CreditCard className="h-4 w-4 text-muted-foreground shrink-0" />
+                  <div>
+                    <p className="text-xs text-muted-foreground">Forma de pagamento</p>
+                    {sub.payment_method ? (
+                      <p className="text-sm font-medium capitalize">
+                        {sub.payment_method.brand} •••• {sub.payment_method.last4}
+                      </p>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">Não configurado</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Features do plano */}
+              {sub.features.length > 0 && (
                 <div>
-                  <p className="text-xs text-muted-foreground">Forma de pagamento</p>
-                  {sub.payment_method ? (
-                    <p className="text-sm font-medium capitalize">
-                      {sub.payment_method.brand} •••• {sub.payment_method.last4}
-                    </p>
-                  ) : (
-                    <p className="text-sm text-muted-foreground">Não configurado</p>
-                  )}
+                  <p className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider">Incluído no plano</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                    {sub.features.map((feat, i) => (
+                      <div key={i} className="flex items-center gap-2 text-sm">
+                        <CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" />
+                        {feat}
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            </div>
+              )}
 
-            {/* Features do plano */}
-            {sub.features.length > 0 && (
-              <div>
-                <p className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider">Incluído no plano</p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
-                  {sub.features.map((feat, i) => (
-                    <div key={i} className="flex items-center gap-2 text-sm">
-                      <CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" />
-                      {feat}
-                    </div>
-                  ))}
+              {/* Alertas */}
+              {sub.status === "past_due" && (
+                <div className="flex items-start gap-2 p-3 rounded-lg bg-red-50 border border-red-200 text-sm text-red-700">
+                  <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                  <span>Pagamento pendente. Atualize seu método de pagamento para evitar interrupção do serviço.</span>
                 </div>
-              </div>
-            )}
+              )}
+              {sub.cancel_at_period_end && (
+                <div className="flex items-start gap-2 p-3 rounded-lg bg-orange-50 border border-orange-200 text-sm text-orange-700">
+                  <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                  <span>Sua assinatura será cancelada em {formatDate(sub.current_period_end)}. Reative pelo portal de pagamentos.</span>
+                </div>
+              )}
 
-            {/* Alertas */}
-            {sub.status === "past_due" && (
-              <div className="flex items-start gap-2 p-3 rounded-lg bg-red-50 border border-red-200 text-sm text-red-700">
-                <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
-                <span>Pagamento pendente. Atualize seu método de pagamento para evitar interrupção do serviço.</span>
+              {/* Ações */}
+              <div className="flex flex-wrap gap-2 pt-1">
+                <Button onClick={handlePortal} disabled={portal.isPending} className="gap-2">
+                  {portal.isPending ? <RefreshCw className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />}
+                  Gerenciar Assinatura
+                </Button>
+                <Button variant="outline" onClick={handlePortal} disabled={portal.isPending} className="gap-2">
+                  <ExternalLink className="h-4 w-4" />
+                  Portal de Pagamentos
+                </Button>
               </div>
-            )}
-            {sub.cancel_at_period_end && (
-              <div className="flex items-start gap-2 p-3 rounded-lg bg-orange-50 border border-orange-200 text-sm text-orange-700">
-                <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
-                <span>Sua assinatura será cancelada em {formatDate(sub.current_period_end)}. Reative pelo portal de pagamentos.</span>
-              </div>
-            )}
+            </CardContent>
+          </Card>
+        ) : (
+          /* ─── Sem assinatura Stripe: CTA (somente para ISPs Stripe) ─── */
+          <Card className="border-primary/30 bg-primary/5">
+            <CardContent className="py-8 text-center space-y-3">
+              <Package className="h-10 w-10 text-primary/60 mx-auto" />
+              <p className="text-base font-semibold text-foreground">Nenhum plano ativo</p>
+              <p className="text-sm text-muted-foreground max-w-xs mx-auto">
+                Escolha um dos planos abaixo para começar a usar a plataforma Uniforce.
+              </p>
+            </CardContent>
+          </Card>
+        )
+      )}
 
-            {/* Ações */}
-            <div className="flex flex-wrap gap-2 pt-1">
-              <Button onClick={handlePortal} disabled={portal.isPending} className="gap-2">
-                {portal.isPending ? <RefreshCw className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />}
-                Gerenciar Assinatura
-              </Button>
-              <Button variant="outline" onClick={handlePortal} disabled={portal.isPending} className="gap-2">
-                <ExternalLink className="h-4 w-4" />
-                Portal de Pagamentos
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      ) : (
-        /* ─── Sem assinatura: CTA ─── */
+      {/* ─── CTA Add-ons: somente para ISPs Asaas sem add-on Stripe ativo ─── */}
+      {isAsaasLegacy && !hasActiveSub && (
         <Card className="border-primary/30 bg-primary/5">
           <CardContent className="py-8 text-center space-y-3">
-            <Package className="h-10 w-10 text-primary/60 mx-auto" />
-            <p className="text-base font-semibold text-foreground">Nenhum plano ativo</p>
+            <Zap className="h-10 w-10 text-primary/60 mx-auto" />
+            <p className="text-base font-semibold text-foreground">Nenhum Add-on Ativo</p>
             <p className="text-sm text-muted-foreground max-w-xs mx-auto">
-              Escolha um dos planos abaixo para começar a usar a plataforma Uniforce.
+              Explore os add-ons disponíveis abaixo para expandir as funcionalidades da sua plataforma.
             </p>
           </CardContent>
         </Card>
       )}
 
-      {/* ─── Catálogo de Planos ─── */}
-      <div>
-        <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
-          {hasActiveSub ? (
-            <><ArrowUpCircle className="h-4 w-4 text-primary" /> Outros Planos Disponíveis</>
+      {/* ─── Catálogo de Planos Stripe: somente para ISPs gerenciados pelo Stripe ─── */}
+      {!isAsaasLegacy && (
+        <div>
+          <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
+            {hasActiveSub ? (
+              <><ArrowUpCircle className="h-4 w-4 text-primary" /> Outros Planos Disponíveis</>
+            ) : (
+              <><Package className="h-4 w-4 text-primary" /> Escolha seu Plano</>
+            )}
+          </h3>
+
+          {catalogLoading ? (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {[1, 2, 3].map((i) => <Skeleton key={i} className="h-56" />)}
+            </div>
           ) : (
-            <><Package className="h-4 w-4 text-primary" /> Escolha seu Plano</>
-          )}
-        </h3>
-
-        {catalogLoading ? (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {[1, 2, 3].map((i) => <Skeleton key={i} className="h-56" />)}
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {catalog?.plans.map((plan) => {
-              const isCurrent = sub?.product_id === plan.id;
-              return (
-                <Card
-                  key={plan.id}
-                  className={`relative flex flex-col ${isCurrent ? "border-primary ring-1 ring-primary" : ""}`}
-                >
-                  {isCurrent && (
-                    <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-                      <Badge className="bg-primary text-primary-foreground text-xs px-3">Plano Atual</Badge>
-                    </div>
-                  )}
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-base flex items-center gap-2">
-                      {planIcon(plan.name)}
-                      {plan.name}
-                    </CardTitle>
-                    <div>
-                      <span className="text-2xl font-bold text-foreground">
-                        {formatCurrency(plan.monthly_amount ?? 0)}
-                      </span>
-                      <span className="text-xs text-muted-foreground">/mês</span>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="flex-1 flex flex-col gap-3">
-                    {plan.description && (
-                      <p className="text-xs text-muted-foreground">{plan.description}</p>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {catalog?.plans.map((plan) => {
+                const isCurrent = sub?.product_id === plan.id;
+                return (
+                  <Card
+                    key={plan.id}
+                    className={`relative flex flex-col ${isCurrent ? "border-primary ring-1 ring-primary" : ""}`}
+                  >
+                    {isCurrent && (
+                      <div className="absolute -top-3 left-1/2 -translate-x-1/2">
+                        <Badge className="bg-primary text-primary-foreground text-xs px-3">Plano Atual</Badge>
+                      </div>
                     )}
-                    {plan.features.length > 0 && (
-                      <ul className="space-y-1.5 flex-1">
-                        {plan.features.map((feat, i) => (
-                          <li key={i} className="flex items-start gap-2 text-xs">
-                            <CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0 mt-0.5" />
-                            {feat}
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                    <Button
-                      className="w-full mt-auto"
-                      variant={isCurrent ? "outline" : "default"}
-                      disabled={isCurrent || checkoutLoading === plan.monthly_price_id || !plan.monthly_price_id}
-                      onClick={() => plan.monthly_price_id && handleCheckout(plan.monthly_price_id)}
-                    >
-                      {checkoutLoading === plan.monthly_price_id ? (
-                        <RefreshCw className="h-4 w-4 animate-spin" />
-                      ) : isCurrent ? (
-                        "Plano Atual"
-                      ) : hasActiveSub ? (
-                        "Alterar para este Plano"
-                      ) : (
-                        "Contratar"
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-base flex items-center gap-2">
+                        {planIcon(plan.name)}
+                        {plan.name}
+                      </CardTitle>
+                      <div>
+                        <span className="text-2xl font-bold text-foreground">
+                          {formatCurrency(plan.monthly_amount ?? 0)}
+                        </span>
+                        <span className="text-xs text-muted-foreground">/mês</span>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="flex-1 flex flex-col gap-3">
+                      {plan.description && (
+                        <p className="text-xs text-muted-foreground">{plan.description}</p>
                       )}
-                    </Button>
-                  </CardContent>
-                </Card>
-              );
-            })}
-          </div>
-        )}
-      </div>
+                      {plan.features.length > 0 && (
+                        <ul className="space-y-1.5 flex-1">
+                          {plan.features.map((feat, i) => (
+                            <li key={i} className="flex items-start gap-2 text-xs">
+                              <CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0 mt-0.5" />
+                              {feat}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                      <Button
+                        className="w-full mt-auto"
+                        variant={isCurrent ? "outline" : "default"}
+                        disabled={isCurrent || checkoutLoading === plan.monthly_price_id || !plan.monthly_price_id}
+                        onClick={() => plan.monthly_price_id && handleCheckout(plan.monthly_price_id)}
+                      >
+                        {checkoutLoading === plan.monthly_price_id ? (
+                          <RefreshCw className="h-4 w-4 animate-spin" />
+                        ) : isCurrent ? (
+                          "Plano Atual"
+                        ) : hasActiveSub ? (
+                          "Alterar para este Plano"
+                        ) : (
+                          "Contratar"
+                        )}
+                      </Button>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
-      {/* Add-ons */}
+      {/* ─── Add-ons: disponíveis para todos os ISPs ─── */}
       {catalog && catalog.addons.length > 0 && (
         <div>
           <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
-            <Zap className="h-4 w-4 text-primary" /> Add-ons Disponíveis
+            <Zap className="h-4 w-4 text-primary" />
+            {isAsaasLegacy ? "Add-ons Disponíveis" : "Add-ons Disponíveis"}
           </h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {catalog.addons.map((addon) => (
               <Card key={addon.id} className="flex flex-col">
                 <CardContent className="pt-4 pb-4 flex flex-col gap-3 flex-1">
                   <div className="flex items-start justify-between gap-2">
-                    <div>
+                    <div className="flex-1 min-w-0">
                       <p className="text-sm font-semibold text-foreground">{addon.name}</p>
                       {addon.description && (
-                        <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{addon.description}</p>
+                        <p className="text-xs text-muted-foreground mt-1">{addon.description}</p>
                       )}
                     </div>
                     <div className="text-right shrink-0">
