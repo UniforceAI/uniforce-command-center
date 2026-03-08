@@ -9,10 +9,12 @@ import { Separator } from "@/components/ui/separator";
 import {
   Package, CreditCard, CheckCircle2, ExternalLink, AlertCircle,
   RefreshCw, Star, Zap, Crown, ArrowUpCircle, Calendar, FlaskConical,
+  FileText,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useStripeSubscription, useStripeCheckout, useStripeCustomerPortal } from "@/hooks/useStripeSubscription";
 import { useStripeProducts } from "@/hooks/useStripeProducts";
+import { useAsaasSubscription } from "@/hooks/useAsaasSubscription";
 import { useActiveIsp } from "@/hooks/useActiveIsp";
 import { useState } from "react";
 
@@ -58,6 +60,7 @@ export function MeusProdutosTab() {
   // Garante que super_admin veja dados do ISP correto, não os seus próprios
   const { data: subscriptionData, isLoading: subLoading } = useStripeSubscription(ispId);
   const { data: catalog, isLoading: catalogLoading } = useStripeProducts(ispId);
+  const { data: asaasData, isLoading: asaasLoading } = useAsaasSubscription(ispId);
   const checkout = useStripeCheckout(ispId);
   const portal = useStripeCustomerPortal(ispId);
 
@@ -65,6 +68,9 @@ export function MeusProdutosTab() {
   const billingSource = subscriptionData?.stripe_billing_source;
   const isAsaasLegacy = billingSource === "asaas";
   const hasActiveSub = sub && sub.status !== "canceled";
+
+  const asaasSub = asaasData?.subscription ?? null;
+  const isAsaasCustomPlan = asaasData?.is_custom_plan ?? false;
 
   const handleCheckout = async (priceId: string) => {
     setCheckoutLoading(priceId);
@@ -100,7 +106,7 @@ export function MeusProdutosTab() {
     }
   };
 
-  if (subLoading) {
+  if (subLoading || (isAsaasLegacy && asaasLoading)) {
     return (
       <div className="space-y-4">
         <Skeleton className="h-40 w-full" />
@@ -125,8 +131,93 @@ export function MeusProdutosTab() {
         </div>
       )}
 
-      {/* ─── Asaas Legacy Card ─── */}
-      {isAsaasLegacy && (
+      {/* ─── Asaas Legacy: Plano Ativo ─── */}
+      {isAsaasLegacy && asaasSub && (
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Package className="h-5 w-5 text-primary" />
+                Plano Ativo
+              </CardTitle>
+              {isAsaasCustomPlan ? (
+                <Badge variant="outline" className="text-xs font-medium bg-amber-500/15 text-amber-700 border-amber-200">
+                  Plano Customizado
+                </Badge>
+              ) : (
+                <Badge variant="outline" className="text-xs font-medium bg-green-500/15 text-green-700 border-green-200">
+                  Ativo
+                </Badge>
+              )}
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-end justify-between">
+              <div>
+                <p className="text-2xl font-bold text-foreground">
+                  {asaasSub.description ?? "Plano Uniforce"}
+                </p>
+                <p className="text-sm text-muted-foreground mt-0.5">Assinatura recorrente</p>
+              </div>
+              <div className="text-right">
+                <p className="text-3xl font-bold text-primary">
+                  {formatCurrency(asaasSub.value)}
+                </p>
+                <p className="text-xs text-muted-foreground">/mês</p>
+              </div>
+            </div>
+
+            <Separator />
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {asaasSub.next_due_date && (
+                <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50 border">
+                  <Calendar className="h-4 w-4 text-muted-foreground shrink-0" />
+                  <div>
+                    <p className="text-xs text-muted-foreground">Próximo vencimento</p>
+                    <p className="text-sm font-medium">{formatDate(asaasSub.next_due_date)}</p>
+                  </div>
+                </div>
+              )}
+              <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50 border">
+                <CreditCard className="h-4 w-4 text-muted-foreground shrink-0" />
+                <div>
+                  <p className="text-xs text-muted-foreground">Forma de pagamento</p>
+                  <p className="text-sm font-medium">
+                    {asaasSub.billing_type === "BOLETO" ? "Boleto Bancário" :
+                     asaasSub.billing_type === "PIX" ? "PIX" :
+                     asaasSub.billing_type ?? "—"}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-2 pt-1">
+              {asaasSub.billing_type === "BOLETO" && (
+                <Button
+                  variant="outline"
+                  className="gap-2"
+                  onClick={() => {
+                    // O bank_slip_url estará disponível nas faturas (asaas-invoices)
+                    window.open("https://app.asaas.com", "_blank", "noopener,noreferrer");
+                  }}
+                >
+                  <FileText className="h-4 w-4" />
+                  Ver Boleto
+                </Button>
+              )}
+              <Button variant="ghost" size="sm" className="gap-2 text-muted-foreground" asChild>
+                <a href="mailto:suporte@uniforce.com.br">
+                  Gerenciar via suporte
+                </a>
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ─── Asaas Legacy: sem assinatura encontrada ─── */}
+      {isAsaasLegacy && !asaasSub && (
         <Card className="border-blue-200 bg-blue-50/50">
           <CardContent className="py-5 flex items-start gap-4">
             <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center shrink-0">
