@@ -108,12 +108,18 @@ export function FinanceiroBillingTab() {
   const { data: asaasSubData } = useAsaasSubscription(ispId);
   const portal = useStripeCustomerPortal(ispId);
 
+  // billingSource só é confiável após subLoading=false
+  const billingSourceKnown = !subLoading && subscriptionData !== undefined;
   const billingSource = subscriptionData?.stripe_billing_source;
   const isAsaas = billingSource === "asaas";
 
   const sub = subscriptionData?.subscription;
   const invoices = invoicesData?.invoices ?? [];
-  const asaasInvoices = asaasInvoicesData?.invoices ?? [];
+
+  // Deduplicar por ID para prevenir renderizações duplicadas em transições de aba
+  const rawAsaasInvoices = asaasInvoicesData?.invoices ?? [];
+  const asaasInvoices = [...new Map(rawAsaasInvoices.map((inv) => [inv.id, inv])).values()];
+
   const asaasSub = asaasSubData?.subscription ?? null;
 
   const handlePortal = async () => {
@@ -178,8 +184,19 @@ export function FinanceiroBillingTab() {
         </Card>
       </div>
 
-      {/* ─── Histórico de Faturas: Asaas ─── */}
-      {isAsaas && (
+      {/* ─── Seção de faturas: aguardar billing source ser conhecido ─── */}
+      {!billingSourceKnown && (
+        <Card>
+          <CardContent className="pt-6 pb-6">
+            <div className="space-y-3">
+              {[1, 2, 3].map((i) => <Skeleton key={i} className="h-12 w-full" />)}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ─── Histórico de Cobranças: Asaas ─── */}
+      {billingSourceKnown && isAsaas && (
         <Card>
           <CardHeader className="pb-3">
             <div>
@@ -231,15 +248,15 @@ export function FinanceiroBillingTab() {
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-1">
                           {inv.bank_slip_url && (
-                            <Button variant="ghost" size="icon" className="h-7 w-7" asChild>
-                              <a href={inv.bank_slip_url} target="_blank" rel="noopener noreferrer" title="Ver Boleto">
+                            <Button variant="ghost" size="icon" className="h-7 w-7" title="Ver Boleto" asChild>
+                              <a href={inv.bank_slip_url} target="_blank" rel="noopener noreferrer">
                                 <Receipt className="h-3.5 w-3.5" />
                               </a>
                             </Button>
                           )}
                           {inv.invoice_url && (
-                            <Button variant="ghost" size="icon" className="h-7 w-7" asChild>
-                              <a href={inv.invoice_url} target="_blank" rel="noopener noreferrer" title="Ver cobrança">
+                            <Button variant="ghost" size="icon" className="h-7 w-7" title="Ver cobrança" asChild>
+                              <a href={inv.invoice_url} target="_blank" rel="noopener noreferrer">
                                 <ExternalLink className="h-3.5 w-3.5" />
                               </a>
                             </Button>
@@ -256,7 +273,7 @@ export function FinanceiroBillingTab() {
       )}
 
       {/* ─── Histórico de Faturas: Stripe ─── */}
-      {!isAsaas && (
+      {billingSourceKnown && !isAsaas && (
         <Card>
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
@@ -321,15 +338,15 @@ export function FinanceiroBillingTab() {
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-1">
                           {inv.hosted_invoice_url && (
-                            <Button variant="ghost" size="icon" className="h-7 w-7" asChild>
-                              <a href={inv.hosted_invoice_url} target="_blank" rel="noopener noreferrer" title="Ver fatura">
+                            <Button variant="ghost" size="icon" className="h-7 w-7" title="Ver fatura" asChild>
+                              <a href={inv.hosted_invoice_url} target="_blank" rel="noopener noreferrer">
                                 <ExternalLink className="h-3.5 w-3.5" />
                               </a>
                             </Button>
                           )}
                           {inv.invoice_pdf && (
-                            <Button variant="ghost" size="icon" className="h-7 w-7" asChild>
-                              <a href={inv.invoice_pdf} target="_blank" rel="noopener noreferrer" title="Baixar PDF">
+                            <Button variant="ghost" size="icon" className="h-7 w-7" title="Baixar PDF" asChild>
+                              <a href={inv.invoice_pdf} target="_blank" rel="noopener noreferrer">
                                 <Download className="h-3.5 w-3.5" />
                               </a>
                             </Button>
