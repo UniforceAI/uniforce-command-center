@@ -92,6 +92,10 @@ export function MeusProdutosTab() {
   const asaasSub          = asaasData?.subscription ?? null;
   const isAsaasCustomPlan = asaasData?.is_custom_plan ?? false;
 
+  // ISP Asaas sem CNPJ cadastrado: CREATE de assinatura irá falhar.
+  // Mostra aviso e desabilita botões de seleção de plano.
+  const isSetupPending = isAsaasLegacy && (asaasData?.setup_pending ?? false);
+
   // Detecta se um plano Stripe corresponde ao plano Asaas ativo (tolerância ±R$0,50)
   function isCurrentAsaasPlan(planAmount: number | null): boolean {
     if (!asaasSub || !planAmount || isAsaasCustomPlan) return false;
@@ -325,23 +329,51 @@ export function MeusProdutosTab() {
 
       {/* ─── Asaas: sem assinatura ─── */}
       {isAsaasLegacy && !asaasSub && (
-        <Card className="border-blue-200 bg-blue-50/50">
-          <CardContent className="py-5 flex items-start gap-4">
-            <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center shrink-0">
-              <CreditCard className="h-5 w-5 text-blue-600" />
-            </div>
-            <div>
-              <p className="text-sm font-semibold text-blue-900">Plano base via Asaas</p>
-              <p className="text-sm text-blue-700 mt-1">
-                Sua conta é gerenciada pelo Asaas. Selecione um plano abaixo para ativar sua assinatura,
-                ou contrate add-ons via Stripe de forma independente.
-              </p>
-              <p className="text-xs text-blue-500 mt-2">
-                Dúvidas? Entre em contato: suporte@uniforce.com.br
-              </p>
-            </div>
-          </CardContent>
-        </Card>
+        isSetupPending ? (
+          /* Setup incompleto: CNPJ ainda não cadastrado */
+          <Card className="border-orange-200 bg-orange-50/50">
+            <CardContent className="py-5 flex items-start gap-4">
+              <div className="h-10 w-10 rounded-full bg-orange-100 flex items-center justify-center shrink-0">
+                <AlertCircle className="h-5 w-5 text-orange-600" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-orange-900">Cadastro em andamento</p>
+                <p className="text-sm text-orange-700 mt-1">
+                  Sua conta está sendo configurada. Assim que o cadastro for concluído, você poderá
+                  selecionar seu plano diretamente aqui.
+                </p>
+                <p className="text-xs text-orange-500 mt-2">
+                  Precisa de ajuda?{" "}
+                  <a href="mailto:suporte@uniforce.com.br" className="underline font-medium">
+                    suporte@uniforce.com.br
+                  </a>
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        ) : (
+          /* Pronto: pode selecionar plano */
+          <Card className="border-blue-200 bg-blue-50/50">
+            <CardContent className="py-5 flex items-start gap-4">
+              <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center shrink-0">
+                <CreditCard className="h-5 w-5 text-blue-600" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-blue-900">Plano base via Asaas</p>
+                <p className="text-sm text-blue-700 mt-1">
+                  Sua conta é gerenciada pelo Asaas. Selecione um plano abaixo para ativar sua assinatura,
+                  ou contrate add-ons via Stripe de forma independente.
+                </p>
+                <p className="text-xs text-blue-500 mt-2">
+                  Dúvidas? Entre em contato:{" "}
+                  <a href="mailto:suporte@uniforce.com.br" className="underline font-medium">
+                    suporte@uniforce.com.br
+                  </a>
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        )
       )}
 
       {/* ─── Stripe: plano ativo ─── */}
@@ -539,11 +571,13 @@ export function MeusProdutosTab() {
                       <Button
                         className="w-full mt-auto"
                         variant={isCurrent ? "outline" : "default"}
-                        disabled={isCurrent || planChange.isPending || !plan.monthly_price_id}
-                        onClick={() => handleAsaasPlanSelect(plan)}
+                        disabled={isCurrent || planChange.isPending || !plan.monthly_price_id || (isSetupPending && !asaasSub)}
+                        onClick={() => !isSetupPending && handleAsaasPlanSelect(plan)}
                       >
                         {isCurrent
                           ? "Plano Atual"
+                          : isSetupPending && !asaasSub
+                          ? "Cadastro Pendente"
                           : asaasSub
                           ? "Alterar para este Plano"
                           : "Selecionar Plano"}
