@@ -1,78 +1,123 @@
 // stripe-list-products/index.ts
-// Supabase Edge Function — Lista produtos e preços ativos do Stripe
-// Endpoint: GET /functions/v1/stripe-list-products
-// Auth: Não obrigatória (catálogo público de planos)
+// Lista produtos e preços ativos do Stripe
+// target_isp_id: ISP selecionado no dashboard (super_admin pode passar ISP diferente do seu)
+// Test mode: automático quando isp_id='uniforce'
 
 import Stripe from "https://esm.sh/stripe@14.21.0?target=deno";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2?target=deno";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-stripe-test-mode",
 };
 
-// Produtos que são planos principais (não add-ons)
 const MAIN_PLAN_IDS = [
-  "prod_U41i5VULCVGKRl", // Uniforce Basic
-  "prod_U41iUfju8I1C2n", // Uniforce Retention
-  "prod_U41i4IUixqqdnT", // Uniforce Growth
+  "prod_U41i5VULCVGKRl",
+  "prod_U41iUfju8I1C2n",
+  "prod_U41i4IUixqqdnT",
 ];
-
-// Produtos que são add-ons mensais
 const ADDON_PRODUCT_IDS = [
-  "prod_U41iBwKh8glQlZ", // NPS Check
-  "prod_U41iWFzEhoLYhY", // Smart Cobrança
-  "prod_U41i6NOGZwJlVH", // Support Helper N1
-  "prod_U41iOcWCW1DPAx", // Auto Contract
-  "prod_U41irI13heCWd1", // Enviar Campanhas
-  "prod_U41idU07f8xSla", // Max Sales
+  "prod_U41iBwKh8glQlZ",
+  "prod_U41iWFzEhoLYhY",
+  "prod_U41i6NOGZwJlVH",
+  "prod_U41iOcWCW1DPAx",
+  "prod_U41irI13heCWd1",
+  "prod_U41idU07f8xSla",
 ];
-
-// Produtos test mode (espelhados)
 const TEST_MAIN_PLAN_IDS = [
-  "prod_U6PrObhPyX8oQC", // Uniforce Basic [TEST]
-  "prod_U6PrtJZY7mvP4U", // Uniforce Retention [TEST]
-  "prod_U6Pr82ehi6o3WC", // Uniforce Growth [TEST]
+  "prod_U6PrObhPyX8oQC",
+  "prod_U6PrtJZY7mvP4U",
+  "prod_U6Pr82ehi6o3WC",
 ];
 const TEST_ADDON_IDS = [
-  "prod_U6PrnYg4x1TuIw", // NPS Check [TEST]
-  "prod_U6PrkmjdFmyTqs", // Smart Cobrança [TEST]
-  "prod_U6PrOAAcTZVtTa", // Support Helper N1 [TEST]
-  "prod_U6PrxoEdCWJfN4", // Auto Contract [TEST]
-  "prod_U6Prj1GJBukQWu", // Enviar Campanhas [TEST]
-  "prod_U6Prk0MgkLHVfc", // Max Sales [TEST]
+  "prod_U6PrnYg4x1TuIw",
+  "prod_U6PrkmjdFmyTqs",
+  "prod_U6PrOAAcTZVtTa",
+  "prod_U6PrxoEdCWJfN4",
+  "prod_U6Prj1GJBukQWu",
+  "prod_U6Prk0MgkLHVfc",
 ];
 
+const TEST_MODE_ISP_IDS = ["uniforce"];
+
+// Decode JWT locally — reliable in Deno without extra network call
+function getUserIdFromJWT(authHeader: string): string | null {
+  try {
+    const token = authHeader.replace("Bearer ", "");
+    const payload = JSON.parse(atob(token.split(".")[1]));
+    return payload.sub ?? null;
+  } catch {
+    return null;
+  }
+}
+
 Deno.serve(async (req) => {
-  // CORS preflight
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
 
   try {
-    // Suporta test mode via query param ?test=true ou header X-Stripe-Test-Mode
-    const url = new URL(req.url);
-    const isTestMode = url.searchParams.get("test") === "true"
-      || req.headers.get("X-Stripe-Test-Mode") === "true";
+    // Ler target_isp_id do body (pode ser null)
+    let targetIspId: string | null = null;
+    try {
+      const body = await req.json();
+      targetIspId = body?.target_isp_id ?? null;
+    } catch { /* body vazio é ok */ }
+
+    // Detectar test mode via ISP efetivo
+    let isTestMode = false;
+    const authHeader = req.headers.get("Authorization");
+
+    if (authHeader) {
+      const supabase = createClient(
+        Deno.env.get("SUPABASE_URL") ?? "",
+        Deno.env.get("SUPABASE_ANON_KEY") ?? "",
+        { global: { headers: { Authorization: authHeader } } }
+      );
+
+      const { data: ownData } = await supabase.rpc("get_isp_stripe_data");
+      const ownIspId: string | null = ownData?.[0]?.isp_id ?? null;
+
+      let effectiveIspId = ownIspId;
+
+      // Super_admin pode solicitar outro ISP
+      if (targetIspId && targetIspId !== ownIspId) {
+        // Decode JWT localmente (sem chamada de rede) + supabaseAdmin para bypassar RLS
+        const userId = getUserIdFromJWT(authHeader);
+        const supabaseAdmin = createClient(
+          Deno.env.get("SUPABASE_URL") ?? "",
+          Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
+        );
+        const { data: profile } = await supabaseAdmin
+          .from("profiles").select("role").eq("id", userId ?? "").maybeSingle();
+        if (profile?.role === "super_admin") {
+          effectiveIspId = targetIspId;
+        }
+        // Se não for super_admin, usa o próprio ISP (seguro — live env para clientes reais)
+      } else if (targetIspId) {
+        effectiveIspId = targetIspId;
+      }
+
+      isTestMode = TEST_MODE_ISP_IDS.includes(effectiveIspId ?? "");
+    }
 
     const stripeKey = isTestMode
       ? (Deno.env.get("STRIPE_TEST_SECRET_KEY") ?? Deno.env.get("STRIPE_SECRET_KEY") ?? "")
       : (Deno.env.get("STRIPE_SECRET_KEY") ?? "");
 
     const activePlanIds  = isTestMode ? TEST_MAIN_PLAN_IDS : MAIN_PLAN_IDS;
-    const activeAddonIds = isTestMode ? TEST_ADDON_IDS     : ADDON_PRODUCT_IDS;
+    const activeAddonIds = isTestMode ? TEST_ADDON_IDS      : ADDON_PRODUCT_IDS;
 
     const stripe = new Stripe(stripeKey, {
       apiVersion: "2024-06-20",
       httpClient: Stripe.createFetchHttpClient(),
     });
 
-    // Buscar todos os produtos ativos
     const [productsRes, pricesRes] = await Promise.all([
       stripe.products.list({ active: true, limit: 100 }),
       stripe.prices.list({ active: true, limit: 100 }),
     ]);
 
-    // Mapear preços por produto
     const pricesByProduct: Record<string, Stripe.Price[]> = {};
     for (const price of pricesRes.data) {
       const productId = typeof price.product === "string" ? price.product : price.product.id;
@@ -80,12 +125,10 @@ Deno.serve(async (req) => {
       pricesByProduct[productId].push(price);
     }
 
-    // Formatar produtos
     const formatProduct = (product: Stripe.Product, type: "plan" | "addon" | "service") => {
       const prices = pricesByProduct[product.id] ?? [];
       const monthlyPrice = prices.find((p) => p.recurring?.interval === "month");
       const oneTimePrice = prices.find((p) => !p.recurring);
-
       return {
         id: product.id,
         name: product.name,
@@ -110,7 +153,7 @@ Deno.serve(async (req) => {
     const plans = productsRes.data
       .filter((p) => activePlanIds.includes(p.id))
       .map((p) => formatProduct(p, "plan"))
-      .sort((a, b) => (a.monthly_amount ?? 0) - (b.monthly_amount ?? 0)); // ordena por preço asc
+      .sort((a, b) => (a.monthly_amount ?? 0) - (b.monthly_amount ?? 0));
 
     const addons = productsRes.data
       .filter((p) => activeAddonIds.includes(p.id))
@@ -123,19 +166,13 @@ Deno.serve(async (req) => {
 
     return new Response(
       JSON.stringify({ plans, addons, services }),
-      {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-        status: 200,
-      }
+      { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 }
     );
   } catch (error) {
     console.error("stripe-list-products error:", error);
     return new Response(
       JSON.stringify({ error: "Erro ao buscar produtos do Stripe" }),
-      {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-        status: 500,
-      }
+      { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 500 }
     );
   }
 });
