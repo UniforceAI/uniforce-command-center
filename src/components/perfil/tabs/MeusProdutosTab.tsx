@@ -1,5 +1,5 @@
 // src/components/perfil/tabs/MeusProdutosTab.tsx
-// Aba "Meus Produtos" — exibe plano atual ou catálogo para checkout
+// Aba "Meus Produtos" — exibe plano atual (Asaas ou Stripe) e catálogo para checkout/alteração
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -7,18 +7,30 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   Package, CreditCard, CheckCircle2, ExternalLink, AlertCircle,
   RefreshCw, Star, Zap, Crown, ArrowUpCircle, Calendar, FlaskConical,
-  FileText,
+  FileText, ArrowRightLeft,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useStripeSubscription, useStripeCheckout, useStripeCustomerPortal } from "@/hooks/useStripeSubscription";
 import { useStripeProducts } from "@/hooks/useStripeProducts";
 import { useAsaasSubscription } from "@/hooks/useAsaasSubscription";
+import { useAsaasPlanChange } from "@/hooks/useAsaasPlanChange";
 import { useActiveIsp } from "@/hooks/useActiveIsp";
 import { useState } from "react";
 
-// Ícones por plano (baseado no nome)
+// ─── Utilitários ──────────────────────────────────────────────────────────────
+
 function planIcon(name: string) {
   const n = name.toLowerCase();
   if (n.includes("growth")) return <Crown className="h-5 w-5 text-yellow-500" />;
@@ -29,12 +41,12 @@ function planIcon(name: string) {
 
 function statusBadge(status: string) {
   const variants: Record<string, { label: string; className: string }> = {
-    active: { label: "Ativo", className: "bg-green-500/15 text-green-700 border-green-200" },
-    past_due: { label: "Pagamento Atrasado", className: "bg-red-500/15 text-red-700 border-red-200" },
-    trialing: { label: "Período Trial", className: "bg-blue-500/15 text-blue-700 border-blue-200" },
-    canceled: { label: "Cancelado", className: "bg-gray-500/15 text-gray-700 border-gray-200" },
-    incomplete: { label: "Incompleto", className: "bg-orange-500/15 text-orange-700 border-orange-200" },
-    unpaid: { label: "Não Pago", className: "bg-red-500/15 text-red-700 border-red-200" },
+    active:     { label: "Ativo",               className: "bg-green-500/15 text-green-700 border-green-200" },
+    past_due:   { label: "Pagamento Atrasado",   className: "bg-red-500/15 text-red-700 border-red-200" },
+    trialing:   { label: "Período Trial",        className: "bg-blue-500/15 text-blue-700 border-blue-200" },
+    canceled:   { label: "Cancelado",            className: "bg-gray-500/15 text-gray-700 border-gray-200" },
+    incomplete: { label: "Incompleto",           className: "bg-orange-500/15 text-orange-700 border-orange-200" },
+    unpaid:     { label: "Não Pago",             className: "bg-red-500/15 text-red-700 border-red-200" },
   };
   const v = variants[status] ?? { label: status, className: "" };
   return <Badge variant="outline" className={`text-xs font-medium ${v.className}`}>{v.label}</Badge>;
@@ -48,30 +60,45 @@ function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" });
 }
 
+// ─── Componente principal ─────────────────────────────────────────────────────
+
 export function MeusProdutosTab() {
   const { toast } = useToast();
   const { ispId } = useActiveIsp();
   const [checkoutLoading, setCheckoutLoading] = useState<string | null>(null);
 
-  // Test mode é automático para o ISP uniforce (detectado server-side via JWT)
+  // Plano pendente de confirmação (ISPs Asaas)
+  const [pendingPlan, setPendingPlan] = useState<{
+    product_id: string;
+    price_id: string;
+    name: string;
+    monthly_amount: number;
+  } | null>(null);
+
   const isDevIsp = ispId === "uniforce";
 
-  // Passa ispId (ISP selecionado no dashboard) para todos os hooks
-  // Garante que super_admin veja dados do ISP correto, não os seus próprios
   const { data: subscriptionData, isLoading: subLoading } = useStripeSubscription(ispId);
-  const { data: catalog, isLoading: catalogLoading } = useStripeProducts(ispId);
-  const { data: asaasData, isLoading: asaasLoading } = useAsaasSubscription(ispId);
-  const checkout = useStripeCheckout(ispId);
-  const portal = useStripeCustomerPortal(ispId);
+  const { data: catalog,          isLoading: catalogLoading } = useStripeProducts(ispId);
+  const { data: asaasData,        isLoading: asaasLoading }  = useAsaasSubscription(ispId);
+  const checkout   = useStripeCheckout(ispId);
+  const portal     = useStripeCustomerPortal(ispId);
+  const planChange = useAsaasPlanChange(ispId);
 
-  const sub = subscriptionData?.subscription;
+  const sub          = subscriptionData?.subscription;
   const billingSource = subscriptionData?.stripe_billing_source;
   const isAsaasLegacy = billingSource === "asaas";
-  const hasActiveSub = sub && sub.status !== "canceled";
+  const hasActiveSub  = !!sub && sub.status !== "canceled";
 
-  const asaasSub = asaasData?.subscription ?? null;
+  const asaasSub          = asaasData?.subscription ?? null;
   const isAsaasCustomPlan = asaasData?.is_custom_plan ?? false;
 
+  // Detecta se um plano Stripe corresponde ao plano Asaas ativo (tolerância ±R$0,50)
+  function isCurrentAsaasPlan(planAmount: number | null): boolean {
+    if (!asaasSub || !planAmount || isAsaasCustomPlan) return false;
+    return Math.abs(asaasSub.value - planAmount) <= 0.50;
+  }
+
+  // ─── Handlers Stripe ────────────────────────────────────────────────────────
   const handleCheckout = async (priceId: string) => {
     setCheckoutLoading(priceId);
     try {
@@ -79,9 +106,9 @@ export function MeusProdutosTab() {
       await checkout.mutateAsync({
         price_id: priceId,
         success_url: `${baseUrl}/configuracoes/perfil?tab=meus-produtos&success=true`,
-        cancel_url: `${baseUrl}/configuracoes/perfil?tab=meus-produtos`,
+        cancel_url:  `${baseUrl}/configuracoes/perfil?tab=meus-produtos`,
       });
-    } catch (err) {
+    } catch {
       toast({
         title: "Erro ao iniciar checkout",
         description: "Não foi possível iniciar o processo de contratação.",
@@ -94,9 +121,7 @@ export function MeusProdutosTab() {
 
   const handlePortal = async () => {
     try {
-      await portal.mutateAsync(
-        `${window.location.origin}/configuracoes/perfil?tab=meus-produtos`
-      );
+      await portal.mutateAsync(`${window.location.origin}/configuracoes/perfil?tab=meus-produtos`);
     } catch {
       toast({
         title: "Erro ao abrir portal",
@@ -106,6 +131,46 @@ export function MeusProdutosTab() {
     }
   };
 
+  // ─── Handlers Asaas Plan Change ─────────────────────────────────────────────
+  const handleAsaasPlanSelect = (plan: {
+    id: string;
+    monthly_price_id: string | null;
+    name: string;
+    monthly_amount: number | null;
+  }) => {
+    if (!plan.monthly_price_id) return;
+    setPendingPlan({
+      product_id: plan.id,
+      price_id: plan.monthly_price_id,
+      name: plan.name,
+      monthly_amount: plan.monthly_amount ?? 0,
+    });
+  };
+
+  const confirmAsaasPlanChange = async () => {
+    if (!pendingPlan) return;
+    try {
+      const result = await planChange.mutateAsync({
+        stripe_product_id: pendingPlan.product_id,
+        stripe_price_id:   pendingPlan.price_id,
+        target_isp_id:     ispId ?? undefined,
+      });
+      toast({
+        title: result.action === "created" ? "Plano ativado!" : "Plano atualizado!",
+        description: `${result.plan_name} — ${formatCurrency(result.plan_value)}/mês via Asaas`,
+      });
+    } catch (err) {
+      toast({
+        title: "Erro ao alterar plano",
+        description: err instanceof Error ? err.message : "Não foi possível alterar o plano.",
+        variant: "destructive",
+      });
+    } finally {
+      setPendingPlan(null);
+    }
+  };
+
+  // ─── Loading ─────────────────────────────────────────────────────────────────
   if (subLoading || (isAsaasLegacy && asaasLoading)) {
     return (
       <div className="space-y-4">
@@ -115,10 +180,59 @@ export function MeusProdutosTab() {
     );
   }
 
+  // ─── Render ───────────────────────────────────────────────────────────────────
   return (
     <div className="space-y-6">
 
-      {/* ─── Dev ISP banner (uniforce) ─── */}
+      {/* ─── Dialog de confirmação de troca de plano (Asaas) ─── */}
+      <AlertDialog open={!!pendingPlan} onOpenChange={(open) => !open && !planChange.isPending && setPendingPlan(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <ArrowRightLeft className="h-5 w-5 text-primary" />
+              Confirmar alteração de plano
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3 text-sm text-muted-foreground">
+                <p>
+                  Você está selecionando o plano{" "}
+                  <span className="font-semibold text-foreground">{pendingPlan?.name}</span>{" "}
+                  por{" "}
+                  <span className="font-semibold text-primary">
+                    {formatCurrency(pendingPlan?.monthly_amount ?? 0)}/mês
+                  </span>.
+                </p>
+                {asaasSub ? (
+                  <p>
+                    Seu plano atual ({formatCurrency(asaasSub.value)}/mês) será substituído.
+                    A mudança será aplicada imediatamente — cobranças pendentes também serão atualizadas.
+                  </p>
+                ) : (
+                  <p>
+                    Uma nova assinatura será criada no Asaas com vencimento no 1º dia do próximo mês.
+                  </p>
+                )}
+                <p className="text-xs">
+                  Dúvidas sobre sua fatura?{" "}
+                  <span className="font-medium">suporte@uniforce.com.br</span>
+                </p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={planChange.isPending}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmAsaasPlanChange}
+              disabled={planChange.isPending}
+            >
+              {planChange.isPending && <RefreshCw className="h-4 w-4 animate-spin mr-2" />}
+              Confirmar Alteração
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* ─── Dev ISP banner ─── */}
       {isDevIsp && (
         <div className="flex items-center gap-3 px-4 py-3 rounded-lg border border-amber-300 bg-amber-50">
           <FlaskConical className="h-4 w-4 shrink-0 text-amber-600" />
@@ -131,7 +245,7 @@ export function MeusProdutosTab() {
         </div>
       )}
 
-      {/* ─── Asaas Legacy: Plano Ativo ─── */}
+      {/* ─── Asaas: plano ativo ─── */}
       {isAsaasLegacy && asaasSub && (
         <Card>
           <CardHeader className="pb-3">
@@ -157,12 +271,10 @@ export function MeusProdutosTab() {
                 <p className="text-2xl font-bold text-foreground">
                   {asaasSub.description ?? "Plano Uniforce"}
                 </p>
-                <p className="text-sm text-muted-foreground mt-0.5">Assinatura recorrente</p>
+                <p className="text-sm text-muted-foreground mt-0.5">Assinatura recorrente via Asaas</p>
               </div>
               <div className="text-right">
-                <p className="text-3xl font-bold text-primary">
-                  {formatCurrency(asaasSub.value)}
-                </p>
+                <p className="text-3xl font-bold text-primary">{formatCurrency(asaasSub.value)}</p>
                 <p className="text-xs text-muted-foreground">/mês</p>
               </div>
             </div>
@@ -185,7 +297,7 @@ export function MeusProdutosTab() {
                   <p className="text-xs text-muted-foreground">Forma de pagamento</p>
                   <p className="text-sm font-medium">
                     {asaasSub.billing_type === "BOLETO" ? "Boleto Bancário" :
-                     asaasSub.billing_type === "PIX" ? "PIX" :
+                     asaasSub.billing_type === "PIX"    ? "PIX" :
                      asaasSub.billing_type ?? "—"}
                   </p>
                 </div>
@@ -197,26 +309,21 @@ export function MeusProdutosTab() {
                 <Button
                   variant="outline"
                   className="gap-2"
-                  onClick={() => {
-                    // O bank_slip_url estará disponível nas faturas (asaas-invoices)
-                    window.open("https://app.asaas.com", "_blank", "noopener,noreferrer");
-                  }}
+                  onClick={() => window.open("https://app.asaas.com", "_blank", "noopener,noreferrer")}
                 >
                   <FileText className="h-4 w-4" />
                   Ver Boleto
                 </Button>
               )}
               <Button variant="ghost" size="sm" className="gap-2 text-muted-foreground" asChild>
-                <a href="mailto:suporte@uniforce.com.br">
-                  Gerenciar via suporte
-                </a>
+                <a href="mailto:suporte@uniforce.com.br">Gerenciar via suporte</a>
               </Button>
             </div>
           </CardContent>
         </Card>
       )}
 
-      {/* ─── Asaas Legacy: sem assinatura encontrada ─── */}
+      {/* ─── Asaas: sem assinatura ─── */}
       {isAsaasLegacy && !asaasSub && (
         <Card className="border-blue-200 bg-blue-50/50">
           <CardContent className="py-5 flex items-start gap-4">
@@ -226,8 +333,8 @@ export function MeusProdutosTab() {
             <div>
               <p className="text-sm font-semibold text-blue-900">Plano base via Asaas</p>
               <p className="text-sm text-blue-700 mt-1">
-                Sua assinatura base é gerenciada pelo Asaas. Você pode contratar add-ons e upgrades
-                diretamente abaixo via Stripe, de forma independente.
+                Sua conta é gerenciada pelo Asaas. Selecione um plano abaixo para ativar sua assinatura,
+                ou contrate add-ons via Stripe de forma independente.
               </p>
               <p className="text-xs text-blue-500 mt-2">
                 Dúvidas? Entre em contato: suporte@uniforce.com.br
@@ -237,117 +344,112 @@ export function MeusProdutosTab() {
         </Card>
       )}
 
-      {/* ─── Plano Ativo (Stripe) — apenas para ISPs gerenciados pelo Stripe ─── */}
-      {!isAsaasLegacy && (
-        hasActiveSub ? (
-          <Card>
-            <CardHeader className="pb-3">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-base flex items-center gap-2">
-                  {planIcon(sub.product_name ?? "")}
-                  Plano Atual
-                </CardTitle>
-                {statusBadge(sub.status)}
+      {/* ─── Stripe: plano ativo ─── */}
+      {!isAsaasLegacy && hasActiveSub && (
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-base flex items-center gap-2">
+                {planIcon(sub!.product_name ?? "")}
+                Plano Atual
+              </CardTitle>
+              {statusBadge(sub!.status)}
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-end justify-between">
+              <div>
+                <p className="text-2xl font-bold text-foreground">{sub!.product_name ?? "Plano Ativo"}</p>
+                <p className="text-sm text-muted-foreground mt-0.5">Assinatura mensal recorrente</p>
               </div>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {/* Nome e valor */}
-              <div className="flex items-end justify-between">
+              <div className="text-right">
+                <p className="text-3xl font-bold text-primary">
+                  {formatCurrency(sub!.monthly_amount, sub!.currency)}
+                </p>
+                <p className="text-xs text-muted-foreground">/mês</p>
+              </div>
+            </div>
+
+            <Separator />
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50 border">
+                <Calendar className="h-4 w-4 text-muted-foreground shrink-0" />
                 <div>
-                  <p className="text-2xl font-bold text-foreground">{sub.product_name ?? "Plano Ativo"}</p>
-                  <p className="text-sm text-muted-foreground mt-0.5">Assinatura mensal recorrente</p>
-                </div>
-                <div className="text-right">
-                  <p className="text-3xl font-bold text-primary">
-                    {formatCurrency(sub.monthly_amount, sub.currency)}
-                  </p>
-                  <p className="text-xs text-muted-foreground">/mês</p>
+                  <p className="text-xs text-muted-foreground">Próxima cobrança</p>
+                  <p className="text-sm font-medium">{formatDate(sub!.current_period_end)}</p>
                 </div>
               </div>
-
-              <Separator />
-
-              {/* Período e pagamento */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50 border">
-                  <Calendar className="h-4 w-4 text-muted-foreground shrink-0" />
-                  <div>
-                    <p className="text-xs text-muted-foreground">Próxima cobrança</p>
-                    <p className="text-sm font-medium">{formatDate(sub.current_period_end)}</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50 border">
-                  <CreditCard className="h-4 w-4 text-muted-foreground shrink-0" />
-                  <div>
-                    <p className="text-xs text-muted-foreground">Forma de pagamento</p>
-                    {sub.payment_method ? (
-                      <p className="text-sm font-medium capitalize">
-                        {sub.payment_method.brand} •••• {sub.payment_method.last4}
-                      </p>
-                    ) : (
-                      <p className="text-sm text-muted-foreground">Não configurado</p>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {/* Features do plano */}
-              {sub.features.length > 0 && (
+              <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50 border">
+                <CreditCard className="h-4 w-4 text-muted-foreground shrink-0" />
                 <div>
-                  <p className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider">Incluído no plano</p>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
-                    {sub.features.map((feat, i) => (
-                      <div key={i} className="flex items-center gap-2 text-sm">
-                        <CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" />
-                        {feat}
-                      </div>
-                    ))}
-                  </div>
+                  <p className="text-xs text-muted-foreground">Forma de pagamento</p>
+                  {sub!.payment_method ? (
+                    <p className="text-sm font-medium capitalize">
+                      {sub!.payment_method.brand} •••• {sub!.payment_method.last4}
+                    </p>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">Não configurado</p>
+                  )}
                 </div>
-              )}
-
-              {/* Alertas */}
-              {sub.status === "past_due" && (
-                <div className="flex items-start gap-2 p-3 rounded-lg bg-red-50 border border-red-200 text-sm text-red-700">
-                  <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
-                  <span>Pagamento pendente. Atualize seu método de pagamento para evitar interrupção do serviço.</span>
-                </div>
-              )}
-              {sub.cancel_at_period_end && (
-                <div className="flex items-start gap-2 p-3 rounded-lg bg-orange-50 border border-orange-200 text-sm text-orange-700">
-                  <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
-                  <span>Sua assinatura será cancelada em {formatDate(sub.current_period_end)}. Reative pelo portal de pagamentos.</span>
-                </div>
-              )}
-
-              {/* Ações */}
-              <div className="flex flex-wrap gap-2 pt-1">
-                <Button onClick={handlePortal} disabled={portal.isPending} className="gap-2">
-                  {portal.isPending ? <RefreshCw className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />}
-                  Gerenciar Assinatura
-                </Button>
-                <Button variant="outline" onClick={handlePortal} disabled={portal.isPending} className="gap-2">
-                  <ExternalLink className="h-4 w-4" />
-                  Portal de Pagamentos
-                </Button>
               </div>
-            </CardContent>
-          </Card>
-        ) : (
-          /* ─── Sem assinatura Stripe: CTA (somente para ISPs Stripe) ─── */
-          <Card className="border-primary/30 bg-primary/5">
-            <CardContent className="py-8 text-center space-y-3">
-              <Package className="h-10 w-10 text-primary/60 mx-auto" />
-              <p className="text-base font-semibold text-foreground">Nenhum plano ativo</p>
-              <p className="text-sm text-muted-foreground max-w-xs mx-auto">
-                Escolha um dos planos abaixo para começar a usar a plataforma Uniforce.
-              </p>
-            </CardContent>
-          </Card>
-        )
+            </div>
+
+            {sub!.features.length > 0 && (
+              <div>
+                <p className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider">Incluído no plano</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                  {sub!.features.map((feat, i) => (
+                    <div key={i} className="flex items-center gap-2 text-sm">
+                      <CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" />
+                      {feat}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {sub!.status === "past_due" && (
+              <div className="flex items-start gap-2 p-3 rounded-lg bg-red-50 border border-red-200 text-sm text-red-700">
+                <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                <span>Pagamento pendente. Atualize seu método de pagamento para evitar interrupção do serviço.</span>
+              </div>
+            )}
+            {sub!.cancel_at_period_end && (
+              <div className="flex items-start gap-2 p-3 rounded-lg bg-orange-50 border border-orange-200 text-sm text-orange-700">
+                <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                <span>Sua assinatura será cancelada em {formatDate(sub!.current_period_end)}. Reative pelo portal de pagamentos.</span>
+              </div>
+            )}
+
+            <div className="flex flex-wrap gap-2 pt-1">
+              <Button onClick={handlePortal} disabled={portal.isPending} className="gap-2">
+                {portal.isPending ? <RefreshCw className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />}
+                Gerenciar Assinatura
+              </Button>
+              <Button variant="outline" onClick={handlePortal} disabled={portal.isPending} className="gap-2">
+                <ExternalLink className="h-4 w-4" />
+                Portal de Pagamentos
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
       )}
 
-      {/* ─── CTA Add-ons: somente para ISPs Asaas sem add-on Stripe ativo ─── */}
+      {/* ─── Stripe: sem plano ativo ─── */}
+      {!isAsaasLegacy && !hasActiveSub && (
+        <Card className="border-primary/30 bg-primary/5">
+          <CardContent className="py-8 text-center space-y-3">
+            <Package className="h-10 w-10 text-primary/60 mx-auto" />
+            <p className="text-base font-semibold text-foreground">Nenhum plano ativo</p>
+            <p className="text-sm text-muted-foreground max-w-xs mx-auto">
+              Escolha um dos planos abaixo para começar a usar a plataforma Uniforce.
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ─── Asaas: sem add-on Stripe ativo ─── */}
       {isAsaasLegacy && !hasActiveSub && (
         <Card className="border-primary/30 bg-primary/5">
           <CardContent className="py-8 text-center space-y-3">
@@ -360,92 +462,122 @@ export function MeusProdutosTab() {
         </Card>
       )}
 
-      {/* ─── Catálogo de Planos Stripe: somente para ISPs gerenciados pelo Stripe ─── */}
-      {!isAsaasLegacy && (
-        <div>
-          <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
-            {hasActiveSub ? (
-              <><ArrowUpCircle className="h-4 w-4 text-primary" /> Outros Planos Disponíveis</>
-            ) : (
-              <><Package className="h-4 w-4 text-primary" /> Escolha seu Plano</>
-            )}
-          </h3>
-
-          {catalogLoading ? (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {[1, 2, 3].map((i) => <Skeleton key={i} className="h-56" />)}
-            </div>
+      {/* ─── Catálogo de Planos ─────────────────────────────────────────────────
+           Visível para TODOS os ISPs.
+           • ISPs Stripe  → botão abre Stripe Checkout
+           • ISPs Asaas   → botão abre dialog de confirmação → atualiza assinatura Asaas
+      ─── */}
+      <div>
+        <h3 className="text-sm font-semibold text-foreground mb-1 flex items-center gap-2">
+          {isAsaasLegacy ? (
+            asaasSub
+              ? <><ArrowRightLeft className="h-4 w-4 text-primary" /> Alterar Plano via Asaas</>
+              : <><Package className="h-4 w-4 text-primary" /> Escolha seu Plano via Asaas</>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {catalog?.plans.map((plan) => {
-                const isCurrent = sub?.product_id === plan.id;
-                return (
-                  <Card
-                    key={plan.id}
-                    className={`relative flex flex-col ${isCurrent ? "border-primary ring-1 ring-primary" : ""}`}
-                  >
-                    {isCurrent && (
-                      <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-                        <Badge className="bg-primary text-primary-foreground text-xs px-3">Plano Atual</Badge>
-                      </div>
+            hasActiveSub
+              ? <><ArrowUpCircle className="h-4 w-4 text-primary" /> Outros Planos Disponíveis</>
+              : <><Package className="h-4 w-4 text-primary" /> Escolha seu Plano</>
+          )}
+        </h3>
+
+        {isAsaasLegacy && (
+          <p className="text-xs text-muted-foreground mb-3">
+            Precificação centralizada pelo Stripe. Ao selecionar, o plano é aplicado diretamente na sua assinatura Asaas.
+          </p>
+        )}
+
+        {catalogLoading ? (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {[1, 2, 3].map((i) => <Skeleton key={i} className="h-56" />)}
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {catalog?.plans.map((plan) => {
+              const isCurrentStripe = !isAsaasLegacy && sub?.product_id === plan.id;
+              const isCurrentAsaas  = isAsaasLegacy && isCurrentAsaasPlan(plan.monthly_amount);
+              const isCurrent = isCurrentStripe || isCurrentAsaas;
+
+              return (
+                <Card
+                  key={plan.id}
+                  className={`relative flex flex-col ${isCurrent ? "border-primary ring-1 ring-primary" : ""}`}
+                >
+                  {isCurrent && (
+                    <div className="absolute -top-3 left-1/2 -translate-x-1/2">
+                      <Badge className="bg-primary text-primary-foreground text-xs px-3">Plano Atual</Badge>
+                    </div>
+                  )}
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base flex items-center gap-2">
+                      {planIcon(plan.name)}
+                      {plan.name}
+                    </CardTitle>
+                    <div>
+                      <span className="text-2xl font-bold text-foreground">
+                        {formatCurrency(plan.monthly_amount ?? 0)}
+                      </span>
+                      <span className="text-xs text-muted-foreground">/mês</span>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="flex-1 flex flex-col gap-3">
+                    {plan.description && (
+                      <p className="text-xs text-muted-foreground">{plan.description}</p>
                     )}
-                    <CardHeader className="pb-3">
-                      <CardTitle className="text-base flex items-center gap-2">
-                        {planIcon(plan.name)}
-                        {plan.name}
-                      </CardTitle>
-                      <div>
-                        <span className="text-2xl font-bold text-foreground">
-                          {formatCurrency(plan.monthly_amount ?? 0)}
-                        </span>
-                        <span className="text-xs text-muted-foreground">/mês</span>
-                      </div>
-                    </CardHeader>
-                    <CardContent className="flex-1 flex flex-col gap-3">
-                      {plan.description && (
-                        <p className="text-xs text-muted-foreground">{plan.description}</p>
-                      )}
-                      {plan.features.length > 0 && (
-                        <ul className="space-y-1.5 flex-1">
-                          {plan.features.map((feat, i) => (
-                            <li key={i} className="flex items-start gap-2 text-xs">
-                              <CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0 mt-0.5" />
-                              {feat}
-                            </li>
-                          ))}
-                        </ul>
-                      )}
+                    {plan.features.length > 0 && (
+                      <ul className="space-y-1.5 flex-1">
+                        {plan.features.map((feat, i) => (
+                          <li key={i} className="flex items-start gap-2 text-xs">
+                            <CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0 mt-0.5" />
+                            {feat}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+
+                    {isAsaasLegacy ? (
+                      /* Asaas ISP: selecionar plano abre dialog de confirmação */
+                      <Button
+                        className="w-full mt-auto"
+                        variant={isCurrent ? "outline" : "default"}
+                        disabled={isCurrent || planChange.isPending || !plan.monthly_price_id}
+                        onClick={() => handleAsaasPlanSelect(plan)}
+                      >
+                        {isCurrent
+                          ? "Plano Atual"
+                          : asaasSub
+                          ? "Alterar para este Plano"
+                          : "Selecionar Plano"}
+                      </Button>
+                    ) : (
+                      /* Stripe ISP: checkout direto */
                       <Button
                         className="w-full mt-auto"
                         variant={isCurrent ? "outline" : "default"}
                         disabled={isCurrent || checkoutLoading === plan.monthly_price_id || !plan.monthly_price_id}
                         onClick={() => plan.monthly_price_id && handleCheckout(plan.monthly_price_id)}
                       >
-                        {checkoutLoading === plan.monthly_price_id ? (
-                          <RefreshCw className="h-4 w-4 animate-spin" />
-                        ) : isCurrent ? (
-                          "Plano Atual"
-                        ) : hasActiveSub ? (
-                          "Alterar para este Plano"
-                        ) : (
-                          "Contratar"
-                        )}
+                        {checkoutLoading === plan.monthly_price_id
+                          ? <RefreshCw className="h-4 w-4 animate-spin" />
+                          : isCurrent
+                          ? "Plano Atual"
+                          : hasActiveSub
+                          ? "Alterar para este Plano"
+                          : "Contratar"}
                       </Button>
-                    </CardContent>
-                  </Card>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      )}
+                    )}
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        )}
+      </div>
 
-      {/* ─── Add-ons: disponíveis para todos os ISPs ─── */}
+      {/* ─── Add-ons (todos os ISPs — compra via Stripe Checkout) ─── */}
       {catalog && catalog.addons.length > 0 && (
         <div>
           <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
-            <Zap className="h-4 w-4 text-primary" />
-            {isAsaasLegacy ? "Add-ons Disponíveis" : "Add-ons Disponíveis"}
+            <Zap className="h-4 w-4 text-primary" /> Add-ons Disponíveis
           </h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {catalog.addons.map((addon) => (
@@ -455,7 +587,7 @@ export function MeusProdutosTab() {
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-semibold text-foreground">{addon.name}</p>
                       {addon.description && (
-                        <p className="text-xs text-muted-foreground mt-1">{addon.description}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">{addon.description}</p>
                       )}
                     </div>
                     <div className="text-right shrink-0">
@@ -472,11 +604,9 @@ export function MeusProdutosTab() {
                     disabled={!addon.monthly_price_id || checkoutLoading === addon.monthly_price_id}
                     onClick={() => addon.monthly_price_id && handleCheckout(addon.monthly_price_id)}
                   >
-                    {checkoutLoading === addon.monthly_price_id ? (
-                      <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-                    ) : (
-                      "Adicionar"
-                    )}
+                    {checkoutLoading === addon.monthly_price_id
+                      ? <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                      : "Adicionar"}
                   </Button>
                 </CardContent>
               </Card>
