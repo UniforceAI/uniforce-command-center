@@ -67,7 +67,9 @@ export function useStripeSubscription(ispId?: string | null) {
       return res.json() as Promise<StripeSubscriptionData>;
     },
     staleTime: 1000 * 60 * 5,
-    retry: 2,
+    retry: 1,
+    throwOnError: false,
+    refetchOnMount: true,
     enabled: !!ispId,
   });
 }
