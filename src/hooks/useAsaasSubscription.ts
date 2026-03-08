@@ -21,6 +21,7 @@ export interface AsaasSubscription {
 export interface AsaasSubscriptionData {
   subscription: AsaasSubscription | null;
   is_custom_plan: boolean;
+  setup_pending?: boolean;
 }
 
 export function useAsaasSubscription(ispId?: string | null) {
