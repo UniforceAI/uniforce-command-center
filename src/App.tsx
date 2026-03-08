@@ -52,7 +52,7 @@ const persister = createLocalStoragePersister();
 const persistOptions = {
   persister,
   maxAge: TEN_HOURS,
-  buster: "v6",
+  buster: "v7",
 };
 
 const Protected = ({ children }: { children: React.ReactNode }) => (
