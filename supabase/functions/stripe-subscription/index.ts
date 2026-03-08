@@ -13,11 +13,14 @@ const corsHeaders = {
 
 const TEST_MODE_ISP_IDS = ["uniforce"];
 
-// Decode JWT localmente — confiável no Deno sem chamada de rede adicional
+// Decode JWT localmente — suporta base64url (formato padrão de JWTs)
 function getUserIdFromJWT(authHeader: string): string | null {
   try {
     const token = authHeader.replace("Bearer ", "");
-    const payload = JSON.parse(atob(token.split(".")[1]));
+    const b64 = token.split(".")[1]
+      .replace(/-/g, "+").replace(/_/g, "/")
+      .padEnd(Math.ceil(token.split(".")[1].length / 4) * 4, "=");
+    const payload = JSON.parse(atob(b64));
     return payload.sub ?? null;
   } catch {
     return null;
