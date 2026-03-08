@@ -1,7 +1,5 @@
 // stripe-checkout/index.ts
-// Cria sessão de Stripe Checkout
-// target_isp_id: checkout sempre para o ISP alvo (super_admin deve usar ISP próprio para testes)
-// Test mode: automático quando isp_id='uniforce'
+// LÓGICA: ownIsp.isp_id='uniforce' → super_admin → pode fazer checkout para qualquer ISP
 
 import Stripe from "https://esm.sh/stripe@14.21.0?target=deno";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2?target=deno";
@@ -12,19 +10,6 @@ const corsHeaders = {
 };
 
 const TEST_MODE_ISP_IDS = ["uniforce"];
-
-function getUserIdFromJWT(authHeader: string): string | null {
-  try {
-    const token = authHeader.replace("Bearer ", "");
-    const b64 = token.split(".")[1]
-      .replace(/-/g, "+").replace(/_/g, "/")
-      .padEnd(Math.ceil(token.split(".")[1].length / 4) * 4, "=");
-    const payload = JSON.parse(atob(b64));
-    return payload.sub ?? null;
-  } catch {
-    return null;
-  }
-}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -73,9 +58,10 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Resolver ISP alvo
     const { data: ownData } = await supabase.rpc("get_isp_stripe_data");
-    const ownIsp = ownData?.[0];
+    const ownIsp = ownData?.[0] ?? null;
+    const ownIspId: string | null = ownIsp?.isp_id ?? null;
+
     if (!ownIsp) {
       return new Response(JSON.stringify({ error: "ISP não encontrado" }), {
         status: 404,
@@ -84,18 +70,14 @@ Deno.serve(async (req) => {
     }
 
     let isp = ownIsp;
-    // Se target_isp_id diferente do próprio, verificar super_admin via supabaseAdmin (bypass RLS)
-    if (target_isp_id && target_isp_id !== ownIsp.isp_id) {
-      const userId = getUserIdFromJWT(authHeader);
-      const { data: profile } = await supabaseAdmin
-        .from("profiles").select("role").eq("id", userId ?? "").maybeSingle();
-      if (profile?.role !== "super_admin") {
+
+    if (target_isp_id && target_isp_id !== ownIspId) {
+      if (ownIspId !== "uniforce") {
         return new Response(
           JSON.stringify({ error: "Checkout deve ser realizado pelo administrador do ISP." }),
           { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
-      // Super_admin fazendo checkout para outro ISP (ex: ativação manual)
       const { data: targetIspRow } = await supabaseAdmin
         .from("isps")
         .select("isp_id,isp_nome,stripe_customer_id,stripe_test_customer_id,stripe_subscription_id,stripe_subscription_status,stripe_billing_source")
@@ -110,16 +92,10 @@ Deno.serve(async (req) => {
       isp = targetIspRow;
     }
 
-    const { data: ispInfo } = await supabase
-      .from("isps")
-      .select("isp_nome")
-      .eq("isp_id", isp.isp_id)
-      .single();
-
     const isTestMode = TEST_MODE_ISP_IDS.includes(isp.isp_id);
     const stripeKey = isTestMode
-      ? Deno.env.get("STRIPE_TEST_SECRET_KEY")!
-      : Deno.env.get("STRIPE_SECRET_KEY")!;
+      ? (Deno.env.get("STRIPE_TEST_SECRET_KEY") ?? "")
+      : (Deno.env.get("STRIPE_SECRET_KEY") ?? "");
 
     const stripe = new Stripe(stripeKey, {
       apiVersion: "2024-06-20",
@@ -129,6 +105,8 @@ Deno.serve(async (req) => {
     let customerId = isTestMode ? isp.stripe_test_customer_id : isp.stripe_customer_id;
 
     if (!customerId) {
+      const { data: ispInfo } = await supabaseAdmin
+        .from("isps").select("isp_nome").eq("isp_id", isp.isp_id).single();
       const customer = await stripe.customers.create({
         email: user.email,
         name: ispInfo?.isp_nome ?? isp.isp_id,
@@ -139,7 +117,6 @@ Deno.serve(async (req) => {
       await supabaseAdmin.from("isps").update({ [col]: customerId }).eq("isp_id", isp.isp_id);
     }
 
-    // Bloquear checkout se já tem assinatura ativa (live mode)
     if (!isTestMode && isp.stripe_subscription_id && isp.stripe_subscription_status === "active") {
       return new Response(
         JSON.stringify({
