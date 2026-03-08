@@ -1,7 +1,8 @@
 // stripe-subscription/index.ts
-// Retorna estado da assinatura Stripe do ISP
-// target_isp_id: super_admin pode consultar outro ISP — validado server-side
-// Test mode: automático quando isp_id='uniforce'
+// LÓGICA DE SEGURANÇA SIMPLIFICADA:
+// - get_isp_stripe_data() é SECURITY DEFINER — retorna dados do ISP do JWT autenticado
+// - Se ownIsp.isp_id === 'uniforce' → usuário é super_admin → pode ver qualquer ISP
+// - Qualquer outro ISP → acessa apenas os próprios dados
 
 import Stripe from "https://esm.sh/stripe@14.21.0?target=deno";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2?target=deno";
@@ -12,57 +13,6 @@ const corsHeaders = {
 };
 
 const TEST_MODE_ISP_IDS = ["uniforce"];
-
-// Decode JWT localmente — suporta base64url (formato padrão de JWTs)
-function getUserIdFromJWT(authHeader: string): string | null {
-  try {
-    const token = authHeader.replace("Bearer ", "");
-    const b64 = token.split(".")[1]
-      .replace(/-/g, "+").replace(/_/g, "/")
-      .padEnd(Math.ceil(token.split(".")[1].length / 4) * 4, "=");
-    const payload = JSON.parse(atob(b64));
-    return payload.sub ?? null;
-  } catch {
-    return null;
-  }
-}
-
-// Resolve qual ISP usar: verifica target_isp_id com autorização super_admin
-async function resolveIsp(
-  supabase: ReturnType<typeof createClient>,
-  supabaseAdmin: ReturnType<typeof createClient>,
-  targetIspId: string | null,
-  authHeader: string
-) {
-  const { data: ownData } = await supabase.rpc("get_isp_stripe_data");
-  const ownIsp = ownData?.[0] ?? null;
-
-  if (!targetIspId || targetIspId === ownIsp?.isp_id) {
-    return { isp: ownIsp, forbidden: false };
-  }
-
-  // ISP diferente: verificar se é super_admin via JWT decode + supabaseAdmin (bypass RLS)
-  const userId = getUserIdFromJWT(authHeader);
-  const { data: profile } = await supabaseAdmin
-    .from("profiles").select("role").eq("id", userId ?? "").maybeSingle();
-  if (profile?.role !== "super_admin") {
-    return { isp: null, forbidden: true };
-  }
-
-  // Buscar ISP alvo com service_role (bypass RLS)
-  const { data: targetIsp } = await supabaseAdmin
-    .from("isps")
-    .select(
-      "isp_id,stripe_customer_id,stripe_test_customer_id,stripe_subscription_id," +
-      "stripe_subscription_status,stripe_product_id,stripe_price_id,stripe_product_name," +
-      "stripe_monthly_amount,stripe_current_period_start,stripe_current_period_end," +
-      "stripe_cancel_at_period_end,stripe_trial_end,stripe_billing_source"
-    )
-    .eq("isp_id", targetIspId)
-    .single();
-
-  return { isp: targetIsp ?? null, forbidden: false };
-}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -91,21 +41,46 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
     );
 
-    const { isp, forbidden } = await resolveIsp(supabase, supabaseAdmin, targetIspId, authHeader);
+    // Buscar dados do ISP do usuário autenticado via RPC SECURITY DEFINER
+    const { data: ownData } = await supabase.rpc("get_isp_stripe_data");
+    const ownIsp = ownData?.[0] ?? null;
+    const ownIspId: string | null = ownIsp?.isp_id ?? null;
 
-    if (forbidden) {
-      return new Response(JSON.stringify({ error: "Forbidden" }), {
-        status: 403,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    // Determinar ISP alvo
+    // Super_admin (isp_id='uniforce') pode ver qualquer ISP via target_isp_id
+    // ISP regular só pode ver seus próprios dados
+    let isp = ownIsp;
+
+    if (targetIspId && targetIspId !== ownIspId) {
+      if (ownIspId !== "uniforce") {
+        // ISP regular tentando acessar outro ISP — negado
+        return new Response(JSON.stringify({ error: "Forbidden" }), {
+          status: 403,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      // Super_admin: buscar dados do ISP alvo
+      const { data: targetIsp } = await supabaseAdmin
+        .from("isps")
+        .select(
+          "isp_id,stripe_customer_id,stripe_test_customer_id,stripe_subscription_id," +
+          "stripe_subscription_status,stripe_product_id,stripe_price_id,stripe_product_name," +
+          "stripe_monthly_amount,stripe_current_period_start,stripe_current_period_end," +
+          "stripe_cancel_at_period_end,stripe_trial_end,stripe_billing_source"
+        )
+        .eq("isp_id", targetIspId)
+        .single();
+      isp = targetIsp ?? null;
     }
+
     if (!isp) {
       return new Response(
-        JSON.stringify({ subscription: null, message: "ISP não encontrado" }),
+        JSON.stringify({ subscription: null, isp_id: targetIspId, message: "ISP não encontrado" }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
+    // isTestMode SOMENTE para uniforce
     const isTestMode = TEST_MODE_ISP_IDS.includes(isp.isp_id);
     const customerId = isTestMode
       ? (isp.stripe_test_customer_id ?? isp.stripe_customer_id)
@@ -115,7 +90,7 @@ Deno.serve(async (req) => {
       return new Response(
         JSON.stringify({
           subscription: null,
-          stripe_customer_id: customerId,
+          stripe_customer_id: customerId ?? null,
           stripe_billing_source: isp.stripe_billing_source ?? null,
           isp_id: isp.isp_id,
         }),
@@ -124,7 +99,7 @@ Deno.serve(async (req) => {
     }
 
     const stripeKey = isTestMode
-      ? (Deno.env.get("STRIPE_TEST_SECRET_KEY") ?? Deno.env.get("STRIPE_SECRET_KEY") ?? "")
+      ? (Deno.env.get("STRIPE_TEST_SECRET_KEY") ?? "")
       : (Deno.env.get("STRIPE_SECRET_KEY") ?? "");
 
     const stripe = new Stripe(stripeKey, {
@@ -146,7 +121,7 @@ Deno.serve(async (req) => {
       JSON.stringify({
         isp_id: isp.isp_id,
         stripe_billing_source: isp.stripe_billing_source ?? "stripe",
-        stripe_customer_id: customerId,
+        stripe_customer_id: customerId ?? null,
         subscription: {
           id: subscription.id,
           status: subscription.status,
