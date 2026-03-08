@@ -1,9 +1,13 @@
 // src/hooks/useStripeSubscription.ts
-import { useQuery, useMutation } from "@tanstack/react-query";
+// Hook TanStack Query para buscar a assinatura Stripe do ISP autenticado
+// ispId: o ISP selecionado no dashboard (super_admin pode ver outro ISP)
+
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { externalSupabase } from "@/integrations/supabase/external-client";
 
 const FUNCTIONS_URL = "https://yqdqmudsnjhixtxldqwi.supabase.co/functions/v1";
-const ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlxZHFtdWRzbmpoaXh0eGxkcXdpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTY0MjEwMzEsImV4cCI6MjA3MTk5NzAzMX0.UsrIuEgtJVdhZ0b76VLOjT1zVn2-OWeORGFoy487MfY";
+const ANON_KEY =
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlxZHFtdWRzbmpoaXh0eGxkcXdpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTY0MjEwMzEsImV4cCI6MjA3MTk5NzAzMX0.UsrIuEgtJVdhZ0b76VLOjT1zVn2-OWeORGFoy487MfY";
 
 export interface StripePaymentMethod {
   type: string;
@@ -36,77 +40,82 @@ export interface StripeSubscriptionData {
   subscription: StripeSubscription | null;
 }
 
-async function getToken(): Promise<string | null> {
+async function getAuthHeaders(): Promise<Record<string, string>> {
   const { data } = await externalSupabase.auth.getSession();
-  return data.session?.access_token ?? null;
+  const token = data.session?.access_token;
+  return {
+    apikey: ANON_KEY,
+    "Content-Type": "application/json",
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
 }
 
-async function callFunction(name: string, options: {
-  method?: string;
-  body?: object;
-  testMode?: boolean;
-}): Promise<Response> {
-  const token = await getToken();
-  return fetch(`${FUNCTIONS_URL}/${name}`, {
-    method: options.method ?? "POST",
-    headers: {
-      "apikey": ANON_KEY,
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(options.testMode ? { "X-Stripe-Test-Mode": "true" } : {}),
-    },
-    ...(options.body ? { body: JSON.stringify(options.body) } : {}),
-  });
-}
-
-export function useStripeSubscription(testMode = false) {
+export function useStripeSubscription(ispId?: string | null) {
   return useQuery<StripeSubscriptionData>({
-    queryKey: ["stripe-subscription", testMode],
+    queryKey: ["stripe-subscription", ispId],
     queryFn: async () => {
-      const res = await callFunction("stripe-subscription", { testMode });
-      if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`);
+      const headers = await getAuthHeaders();
+      const res = await fetch(`${FUNCTIONS_URL}/stripe-subscription`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ target_isp_id: ispId ?? null }),
+      });
+      if (!res.ok) {
+        const text = await res.text().catch(() => `HTTP ${res.status}`);
+        throw new Error(`stripe-subscription falhou: ${text}`);
+      }
       return res.json() as Promise<StripeSubscriptionData>;
     },
     staleTime: 1000 * 60 * 5,
     retry: 2,
+    enabled: !!ispId,
   });
 }
 
-export function useStripeCustomerPortal() {
+export function useStripeCustomerPortal(ispId?: string | null) {
+  const queryClient = useQueryClient();
+
   return useMutation({
     mutationFn: async (returnUrl: string) => {
-      const res = await callFunction("stripe-customer-portal", {
-        body: { return_url: returnUrl },
+      const headers = await getAuthHeaders();
+      const res = await fetch(`${FUNCTIONS_URL}/stripe-customer-portal`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ return_url: returnUrl, target_isp_id: ispId ?? null }),
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`);
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        throw new Error(body?.error ?? `stripe-customer-portal falhou: HTTP ${res.status}`);
+      }
       return res.json() as Promise<{ url: string }>;
     },
     onSuccess: (data) => {
       window.open(data.url, "_blank", "noopener,noreferrer");
+      queryClient.invalidateQueries({ queryKey: ["stripe-subscription", ispId] });
     },
   });
 }
 
-export function useStripeCheckout() {
+export function useStripeCheckout(ispId?: string | null) {
   return useMutation({
     mutationFn: async ({
       price_id,
       success_url,
       cancel_url,
-      test_mode = false,
     }: {
       price_id: string;
       success_url: string;
       cancel_url: string;
-      test_mode?: boolean;
     }) => {
-      const res = await callFunction("stripe-checkout", {
-        body: { price_id, success_url, cancel_url, test_mode },
-        testMode: test_mode,
+      const headers = await getAuthHeaders();
+      const res = await fetch(`${FUNCTIONS_URL}/stripe-checkout`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ price_id, success_url, cancel_url, target_isp_id: ispId ?? null }),
       });
       if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: "Erro desconhecido" }));
-        throw new Error(err.error ?? `HTTP ${res.status}`);
+        const body = await res.json().catch(() => null);
+        throw new Error(body?.error ?? `stripe-checkout falhou: HTTP ${res.status}`);
       }
       return res.json() as Promise<{ url: string; session_id: string }>;
     },
