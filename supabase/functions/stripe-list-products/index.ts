@@ -1,7 +1,7 @@
 // stripe-list-products/index.ts
 // Lista produtos e preços ativos do Stripe
-// target_isp_id: ISP selecionado no dashboard (super_admin pode passar ISP diferente do seu)
-// Test mode: automático quando isp_id='uniforce'
+// SEGURANÇA: isTestMode SOMENTE para isp_id='uniforce' (sandbox Uniforce)
+// Todos os outros ISPs sempre usam a conta live de produção
 
 import Stripe from "https://esm.sh/stripe@14.21.0?target=deno";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2?target=deno";
@@ -11,6 +11,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-stripe-test-mode",
 };
 
+// IDs dos produtos na conta LIVE (produção)
 const MAIN_PLAN_IDS = [
   "prod_U41i5VULCVGKRl",
   "prod_U41iUfju8I1C2n",
@@ -24,6 +25,8 @@ const ADDON_PRODUCT_IDS = [
   "prod_U41irI13heCWd1",
   "prod_U41idU07f8xSla",
 ];
+
+// IDs dos produtos na conta de TESTE (sandbox - somente uniforce)
 const TEST_MAIN_PLAN_IDS = [
   "prod_U6PrObhPyX8oQC",
   "prod_U6PrtJZY7mvP4U",
@@ -38,21 +41,8 @@ const TEST_ADDON_IDS = [
   "prod_U6Prk0MgkLHVfc",
 ];
 
+// ÚNICO ISP que usa sandbox — jamais ISPs reais
 const TEST_MODE_ISP_IDS = ["uniforce"];
-
-// Decode JWT locally — suporta base64url (formato padrão de JWTs)
-function getUserIdFromJWT(authHeader: string): string | null {
-  try {
-    const token = authHeader.replace("Bearer ", "");
-    const b64 = token.split(".")[1]
-      .replace(/-/g, "+").replace(/_/g, "/")
-      .padEnd(Math.ceil(token.split(".")[1].length / 4) * 4, "=");
-    const payload = JSON.parse(atob(b64));
-    return payload.sub ?? null;
-  } catch {
-    return null;
-  }
-}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -60,17 +50,19 @@ Deno.serve(async (req) => {
   }
 
   try {
-    // Ler target_isp_id do body (pode ser null)
     let targetIspId: string | null = null;
     try {
       const body = await req.json();
       targetIspId = body?.target_isp_id ?? null;
     } catch { /* body vazio é ok */ }
 
-    // Detectar test mode via ISP efetivo
-    let isTestMode = false;
-    const authHeader = req.headers.get("Authorization");
+    // Determinar o ISP efetivo
+    // Regra: super_admins têm isp_id='uniforce' no JWT.
+    // Se o usuário é 'uniforce' e passou um target diferente → usa o target (super_admin viewing client).
+    // Qualquer outro ISP → usa o próprio isp_id (ignora target se diferente).
+    let effectiveIspId: string | null = null;
 
+    const authHeader = req.headers.get("Authorization");
     if (authHeader) {
       const supabase = createClient(
         Deno.env.get("SUPABASE_URL") ?? "",
@@ -81,32 +73,28 @@ Deno.serve(async (req) => {
       const { data: ownData } = await supabase.rpc("get_isp_stripe_data");
       const ownIspId: string | null = ownData?.[0]?.isp_id ?? null;
 
-      let effectiveIspId = ownIspId;
-
-      // Super_admin pode solicitar outro ISP
-      if (targetIspId && targetIspId !== ownIspId) {
-        // Decode JWT localmente (sem chamada de rede) + supabaseAdmin para bypassar RLS
-        const userId = getUserIdFromJWT(authHeader);
-        const supabaseAdmin = createClient(
-          Deno.env.get("SUPABASE_URL") ?? "",
-          Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
-        );
-        const { data: profile } = await supabaseAdmin
-          .from("profiles").select("role").eq("id", userId ?? "").maybeSingle();
-        if (profile?.role === "super_admin") {
-          effectiveIspId = targetIspId;
-        }
-        // Se não for super_admin, usa o próprio ISP (seguro — live env para clientes reais)
-      } else if (targetIspId) {
+      // Super_admin (isp_id='uniforce') pode ver qualquer ISP
+      if (ownIspId === "uniforce" && targetIspId && targetIspId !== "uniforce") {
         effectiveIspId = targetIspId;
+      } else {
+        // ISP normal: usa o próprio isp_id (seguro — ignora qualquer target diferente)
+        effectiveIspId = ownIspId ?? targetIspId;
       }
-
-      isTestMode = TEST_MODE_ISP_IDS.includes(effectiveIspId ?? "");
     }
 
+    // isTestMode SOMENTE para uniforce — jamais para clientes reais
+    const isTestMode = TEST_MODE_ISP_IDS.includes(effectiveIspId ?? "");
+
     const stripeKey = isTestMode
-      ? (Deno.env.get("STRIPE_TEST_SECRET_KEY") ?? Deno.env.get("STRIPE_SECRET_KEY") ?? "")
+      ? (Deno.env.get("STRIPE_TEST_SECRET_KEY") ?? "")
       : (Deno.env.get("STRIPE_SECRET_KEY") ?? "");
+
+    if (!stripeKey) {
+      return new Response(
+        JSON.stringify({ error: "Configuração Stripe ausente" }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 500 }
+      );
+    }
 
     const activePlanIds  = isTestMode ? TEST_MAIN_PLAN_IDS : MAIN_PLAN_IDS;
     const activeAddonIds = isTestMode ? TEST_ADDON_IDS      : ADDON_PRODUCT_IDS;
