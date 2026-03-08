@@ -1,8 +1,7 @@
 // src/components/perfil/tabs/MeusProdutosTab.tsx
 // Aba "Meus Produtos" — exibe plano atual ou catálogo para checkout
 
-import { useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -15,7 +14,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useStripeSubscription, useStripeCheckout, useStripeCustomerPortal } from "@/hooks/useStripeSubscription";
 import { useStripeProducts } from "@/hooks/useStripeProducts";
 import { useActiveIsp } from "@/hooks/useActiveIsp";
-import { useAuth } from "@/contexts/AuthContext";
+import { useState } from "react";
 
 // Ícones por plano (baseado no nome)
 function planIcon(name: string) {
@@ -50,15 +49,17 @@ function formatDate(iso: string) {
 export function MeusProdutosTab() {
   const { toast } = useToast();
   const { ispId } = useActiveIsp();
-  const { profile } = useAuth();
   const [checkoutLoading, setCheckoutLoading] = useState<string | null>(null);
-  // ISP uniforce é o ambiente de desenvolvimento — usa test mode automaticamente
-  const testMode = ispId === "uniforce";
 
-  const { data: subscriptionData, isLoading: subLoading, isError: subError } = useStripeSubscription(testMode);
-  const { data: catalog, isLoading: catalogLoading, isError: catalogError, error: catalogErrorObj } = useStripeProducts(testMode);
-  const checkout = useStripeCheckout();
-  const portal = useStripeCustomerPortal();
+  // Test mode é automático para o ISP uniforce (detectado server-side via JWT)
+  const isDevIsp = ispId === "uniforce";
+
+  // Passa ispId (ISP selecionado no dashboard) para todos os hooks
+  // Garante que super_admin veja dados do ISP correto, não os seus próprios
+  const { data: subscriptionData, isLoading: subLoading } = useStripeSubscription(ispId);
+  const { data: catalog, isLoading: catalogLoading } = useStripeProducts(ispId);
+  const checkout = useStripeCheckout(ispId);
+  const portal = useStripeCustomerPortal(ispId);
 
   const sub = subscriptionData?.subscription;
   const billingSource = subscriptionData?.stripe_billing_source;
@@ -73,7 +74,6 @@ export function MeusProdutosTab() {
         price_id: priceId,
         success_url: `${baseUrl}/configuracoes/perfil?tab=meus-produtos&success=true`,
         cancel_url: `${baseUrl}/configuracoes/perfil?tab=meus-produtos`,
-        test_mode: testMode,
       });
     } catch (err) {
       toast({
@@ -112,26 +112,14 @@ export function MeusProdutosTab() {
   return (
     <div className="space-y-6">
 
-      {/* ─── Banner: ambiente de desenvolvimento (apenas uniforce ISP) ─── */}
-      {testMode && (
+      {/* ─── Dev ISP banner (uniforce) ─── */}
+      {isDevIsp && (
         <div className="flex items-center gap-3 px-4 py-3 rounded-lg border border-amber-300 bg-amber-50">
           <FlaskConical className="h-4 w-4 shrink-0 text-amber-600" />
           <div className="flex-1 min-w-0">
             <p className="text-sm font-medium text-amber-800">Ambiente de Desenvolvimento — Modo Teste Stripe</p>
-            <p className="text-xs text-muted-foreground">Nenhuma cobrança real. Cartão de teste: 4242 4242 4242 4242 · exp 12/34 · cvv 123</p>
-          </div>
-        </div>
-      )}
-
-      {/* ─── Debug: erro no carregamento (temporário) ─── */}
-      {(subError || catalogError) && (
-        <div className="flex items-start gap-2 p-3 rounded-lg bg-red-50 border border-red-200 text-sm text-red-700">
-          <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
-          <div>
-            <p className="font-medium">Erro ao carregar dados Stripe</p>
-            <p className="text-xs mt-0.5">
-              {subError && "stripe-subscription falhou. "}
-              {catalogError && `stripe-list-products falhou: ${(catalogErrorObj as Error)?.message || "erro desconhecido"}`}
+            <p className="text-xs text-muted-foreground">
+              Conta uniforce [DEV] usa Stripe test mode automaticamente. Cartão de teste: 4242 4242 4242 4242
             </p>
           </div>
         </div>
@@ -145,10 +133,10 @@ export function MeusProdutosTab() {
               <CreditCard className="h-5 w-5 text-blue-600" />
             </div>
             <div>
-              <p className="text-sm font-semibold text-blue-900">Assinatura via Asaas</p>
+              <p className="text-sm font-semibold text-blue-900">Plano base via Asaas</p>
               <p className="text-sm text-blue-700 mt-1">
-                Sua assinatura Uniforce é gerenciada pelo Asaas. O acesso via Stripe estará disponível
-                quando a migração for concluída pela equipe Uniforce.
+                Sua assinatura base é gerenciada pelo Asaas. Você pode contratar add-ons e upgrades
+                diretamente abaixo via Stripe, de forma independente.
               </p>
               <p className="text-xs text-blue-500 mt-2">
                 Dúvidas? Entre em contato: suporte@uniforce.com.br
@@ -266,8 +254,8 @@ export function MeusProdutosTab() {
         </Card>
       )}
 
-      {/* ─── Catálogo de Planos (oculto para Asaas, a menos que seja super_admin em test mode) ─── */}
-      {isAsaasLegacy && !testMode ? null : <div>
+      {/* ─── Catálogo de Planos ─── */}
+      <div>
         <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
           {hasActiveSub ? (
             <><ArrowUpCircle className="h-4 w-4 text-primary" /> Outros Planos Disponíveis</>
@@ -342,10 +330,10 @@ export function MeusProdutosTab() {
             })}
           </div>
         )}
-      </div>}
+      </div>
 
-      {/* Add-ons (visível apenas fora do modo Asaas, ou em test mode) */}
-      {(!isAsaasLegacy || testMode) && catalog && catalog.addons.length > 0 && (
+      {/* Add-ons */}
+      {catalog && catalog.addons.length > 0 && (
         <div>
           <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
             <Zap className="h-4 w-4 text-primary" /> Add-ons Disponíveis
