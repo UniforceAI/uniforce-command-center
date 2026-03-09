@@ -116,12 +116,21 @@ export function MeusProdutosTab() {
         success_url: `${baseUrl}/configuracoes/perfil?tab=meus-produtos&success=true`,
         cancel_url:  `${baseUrl}/configuracoes/perfil?tab=meus-produtos`,
       });
-    } catch {
-      toast({
-        title: "Erro ao iniciar checkout",
-        description: "Não foi possível iniciar o processo de contratação.",
-        variant: "destructive",
-      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "";
+      if (msg.includes("já está ativo")) {
+        toast({
+          title: "Add-on já contratado",
+          description: msg,
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Erro ao iniciar checkout",
+          description: "Não foi possível iniciar o processo de contratação.",
+          variant: "destructive",
+        });
+      }
     } finally {
       setCheckoutLoading(null);
     }
