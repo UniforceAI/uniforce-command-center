@@ -57,9 +57,11 @@ export function useAsaasPlanChange(ispId?: string | null) {
     },
 
     onSuccess: () => {
-      // Invalidar cache da assinatura Asaas → força refetch com os novos dados
+      // Invalidar assinatura + faturas → ambos refletem a mudança de plano imediatamente
       queryClient.invalidateQueries({ queryKey: ["asaas-subscription", ispId] });
       queryClient.invalidateQueries({ queryKey: ["asaas-subscription"] });
+      queryClient.invalidateQueries({ queryKey: ["asaas-invoices", ispId] });
+      queryClient.invalidateQueries({ queryKey: ["asaas-invoices"] });
     },
   });
 }
