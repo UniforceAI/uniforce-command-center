@@ -58,7 +58,9 @@ export function useStripeProducts(ispId?: string | null) {
       return res.json() as Promise<StripeProductsCatalog>;
     },
     staleTime: 1000 * 60 * 30,
-    retry: 2,
+    retry: 1,
+    throwOnError: false,
+    refetchOnMount: true,
     enabled: !!ispId,
   });
 }

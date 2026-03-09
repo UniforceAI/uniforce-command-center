@@ -1,14 +1,12 @@
 // stripe-checkout/index.ts
-// Cria sessão de Stripe Checkout
-// target_isp_id: checkout sempre para o ISP alvo (super_admin deve usar ISP próprio para testes)
-// Test mode: automático quando isp_id='uniforce'
+// LÓGICA: ownIsp.isp_id='uniforce' → super_admin → pode fazer checkout para qualquer ISP
 
 import Stripe from "https://esm.sh/stripe@14.21.0?target=deno";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2?target=deno";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-stripe-test-mode",
 };
 
 const TEST_MODE_ISP_IDS = ["uniforce"];
@@ -60,9 +58,10 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Resolver ISP alvo
     const { data: ownData } = await supabase.rpc("get_isp_stripe_data");
-    const ownIsp = ownData?.[0];
+    const ownIsp = ownData?.[0] ?? null;
+    const ownIspId: string | null = ownIsp?.isp_id ?? null;
+
     if (!ownIsp) {
       return new Response(JSON.stringify({ error: "ISP não encontrado" }), {
         status: 404,
@@ -71,16 +70,14 @@ Deno.serve(async (req) => {
     }
 
     let isp = ownIsp;
-    // Se target_isp_id diferente do próprio, verificar super_admin
-    if (target_isp_id && target_isp_id !== ownIsp.isp_id) {
-      const { data: profile } = await supabase.from("profiles").select("role").single();
-      if (profile?.role !== "super_admin") {
+
+    if (target_isp_id && target_isp_id !== ownIspId) {
+      if (ownIspId !== "uniforce") {
         return new Response(
           JSON.stringify({ error: "Checkout deve ser realizado pelo administrador do ISP." }),
           { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
-      // Super_admin fazendo checkout para outro ISP (ex: ativação manual)
       const { data: targetIspRow } = await supabaseAdmin
         .from("isps")
         .select("isp_id,isp_nome,stripe_customer_id,stripe_test_customer_id,stripe_subscription_id,stripe_subscription_status,stripe_billing_source")
@@ -95,16 +92,10 @@ Deno.serve(async (req) => {
       isp = targetIspRow;
     }
 
-    const { data: ispInfo } = await supabase
-      .from("isps")
-      .select("isp_nome")
-      .eq("isp_id", isp.isp_id)
-      .single();
-
     const isTestMode = TEST_MODE_ISP_IDS.includes(isp.isp_id);
     const stripeKey = isTestMode
-      ? Deno.env.get("STRIPE_TEST_SECRET_KEY")!
-      : Deno.env.get("STRIPE_SECRET_KEY")!;
+      ? (Deno.env.get("STRIPE_TEST_SECRET_KEY") ?? "")
+      : (Deno.env.get("STRIPE_SECRET_KEY") ?? "");
 
     const stripe = new Stripe(stripeKey, {
       apiVersion: "2024-06-20",
@@ -114,6 +105,8 @@ Deno.serve(async (req) => {
     let customerId = isTestMode ? isp.stripe_test_customer_id : isp.stripe_customer_id;
 
     if (!customerId) {
+      const { data: ispInfo } = await supabaseAdmin
+        .from("isps").select("isp_nome").eq("isp_id", isp.isp_id).single();
       const customer = await stripe.customers.create({
         email: user.email,
         name: ispInfo?.isp_nome ?? isp.isp_id,
@@ -124,15 +117,41 @@ Deno.serve(async (req) => {
       await supabaseAdmin.from("isps").update({ [col]: customerId }).eq("isp_id", isp.isp_id);
     }
 
-    // Bloquear checkout se já tem assinatura ativa (live mode)
-    if (!isTestMode && isp.stripe_subscription_id && isp.stripe_subscription_status === "active") {
+    // Determinar se é plano principal ou add-on
+    const priceData = await stripe.prices.retrieve(price_id, { expand: ["product"] });
+    const productObj = priceData.product as Stripe.Product;
+    const productId = productObj.id;
+
+    const LIVE_PLAN_IDS = ["prod_U41i5VULCVGKRl","prod_U41iUfju8I1C2n","prod_U41i4IUixqqdnT"];
+    const TEST_PLAN_IDS = ["prod_U6PrObhPyX8oQC","prod_U6PrtJZY7mvP4U","prod_U6Pr82ehi6o3WC"];
+    const planIds = isTestMode ? TEST_PLAN_IDS : LIVE_PLAN_IDS;
+    const isMainPlan = planIds.includes(productId);
+
+    if (isMainPlan && !isTestMode && isp.stripe_subscription_id && isp.stripe_subscription_status === "active") {
       return new Response(
         JSON.stringify({
-          error: "ISP já possui uma assinatura ativa. Use o Customer Portal para alterar o plano.",
+          error: `ISP já possui o plano "${isp.stripe_product_name}" ativo. Use o portal de pagamentos para alterar o plano.`,
           redirect_to_portal: true,
         }),
         { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
+    }
+
+    // Guard de add-on duplicado
+    if (!isMainPlan) {
+      const { data: existingAddon } = await supabaseAdmin
+        .from("isp_subscription_items")
+        .select("id, product_name")
+        .eq("isp_id", isp.isp_id)
+        .eq("product_id", productId)
+        .in("status", ["active","cancel_scheduled"])
+        .maybeSingle();
+      if (existingAddon) {
+        return new Response(
+          JSON.stringify({ error: `Add-on "${existingAddon.product_name}" já está ativo para este ISP.` }),
+          { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
     }
 
     const session = await stripe.checkout.sessions.create({

@@ -1,40 +1,15 @@
 // stripe-customer-portal/index.ts
-// Cria sessão no Stripe Customer Portal
-// target_isp_id: super_admin pode abrir portal de outro ISP — validado server-side
+// LÓGICA: ownIsp.isp_id='uniforce' → super_admin → pode abrir portal de qualquer ISP
 
 import Stripe from "https://esm.sh/stripe@14.21.0?target=deno";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2?target=deno";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-stripe-test-mode",
 };
 
 const TEST_MODE_ISP_IDS = ["uniforce"];
-
-async function resolveIsp(
-  supabase: ReturnType<typeof createClient>,
-  supabaseAdmin: ReturnType<typeof createClient>,
-  targetIspId: string | null
-) {
-  const { data: ownData } = await supabase.rpc("get_isp_stripe_data");
-  const ownIsp = ownData?.[0] ?? null;
-
-  if (!targetIspId || targetIspId === ownIsp?.isp_id) {
-    return { isp: ownIsp, forbidden: false };
-  }
-
-  const { data: profile } = await supabase.from("profiles").select("role").single();
-  if (profile?.role !== "super_admin") return { isp: null, forbidden: true };
-
-  const { data: targetIsp } = await supabaseAdmin
-    .from("isps")
-    .select("isp_id,stripe_customer_id,stripe_test_customer_id,stripe_billing_source")
-    .eq("isp_id", targetIspId)
-    .single();
-
-  return { isp: targetIsp ?? null, forbidden: false };
-}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -75,13 +50,25 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
     );
 
-    const { isp, forbidden } = await resolveIsp(supabase, supabaseAdmin, targetIspId);
+    const { data: ownData } = await supabase.rpc("get_isp_stripe_data");
+    const ownIsp = ownData?.[0] ?? null;
+    const ownIspId: string | null = ownIsp?.isp_id ?? null;
 
-    if (forbidden) {
-      return new Response(JSON.stringify({ error: "Forbidden" }), {
-        status: 403,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    let isp = ownIsp;
+
+    if (targetIspId && targetIspId !== ownIspId) {
+      if (ownIspId !== "uniforce") {
+        return new Response(JSON.stringify({ error: "Forbidden" }), {
+          status: 403,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      const { data: targetIsp } = await supabaseAdmin
+        .from("isps")
+        .select("isp_id,stripe_customer_id,stripe_test_customer_id,stripe_billing_source")
+        .eq("isp_id", targetIspId)
+        .single();
+      isp = targetIsp ?? null;
     }
 
     const isTestMode = TEST_MODE_ISP_IDS.includes(isp?.isp_id ?? "");
@@ -97,7 +84,7 @@ Deno.serve(async (req) => {
     }
 
     const stripeKey = isTestMode
-      ? (Deno.env.get("STRIPE_TEST_SECRET_KEY") ?? Deno.env.get("STRIPE_SECRET_KEY") ?? "")
+      ? (Deno.env.get("STRIPE_TEST_SECRET_KEY") ?? "")
       : (Deno.env.get("STRIPE_SECRET_KEY") ?? "");
 
     const stripe = new Stripe(stripeKey, {

@@ -79,14 +79,18 @@ export function MeusProdutosTab() {
 
   const { data: subscriptionData, isLoading: subLoading } = useStripeSubscription(ispId);
   const { data: catalog,          isLoading: catalogLoading } = useStripeProducts(ispId);
-  const { data: asaasData,        isLoading: asaasLoading }  = useAsaasSubscription(ispId);
+
+  const sub           = subscriptionData?.subscription;
+  const billingSource = subscriptionData?.stripe_billing_source;
+  const isAsaasLegacy = billingSource === "asaas";
+
+  // Só busca dados Asaas após saber o billingSource — evita chamada desnecessária para ISPs Stripe
+  const { data: asaasData, isLoading: asaasLoading } = useAsaasSubscription(
+    !subLoading && isAsaasLegacy ? ispId : null
+  );
   const checkout   = useStripeCheckout(ispId);
   const portal     = useStripeCustomerPortal(ispId);
   const planChange = useAsaasPlanChange(ispId);
-
-  const sub          = subscriptionData?.subscription;
-  const billingSource = subscriptionData?.stripe_billing_source;
-  const isAsaasLegacy = billingSource === "asaas";
   const hasActiveSub  = !!sub && sub.status !== "canceled";
 
   const asaasSub          = asaasData?.subscription ?? null;
@@ -112,12 +116,21 @@ export function MeusProdutosTab() {
         success_url: `${baseUrl}/configuracoes/perfil?tab=meus-produtos&success=true`,
         cancel_url:  `${baseUrl}/configuracoes/perfil?tab=meus-produtos`,
       });
-    } catch {
-      toast({
-        title: "Erro ao iniciar checkout",
-        description: "Não foi possível iniciar o processo de contratação.",
-        variant: "destructive",
-      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "";
+      if (msg.includes("já está ativo")) {
+        toast({
+          title: "Add-on já contratado",
+          description: msg,
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Erro ao iniciar checkout",
+          description: "Não foi possível iniciar o processo de contratação.",
+          variant: "destructive",
+        });
+      }
     } finally {
       setCheckoutLoading(null);
     }
