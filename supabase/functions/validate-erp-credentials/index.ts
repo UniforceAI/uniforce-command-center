@@ -3,9 +3,13 @@
 // chamado durante o onboarding, Step 2
 //
 // Body: { erp_type: "ixc" | "ispbox", base_url: string, api_key: string, api_token?: string }
-// Returns: { valid: boolean, message: string, erp_version?: string }
+// Returns: { valid: boolean, message: string, erp_version?: string, client_count?: number | null }
+//
+// SEGURANÇA: Requer Authorization header para evitar uso como proxy HTTP anônimo (SSRF).
+// O JWT é validado mas não é necessário estar vinculado a um ISP (suporta novos usuários em onboarding).
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -16,6 +20,28 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
 
   try {
+    // Validar JWT (obrigatório — evita uso como relay HTTP anônimo)
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ valid: false, message: "Não autorizado." }),
+        { status: 401, headers: { ...CORS, "Content-Type": "application/json" } }
+      );
+    }
+
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const anonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
+    const userClient = createClient(supabaseUrl, anonKey, {
+      global: { headers: { Authorization: authHeader } },
+    });
+    const { data: { user }, error: authErr } = await userClient.auth.getUser();
+    if (authErr || !user) {
+      return new Response(
+        JSON.stringify({ valid: false, message: "Token inválido ou expirado." }),
+        { status: 401, headers: { ...CORS, "Content-Type": "application/json" } }
+      );
+    }
+
     const { erp_type, base_url, api_key, api_token } = await req.json();
 
     if (!erp_type || !base_url || !api_key) {
