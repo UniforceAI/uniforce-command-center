@@ -29,9 +29,19 @@ const corsHeaders = {
 };
 
 function nextMonthFirstDay(): string {
-  const now = new Date();
-  const next = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
-  return next.toISOString().slice(0, 10);
+  // Usa timezone de São Paulo (UTC-3) para que o vencimento seja 1º do próximo mês
+  // no calendário brasileiro, independente do timezone do servidor (normalmente UTC).
+  const formatter = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+  });
+  const parts = formatter.formatToParts(new Date());
+  const year  = parseInt(parts.find((p) => p.type === "year")!.value, 10);
+  const month = parseInt(parts.find((p) => p.type === "month")!.value, 10);
+  const nextMonth = month === 12 ? 1 : month + 1;
+  const nextYear  = month === 12 ? year + 1 : year;
+  return `${nextYear}-${String(nextMonth).padStart(2, "0")}-01`;
 }
 
 Deno.serve(async (req) => {

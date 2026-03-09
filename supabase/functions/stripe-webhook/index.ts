@@ -149,9 +149,18 @@ Deno.serve(async (req) => {
           { expand: ["items.data.price.product"] }
         );
 
-        const item  = sub.items.data[0];
-        const price = item?.price as Stripe.Price & { product: Stripe.Product };
-        const prod  = price?.product as Stripe.Product;
+        const item = sub.items.data?.[0];
+        if (!item) {
+          console.warn(`stripe-webhook: subscription ${sub.id} tem 0 items — ignorando`);
+          break;
+        }
+        const priceObj = item.price as Stripe.Price;
+        // product pode ser string (não expandido) ou objeto Stripe.Product
+        const prodRaw = (priceObj as any)?.product;
+        const prod = (typeof prodRaw === "object" && prodRaw !== null) ? prodRaw as Stripe.Product : null;
+        const prodId = prod?.id ?? (typeof prodRaw === "string" ? prodRaw : null);
+        // Alias para compatibilidade com código abaixo
+        const price = priceObj;
 
         // Stripe API ≥2024-09-30 moveu current_period_start/end para items.data[0]
         // Lê do root se disponível, senão do item (compatibilidade entre versões)
@@ -164,7 +173,7 @@ Deno.serve(async (req) => {
             [custIdCol]: session.customer as string,
             stripe_subscription_id:      sub.id,
             stripe_subscription_status:  sub.status,
-            stripe_product_id:           prod?.id ?? null,
+            stripe_product_id:           prodId ?? null,
             stripe_price_id:             price?.id ?? null,
             stripe_product_name:         prod?.name ?? null,
             stripe_monthly_amount:       (price?.unit_amount ?? 0) / 100,
@@ -202,12 +211,12 @@ Deno.serve(async (req) => {
           const LIVE_PLAN_IDS = ["prod_U41i5VULCVGKRl","prod_U41iUfju8I1C2n","prod_U41i4IUixqqdnT"];
           const TEST_PLAN_IDS = ["prod_U6PrObhPyX8oQC","prod_U6PrtJZY7mvP4U","prod_U6Pr82ehi6o3WC"];
           const planIds = isLive ? LIVE_PLAN_IDS : TEST_PLAN_IDS;
-          const productType = planIds.includes(prod?.id ?? "") ? "plan" : "addon";
+          const productType = planIds.includes(prodId ?? "") ? "plan" : "addon";
 
           await supabaseAdmin.from("isp_subscription_items").upsert({
             isp_id: ispId,
             stripe_subscription_id: sub.id,
-            product_id: prod?.id ?? price?.id ?? "unknown",
+            product_id: prodId ?? price?.id ?? "unknown",
             product_name: prod?.name ?? "Produto Uniforce",
             product_type: productType,
             billing_source: "stripe",
@@ -304,7 +313,16 @@ Deno.serve(async (req) => {
         if (!ispId) {
           ispId = await findIspByCustomer(sub.customer as string);
         }
-        if (!ispId) break;
+        if (!ispId) {
+          // ISP não encontrado no banco (pode ter sido deletado ou migrado)
+          // Ainda assim marcar itens como cancelados para evitar estados inconsistentes
+          console.warn(`stripe-webhook: ISP não encontrado para sub deletado ${sub.id} (customer: ${sub.customer})`);
+          await supabaseAdmin.from("isp_subscription_items")
+            .update({ status: "canceled", canceled_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+            .eq("stripe_subscription_id", sub.id)
+            .neq("status", "canceled");
+          break;
+        }
 
         if (isLive) {
           await supabaseAdmin.from("isps").update({

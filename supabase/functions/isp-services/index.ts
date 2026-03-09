@@ -94,11 +94,10 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Se target_isp_id foi fornecido e diferente, buscar meta do ISP alvo via admin
+    // Se target_isp_id foi fornecido e diferente, buscar meta do ISP alvo diretamente via admin
+    // (get_isp_service_meta usa current_user_isp_id() — não aceita parâmetro de ISP externo)
     let effectiveMeta = meta;
     if (targetIspId !== ownIspId) {
-      const { data: targetRows } = await supabaseAdmin.rpc("get_isp_service_meta");
-      // get_isp_service_meta usa current_user_isp_id() — para super_admin, buscar direto
       const { data: targetIsp } = await supabaseAdmin
         .from("isps")
         .select("isp_id, subscription_started_at, last_agent_change_at, stripe_billing_source")
@@ -126,7 +125,10 @@ Deno.serve(async (req) => {
 
     // ─── 4. Transformar items ─────────────────────────────────────────────────
     const contractedItems: ContractedItem[] = (items ?? []).map((item: any) => {
-      const commitmentEndsAt = new Date(item.commitment_ends_at).getTime();
+      // Fallback: se trigger não populou commitment_ends_at, calcular dinamicamente
+      const commitmentEndsAtRaw = item.commitment_ends_at
+        ?? new Date(new Date(item.started_at).getTime() + 90 * 24 * 60 * 60 * 1000).toISOString();
+      const commitmentEndsAt = new Date(commitmentEndsAtRaw).getTime();
       const daysUntilFree = Math.ceil((commitmentEndsAt - now) / 86400000);
       return {
         id: item.id,
@@ -137,7 +139,7 @@ Deno.serve(async (req) => {
         billing_source: item.billing_source,
         status: item.status,
         started_at: item.started_at,
-        commitment_ends_at: item.commitment_ends_at,
+        commitment_ends_at: commitmentEndsAtRaw,
         cancel_at: item.cancel_at ?? null,
         monthly_amount: item.monthly_amount ?? 0,
         currency: item.currency ?? "BRL",

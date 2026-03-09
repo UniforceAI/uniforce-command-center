@@ -33,8 +33,11 @@ function formatCurrency(amount: number, currency = "BRL") {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency }).format(amount);
 }
 
-function formatDate(iso: string) {
-  return new Date(iso).toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" });
+function formatDate(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "—";
+  return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" });
 }
 
 function planIcon(name: string) {
@@ -61,7 +64,8 @@ function CommitmentProgress({ item }: { item: ContractedItem }) {
   const commitmentEnd = new Date(item.commitment_ends_at).getTime();
   const now = Date.now();
   const totalDuration = commitmentEnd - startedAt;
-  const elapsed = Math.min(now - startedAt, totalDuration);
+  // Math.max(0, ...) protege contra clock skew onde startedAt > now
+  const elapsed = Math.max(0, Math.min(now - startedAt, totalDuration));
   const progress = totalDuration > 0 ? Math.max(0, Math.min(100, (elapsed / totalDuration) * 100)) : 100;
   const isFulfilled = item.days_until_commitment_free <= 0;
 
@@ -107,11 +111,13 @@ interface ServiceItemCardProps {
   billingSource: "stripe" | "asaas" | null;
   ispId: string;
   onCancelRequest: (item: ContractedItem) => void;
+  cancelingId: string | null;
 }
 
-function ServiceItemCard({ item, canManage, billingSource, ispId, onCancelRequest }: ServiceItemCardProps) {
+function ServiceItemCard({ item, canManage, billingSource, ispId, onCancelRequest, cancelingId }: ServiceItemCardProps) {
   const features = item.product_type === "plan" ? planFeatures(item.product_name) : [];
   const isAsaas = item.billing_source === "asaas";
+  const isCancelingThis = cancelingId === item.id;
 
   return (
     <Card className={item.product_type === "plan" ? "border-primary/30" : ""}>
@@ -171,8 +177,12 @@ function ServiceItemCard({ item, canManage, billingSource, ispId, onCancelReques
               variant="ghost"
               size="sm"
               className="gap-2 text-destructive hover:text-destructive hover:bg-destructive/10"
-              onClick={() => onCancelRequest(item)}
+              disabled={isCancelingThis}
+              onClick={() => {
+                if (!isCancelingThis) onCancelRequest(item);
+              }}
             >
+              {isCancelingThis && <RefreshCw className="h-3.5 w-3.5 animate-spin" />}
               Cancelar {item.product_type === "plan" ? "Assinatura" : "Add-on"}
             </Button>
           </div>
@@ -193,12 +203,14 @@ export function MeusServicosTab() {
 
   const [cancelTarget, setCancelTarget] = useState<ContractedItem | null>(null);
   const [asaasCancelOpen, setAsaasCancelOpen] = useState(false);
+  const [cancelingId, setCancelingId] = useState<string | null>(null); // para proteger contra double-click
 
   const canManage = userRole === "admin" || userRole === "super_admin";
   const billingSource = servicesData?.billing_source ?? null;
 
   // ─── Handlers ──────────────────────────────────────────────────────────────
   const handleCancelRequest = (item: ContractedItem) => {
+    setCancelingId(item.id); // bloqueia re-clicks imediatos
     if (item.billing_source === "asaas") {
       setAsaasCancelOpen(true);
     } else {
@@ -225,11 +237,14 @@ export function MeusServicosTab() {
       });
     } finally {
       setCancelTarget(null);
+      setCancelingId(null);
     }
   };
 
   // ─── Loading ────────────────────────────────────────────────────────────────
-  if (isLoading) {
+  // isLoading=false quando ispId=null (query desabilitada), mas servicesData=undefined
+  // → manter skeleton até ter ispId E dados carregados
+  if (isLoading || (!!ispId && servicesData === undefined)) {
     return (
       <div className="space-y-4">
         <Skeleton className="h-48 w-full" />
@@ -282,7 +297,7 @@ export function MeusServicosTab() {
       </AlertDialog>
 
       {/* ─── Dialog cancelamento Asaas ─── */}
-      <AlertDialog open={asaasCancelOpen} onOpenChange={setAsaasCancelOpen}>
+      <AlertDialog open={asaasCancelOpen} onOpenChange={(open) => { setAsaasCancelOpen(open); if (!open) setCancelingId(null); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Cancelamento via Gerente de Conta</AlertDialogTitle>
@@ -336,6 +351,7 @@ export function MeusServicosTab() {
             billingSource={billingSource}
             ispId={ispId ?? ""}
             onCancelRequest={handleCancelRequest}
+            cancelingId={cancelingId}
           />
         </div>
       )}
@@ -356,6 +372,7 @@ export function MeusServicosTab() {
                 billingSource={billingSource}
                 ispId={ispId ?? ""}
                 onCancelRequest={handleCancelRequest}
+                cancelingId={cancelingId}
               />
             ))}
           </div>

@@ -117,10 +117,16 @@ Deno.serve(async (req) => {
     }
 
     // ─── 5. Calcular data efetiva de cancelamento ─────────────────────────────
-    const commitmentEndsAt = new Date(item.commitment_ends_at).getTime();
+    // Fallback: se trigger não populou commitment_ends_at, calcular 90 dias a partir de started_at
+    const commitmentEndsAt = item.commitment_ends_at
+      ? new Date(item.commitment_ends_at).getTime()
+      : new Date(item.started_at).getTime() + 90 * 24 * 60 * 60 * 1000;
+
     const now = Date.now();
-    const effectiveCancelAt = Math.max(commitmentEndsAt, now);
-    const isImmediate = effectiveCancelAt <= now + 60000; // margem de 1 min
+    // isImmediate = compromisso já foi cumprido (cancelar ao fim do período de billing)
+    // !isImmediate = ainda no lock-in period → agendar para commitment_ends_at
+    const isImmediate = commitmentEndsAt <= now;
+    const effectiveCancelAt = isImmediate ? now : commitmentEndsAt;
 
     // ─── 6. Configurar Stripe ─────────────────────────────────────────────────
     const stripeKey = item.is_test_mode
@@ -136,18 +142,19 @@ Deno.serve(async (req) => {
     let effectiveCancelDate: string;
 
     if (isImmediate) {
-      // Comprometimento já cumprido → cancelar ao final do período atual
-      await stripe.subscriptions.update(stripe_subscription_id, {
+      // Comprometimento já cumprido → cancelar ao final do período de billing atual
+      // O update retorna a subscription com current_period_end — sem chamada extra
+      const updatedSub = await stripe.subscriptions.update(stripe_subscription_id, {
         cancel_at_period_end: true,
       });
-      // A data efetiva vem do período atual no Stripe
-      const sub = await stripe.subscriptions.retrieve(stripe_subscription_id);
-      const periodEnd = (sub as any).current_period_end ?? null;
+      const periodEnd = (updatedSub as any).current_period_end
+        ?? (updatedSub.items?.data?.[0] as any)?.current_period_end
+        ?? null;
       effectiveCancelDate = periodEnd
         ? new Date(periodEnd * 1000).toISOString()
         : new Date(now).toISOString();
     } else {
-      // Ainda no período de compromisso → agendar para commitment_ends_at
+      // Ainda no período de compromisso → agendar cancelamento para commitment_ends_at
       await stripe.subscriptions.update(stripe_subscription_id, {
         cancel_at: Math.floor(effectiveCancelAt / 1000),
       });
