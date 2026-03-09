@@ -19,51 +19,88 @@ interface Props {
   tosVersion: string;
 }
 
-const FALLBACK_CONTENT = `## 1. Aceitação dos Termos
+const FALLBACK_CONTENT = `1. Aceitação dos Termos
 
 Ao contratar os serviços da Uniforce Tecnologia Ltda. ("Uniforce"), você ("Cliente") concorda com estes Termos de Serviço ("Termos"). Leia-os cuidadosamente antes de usar nossa plataforma.
 
-## 2. Descrição dos Serviços
+2. Período Mínimo de Vigência
 
-A Uniforce oferece uma plataforma de gestão de retenção e análise de dados para provedores de internet (ISPs), incluindo Dashboard de Retenção, Churn Score®, análise de inadimplência e módulos adicionais conforme contratados.
+A assinatura do serviço tem período mínimo de vigência de 3 (três) meses a contar da data de ativação. Rescisões antecipadas estão sujeitas à cobrança proporcional ao período contratado.
 
-## 3. Período Mínimo de Vigência
+3. Pagamento
 
-A assinatura do serviço tem período mínimo de vigência de **3 (três) meses** a contar da data de ativação. Rescisões antecipadas estão sujeitas à cobrança proporcional ao período contratado.
+O pagamento é processado mensalmente via cartão de crédito ou boleto. Faturas vencidas podem resultar em suspensão temporária do acesso.
 
-## 4. Pagamento
+4. Confidencialidade dos Dados
 
-O pagamento é processado mensalmente via cartão de crédito através da plataforma Stripe. Faturas vencidas podem resultar em suspensão temporária do acesso.
+A Uniforce trata todos os dados do Cliente com confidencialidade, em conformidade com a Lei Geral de Proteção de Dados (LGPD - Lei 13.709/2018).
 
-## 5. Confidencialidade dos Dados
-
-A Uniforce trata todos os dados do Cliente com confidencialidade, em conformidade com a Lei Geral de Proteção de Dados (LGPD - Lei 13.709/2018). Os dados são utilizados exclusivamente para prestação dos serviços contratados.
-
-## 6. Limitação de Responsabilidade
+5. Limitação de Responsabilidade
 
 A Uniforce não se responsabiliza por danos indiretos, lucros cessantes ou interrupções de serviço decorrentes de fatores externos à plataforma.
 
-## 7. Modificações
+6. Foro
 
-A Uniforce pode modificar estes Termos com aviso prévio de 30 dias. O uso continuado dos serviços após este período implica aceitação das modificações.
+Fica eleito o foro da Comarca de Florianópolis/SC para dirimir quaisquer litígios decorrentes deste contrato.`;
 
-## 8. Foro
+/**
+ * Renderiza conteúdo como HTML para exibição no modal de ToS.
+ * Suporta dois formatos:
+ * - Markdown com ## para títulos e **negrito**
+ * - Texto simples com seções numeradas (1. Título, 2. Título, ...)
+ */
+function renderContent(text: string): string {
+  const parts: string[] = [];
 
-Fica eleito o foro da Comarca de São Paulo/SP para dirimir quaisquer litígios decorrentes deste contrato.`;
+  for (const block of text.split(/\n\n+/)) {
+    const lines = block.split("\n").map((l) => l.trim()).filter(Boolean);
+    if (!lines.length) continue;
 
-function renderMarkdown(text: string): string {
-  return text
-    .split(/\n\n+/)
-    .map((para) => {
-      const withHeadings = para.replace(
-        /^## (.+)$/gm,
-        '<h2 class="text-base font-semibold mt-5 mb-2 text-foreground">$1</h2>'
-      );
-      const withBold = withHeadings.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
-      if (withBold.includes("<h2")) return withBold;
-      return `<p class="mb-3 text-sm text-muted-foreground leading-relaxed">${withBold.replace(/\n/g, " ")}</p>`;
-    })
-    .join("");
+    const first = lines[0];
+
+    // Markdown heading: ## Título
+    if (first.startsWith("## ")) {
+      const title = first.slice(3).replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+      parts.push(`<h2 class="text-base font-semibold mt-6 mb-2 text-foreground">${title}</h2>`);
+      for (const l of lines.slice(1)) {
+        parts.push(`<p class="mb-2 text-sm text-muted-foreground leading-relaxed">${l.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")}</p>`);
+      }
+      continue;
+    }
+
+    // Numbered section: "1. Título", "12. Título"
+    if (/^\d+\.\s+\S/.test(first)) {
+      parts.push(`<h2 class="text-base font-semibold mt-6 mb-2 text-foreground">${first}</h2>`);
+      if (lines.length > 1) {
+        parts.push(`<p class="mb-3 text-sm text-muted-foreground leading-relaxed">${lines.slice(1).join(" ")}</p>`);
+      }
+      continue;
+    }
+
+    // ALL-CAPS title line (e.g. "TERMOS DE SERVIÇO (Terms of Service)")
+    const stripped = first.replace(/[()]/g, "").replace(/\s+/g, " ").trim();
+    if (stripped === stripped.toUpperCase() && stripped.length > 10 && /[A-Z]/.test(stripped)) {
+      parts.push(`<h1 class="text-lg font-bold mb-1 text-foreground">${first}</h1>`);
+      for (const l of lines.slice(1)) {
+        parts.push(`<p class="mb-2 text-sm text-muted-foreground">${l}</p>`);
+      }
+      continue;
+    }
+
+    // Process lines within a block individually
+    for (const line of lines) {
+      const words = line.trim().split(/\s+/);
+      // Short standalone term (≤5 words, no colon, no digit start) = definition label
+      if (words.length <= 5 && !line.includes(":") && !/^\d/.test(line)) {
+        parts.push(`<p class="font-semibold text-sm text-foreground mt-3 mb-0.5">${line}</p>`);
+      } else {
+        const html = line.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+        parts.push(`<p class="mb-2 text-sm text-muted-foreground leading-relaxed">${html}</p>`);
+      }
+    }
+  }
+
+  return parts.join("");
 }
 
 export function TermsOfServiceModal({ open, onAccept, tosVersion }: Props) {
@@ -158,7 +195,7 @@ export function TermsOfServiceModal({ open, onAccept, tosVersion }: Props) {
           ) : (
             <div
               className="max-w-none"
-              dangerouslySetInnerHTML={{ __html: renderMarkdown(content) }}
+              dangerouslySetInnerHTML={{ __html: renderContent(content) }}
             />
           )}
         </div>

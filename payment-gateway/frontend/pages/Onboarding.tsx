@@ -113,18 +113,21 @@ function Step1({ onNext }: { onNext: (data: Step1Data) => void }) {
             full_name: form.admin_name.trim(),
             phone: form.phone.trim(),
           },
+          // Após confirmação de e-mail, redireciona de volta ao onboarding com os dados salvos
+          emailRedirectTo: `${window.location.origin}/onboarding?confirmed=1`,
         },
       });
       if (error) throw error;
       if (!data.user) throw new Error("Usuário não criado.");
 
       if (!data.session) {
-        // Email confirmation required — Supabase enviou e-mail de verificação
+        // Email confirmation required — salvar dados no sessionStorage para recuperar após redirect
+        sessionStorage.setItem("onboarding_step1", JSON.stringify(form));
         setAwaitingConfirmation(true);
         return;
       }
 
-      // Sessão disponível imediatamente — avançar
+      // Sessão disponível imediatamente (email confirm desabilitado) — avançar
       onNext(form);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -760,8 +763,41 @@ function GoogleCompleteForm({ onComplete }: GoogleCompleteFormProps) {
   const [cnpj, setCnpj] = useState("");
   const [phone, setPhone] = useState("");
   const [loading, setLoading] = useState(false);
+  const [googleUser, setGoogleUser] = useState<{ email: string; name: string } | null>(null);
+  const [sessionChecking, setSessionChecking] = useState(true);
 
-  const valid = ispNome.trim().length >= 2;
+  // Aguarda a sessão do Google OAuth estar disponível (o token do hash é processado assincronamente)
+  useEffect(() => {
+    let cancelled = false;
+    let attempts = 0;
+
+    const check = async () => {
+      const { data } = await externalSupabase.auth.getSession();
+      if (cancelled) return;
+
+      if (data.session?.user) {
+        const u = data.session.user;
+        setGoogleUser({
+          email: u.email ?? "",
+          name: u.user_metadata?.full_name ?? u.email ?? "",
+        });
+        setSessionChecking(false);
+        return;
+      }
+
+      // Supabase pode demorar até ~2s para processar o hash do OAuth redirect
+      if (++attempts < 10) {
+        setTimeout(check, 300);
+      } else {
+        setSessionChecking(false); // timeout — mostrar erro no submit
+      }
+    };
+
+    check();
+    return () => { cancelled = true; };
+  }, []);
+
+  const valid = ispNome.trim().length >= 2 && !sessionChecking;
 
   const handleSubmit = async () => {
     if (!valid) return;
@@ -769,7 +805,7 @@ function GoogleCompleteForm({ onComplete }: GoogleCompleteFormProps) {
     try {
       const { data: sessData } = await externalSupabase.auth.getSession();
       const user = sessData?.session?.user;
-      if (!user) throw new Error("Sessão Google não encontrada. Tente fazer login novamente.");
+      if (!user) throw new Error("Sessão Google não encontrada. Feche e tente novamente.");
 
       onComplete({
         admin_name: user.user_metadata?.full_name ?? user.email ?? "",
@@ -793,7 +829,17 @@ function GoogleCompleteForm({ onComplete }: GoogleCompleteFormProps) {
           <Building2 className="h-5 w-5 text-primary" />
           Complete seu cadastro
         </CardTitle>
-        <CardDescription>Precisamos de alguns dados do seu provedor para continuar.</CardDescription>
+        <CardDescription>
+          {sessionChecking ? (
+            <span className="flex items-center gap-1.5">
+              <Loader2 className="h-3 w-3 animate-spin" /> Conectando conta Google…
+            </span>
+          ) : googleUser ? (
+            <span>Conta: <strong>{googleUser.email}</strong> · Preencha os dados do seu provedor.</span>
+          ) : (
+            "Precisamos de alguns dados do seu provedor para continuar."
+          )}
+        </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <div>
@@ -836,17 +882,39 @@ function GoogleCompleteForm({ onComplete }: GoogleCompleteFormProps) {
 
 export default function Onboarding() {
   const [searchParams] = useSearchParams();
+
+  // Detectar callbacks de OAuth e confirmação de email via URL params
+  const isGoogleCallback = searchParams.get("google") === "1";
+  const isEmailConfirmed = searchParams.get("confirmed") === "1";
+
   // "confirmation" é a tela de transição entre steps 2 e 3
   // "google-complete" é o formulário de complemento após OAuth Google
   const [step, setStep] = useState<number | "confirmation" | "google-complete">(() => {
-    const urlStep = parseInt(searchParams.get("step") ?? "1", 10);
-    const isGoogleCallback = searchParams.get("google") === "1";
     if (isGoogleCallback) return "google-complete";
+    // Após confirmação de e-mail, restaurar step1Data do sessionStorage e ir para step 2
+    if (isEmailConfirmed) {
+      const saved = sessionStorage.getItem("onboarding_step1");
+      if (saved) return 2;
+    }
+    const urlStep = parseInt(searchParams.get("step") ?? "1", 10);
     return isNaN(urlStep) ? 1 : Math.max(1, Math.min(urlStep, 3));
   });
-  const [step1Data, setStep1Data] = useState<Step1Data | null>(null);
+
+  // Restaurar step1Data do sessionStorage após confirmação de e-mail
+  const [step1Data, setStep1Data] = useState<Step1Data | null>(() => {
+    if (isEmailConfirmed) {
+      try {
+        const saved = sessionStorage.getItem("onboarding_step1");
+        if (saved) {
+          sessionStorage.removeItem("onboarding_step1"); // usar uma vez
+          return JSON.parse(saved) as Step1Data;
+        }
+      } catch { /* ignore */ }
+    }
+    return null;
+  });
   const [step2Result, setStep2Result] = useState<Step2Result | null>(null);
-  const [cameFromGoogle] = useState(() => searchParams.get("google") === "1");
+  const [cameFromGoogle] = useState(() => isGoogleCallback);
 
   // Indicador numérico para o StepIndicator
   const indicatorStep =
