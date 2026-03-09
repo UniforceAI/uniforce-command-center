@@ -584,8 +584,8 @@ export function MeusProdutosTab() {
                       <Button
                         className="w-full mt-auto"
                         variant={isCurrent ? "outline" : "default"}
-                        disabled={isCurrent || planChange.isPending || !plan.monthly_price_id || (isSetupPending && !asaasSub)}
-                        onClick={() => !isSetupPending && handleAsaasPlanSelect(plan)}
+                        disabled={isCurrent || planChange.isPending || !plan.monthly_price_id || isSetupPending}
+                        onClick={() => handleAsaasPlanSelect(plan)}
                       >
                         {isCurrent
                           ? "Plano Atual"
