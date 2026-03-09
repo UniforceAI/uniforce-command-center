@@ -1,0 +1,212 @@
+// src/pages/PerfilISP.tsx
+// Página "Meu Provedor" — hub com 6 abas
+// Inclui gate de ToS e prompt de perfil financeiro para novos usuários
+//
+// INSTALAÇÃO:
+// 1. Copiar este arquivo para src/pages/PerfilISP.tsx no repo Lovable
+// 2. Copiar pasta src/components/perfil/tabs/ com os componentes de aba
+// 3. Copiar src/hooks/useStripeSubscription.ts, useStripeProducts.ts, useStripeInvoices.ts, useTermsAcceptance.ts
+// 4. Copiar src/components/TermsOfServiceModal.tsx e FinancialProfileBanner.tsx
+// 5. Fazer deploy das Edge Functions stripe-* e accept-terms no Supabase
+
+import { useState, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
+import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Building2, Server } from "lucide-react";
+import { useActiveIsp } from "@/hooks/useActiveIsp";
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
+import { useTermsAcceptance } from "@/hooks/useTermsAcceptance";
+import { TermsOfServiceModal } from "@/components/TermsOfServiceModal";
+import { FinancialProfileBanner } from "@/components/FinancialProfileBanner";
+
+// Componentes de aba
+import { MeuProvedorTab } from "@/components/perfil/tabs/MeuProvedorTab";
+import { ContasTab } from "@/components/perfil/tabs/ContasTab";
+import { MeusProdutosTab } from "@/components/perfil/tabs/MeusProdutosTab";
+import { MeusServicosTab } from "@/components/perfil/tabs/MeusServicosTab";
+import { FinanceiroBillingTab } from "@/components/perfil/tabs/FinanceiroBillingTab";
+import { ImplementacaoTab } from "@/components/perfil/tabs/ImplementacaoTab";
+
+function erpDisplayName(instancia: string): string {
+  const map: Record<string, string> = {
+    ispbox: "ISPBox",
+    ixc: "IXC Provedor",
+    mk: "MK Solutions",
+    uniforce: "Uniforce",
+  };
+  return map[instancia?.toLowerCase()] || instancia || "—";
+}
+
+const VALID_TABS = ["meu-provedor", "contas", "meus-produtos", "meus-servicos", "financeiro", "implementacao"];
+
+export default function PerfilISP() {
+  const { ispId, ispNome, instanciaIsp } = useActiveIsp();
+  const { toast } = useToast();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [leadStatus, setLeadStatus] = useState("");
+  const [profileLoading, setProfileLoading] = useState(true);
+
+  // ToS gate
+  const { data: tosData } = useTermsAcceptance();
+  const [tosOpen, setTosOpen] = useState(false);
+
+  // Financial profile banner
+  const [showFinancialPrompt, setShowFinancialPrompt] = useState(false);
+
+  // Lê aba ativa da URL (?tab=meus-produtos) e valida
+  const tabFromUrl = searchParams.get("tab");
+  const activeTab = VALID_TABS.includes(tabFromUrl ?? "") ? (tabFromUrl as string) : "meu-provedor";
+
+  const handleTabChange = (value: string) => {
+    setSearchParams({ tab: value });
+  };
+
+  // Abrir ToS quando necessário
+  useEffect(() => {
+    if (tosData?.needsAcceptance) setTosOpen(true);
+  }, [tosData?.needsAcceptance]);
+
+  // Detectar ?new_account=1 para financial prompt
+  useEffect(() => {
+    if (searchParams.get("new_account") === "1") {
+      setShowFinancialPrompt(true);
+    }
+  }, []);
+
+  // Exibir toast de sucesso após retorno do Stripe Checkout
+  useEffect(() => {
+    if (searchParams.get("success") === "true") {
+      toast({
+        title: "Assinatura ativada!",
+        description: "Seu plano foi contratado com sucesso. Bem-vindo à Uniforce!",
+      });
+      const newParams = new URLSearchParams(searchParams);
+      newParams.delete("success");
+      newParams.delete("new_account");
+      setSearchParams(newParams, { replace: true });
+    }
+  }, []);
+
+  // Carregar logo
+  useEffect(() => {
+    if (!ispNome) return;
+    const slug = ispNome.toLowerCase().replace(/\s+/g, "-");
+    const { data } = supabase.storage.from("cliente-logos").getPublicUrl(`${slug}/logo`);
+    fetch(data.publicUrl, { method: "HEAD" })
+      .then((res) => { if (res.ok) setLogoUrl(data.publicUrl + `?t=${Date.now()}`); })
+      .catch(() => {});
+  }, [ispNome]);
+
+  return (
+    <>
+      {/* Gate de Termos de Serviço */}
+      {tosOpen && tosData?.currentVersion && (
+        <TermsOfServiceModal
+          open={tosOpen}
+          tosVersion={tosData.currentVersion}
+          onAccept={() => {
+            setTosOpen(false);
+            // Após aceitar ToS, verificar se precisa mostrar prompt financeiro
+            // (se ainda não foi mostrado pelo ?new_account=1)
+            if (!showFinancialPrompt) setShowFinancialPrompt(true);
+          }}
+        />
+      )}
+
+      <div className="min-h-screen bg-background">
+        {/* ─── Header ─── */}
+        <header className="border-b border-border/50 bg-card/80 backdrop-blur-sm">
+          <div className="container mx-auto px-6 py-5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div className="flex items-center justify-center h-14 w-14 rounded-full border-2 border-border bg-primary/10 shadow-sm overflow-hidden">
+                  {logoUrl ? (
+                    <img src={logoUrl} alt={ispNome} className="h-full w-full object-cover" />
+                  ) : (
+                    <Building2 className="h-6 w-6 text-primary" />
+                  )}
+                </div>
+                <div>
+                  <h1 className="text-2xl font-bold text-foreground">Meu Provedor</h1>
+                  <p className="text-muted-foreground text-sm mt-0.5">{ispNome}</p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                {instanciaIsp && (
+                  <Badge variant="outline" className="text-xs gap-1">
+                    <Server className="h-3 w-3" />
+                    {erpDisplayName(instanciaIsp)}
+                  </Badge>
+                )}
+              </div>
+            </div>
+          </div>
+        </header>
+
+        {/* ─── Conteúdo com Tabs ─── */}
+        <main className="container mx-auto px-6 py-6 max-w-5xl">
+          {/* Banner de perfil financeiro */}
+          {showFinancialPrompt && (
+            <FinancialProfileBanner onDismiss={() => setShowFinancialPrompt(false)} />
+          )}
+
+          <Tabs value={activeTab} onValueChange={handleTabChange}>
+            <TabsList className="flex w-full overflow-x-auto sm:grid sm:grid-cols-6 mb-6 gap-1">
+              <TabsTrigger value="meu-provedor" className="text-xs sm:text-sm whitespace-nowrap">
+                Meu Provedor
+              </TabsTrigger>
+              <TabsTrigger value="contas" className="text-xs sm:text-sm whitespace-nowrap">
+                Contas
+              </TabsTrigger>
+              <TabsTrigger value="meus-produtos" className="text-xs sm:text-sm whitespace-nowrap">
+                Meus Produtos
+              </TabsTrigger>
+              <TabsTrigger value="meus-servicos" className="text-xs sm:text-sm whitespace-nowrap">
+                Meus Serviços
+              </TabsTrigger>
+              <TabsTrigger value="financeiro" className="text-xs sm:text-sm whitespace-nowrap">
+                Financeiro
+              </TabsTrigger>
+              <TabsTrigger value="implementacao" className="text-xs sm:text-sm whitespace-nowrap">
+                Implementação
+              </TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="meu-provedor">
+              <MeuProvedorTab
+                onProfileLoaded={({ leadStatus }) => {
+                  setLeadStatus(leadStatus);
+                  setProfileLoading(false);
+                }}
+              />
+            </TabsContent>
+
+            <TabsContent value="contas">
+              <ContasTab />
+            </TabsContent>
+
+            <TabsContent value="meus-produtos">
+              <MeusProdutosTab />
+            </TabsContent>
+
+            <TabsContent value="meus-servicos">
+              <MeusServicosTab />
+            </TabsContent>
+
+            <TabsContent value="financeiro">
+              <FinanceiroBillingTab />
+            </TabsContent>
+
+            <TabsContent value="implementacao">
+              <ImplementacaoTab leadStatus={leadStatus} loading={profileLoading} />
+            </TabsContent>
+          </Tabs>
+        </main>
+      </div>
+    </>
+  );
+}
