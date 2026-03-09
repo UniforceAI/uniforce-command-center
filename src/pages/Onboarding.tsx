@@ -9,7 +9,8 @@
 //   3. Plano de pagamento (preselect via ?plano=<price_id> + lock-in 3 meses)
 
 import { useState, useEffect } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, useNavigate } from "react-router-dom";
+import { useAuth } from "@/contexts/AuthContext";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -904,10 +905,20 @@ function GoogleCompleteForm({ onComplete }: GoogleCompleteFormProps) {
 
 export default function Onboarding() {
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const { profile, isLoading: authLoading } = useAuth();
 
   // Detectar callbacks de OAuth e confirmação de email via URL params
   const isGoogleCallback = searchParams.get("google") === "1";
   const isEmailConfirmed = searchParams.get("confirmed") === "1";
+
+  // Redirecionar usuários já autenticados com ISP completo para o dashboard
+  useEffect(() => {
+    if (authLoading) return;
+    if (profile?.isp_id && !isGoogleCallback && !isEmailConfirmed) {
+      navigate("/", { replace: true });
+    }
+  }, [authLoading, profile?.isp_id, isGoogleCallback, isEmailConfirmed, navigate]);
 
   // "confirmation" é a tela de transição entre steps 2 e 3
   // "google-complete" é o formulário de complemento após OAuth Google

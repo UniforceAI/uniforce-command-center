@@ -77,7 +77,7 @@ const App = () => (
 
                   {/* Semi-protected (no ISP required) */}
                   <Route path="/selecionar-cliente" element={<ProtectedRoute requireSelectedIsp={false}><SelecionarCliente /></ProtectedRoute>} />
-                  <Route path="/onboarding"         element={<ProtectedRoute requireSelectedIsp={false}><Onboarding /></ProtectedRoute>} />
+                  <Route path="/onboarding"         element={<Onboarding />} />
 
                   {/* Main dashboard */}
                   <Route path="/"                 element={<Protected><VisaoGeral /></Protected>} />
