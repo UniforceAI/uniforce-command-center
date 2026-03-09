@@ -102,14 +102,22 @@ function asaasStatusBadge(status: AsaasInvoiceStatus) {
 export function FinanceiroBillingTab() {
   const { toast } = useToast();
   const { ispId } = useActiveIsp();
-  const { data: invoicesData, isLoading: invoicesLoading } = useStripeInvoices(ispId);
   const { data: subscriptionData, isLoading: subLoading } = useStripeSubscription(ispId);
-  const { data: asaasInvoicesData, isLoading: asaasInvoicesLoading } = useAsaasInvoices(ispId);
-  const { data: asaasSubData } = useAsaasSubscription(ispId);
   const portal = useStripeCustomerPortal(ispId);
 
   const billingSource = subscriptionData?.stripe_billing_source;
   const isAsaas = billingSource === "asaas";
+
+  // Só busca dados do sistema de cobrança correto após conhecer o billingSource
+  const { data: invoicesData,      isLoading: invoicesLoading }      = useStripeInvoices(
+    !subLoading && !isAsaas ? ispId : null
+  );
+  const { data: asaasInvoicesData, isLoading: asaasInvoicesLoading } = useAsaasInvoices(
+    !subLoading && isAsaas ? ispId : null
+  );
+  const { data: asaasSubData } = useAsaasSubscription(
+    !subLoading && isAsaas ? ispId : null
+  );
 
   const sub = subscriptionData?.subscription;
   const invoices = invoicesData?.invoices ?? [];
