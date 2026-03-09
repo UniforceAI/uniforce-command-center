@@ -15,7 +15,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Building2, Server } from "lucide-react";
 import { useActiveIsp } from "@/hooks/useActiveIsp";
-import { supabase } from "@/integrations/supabase/client";
+import { externalSupabase } from "@/integrations/supabase/external-client";
 import { useToast } from "@/hooks/use-toast";
 import { useTermsAcceptance } from "@/hooks/useTermsAcceptance";
 import { TermsOfServiceModal } from "@/components/TermsOfServiceModal";
@@ -94,7 +94,7 @@ export default function PerfilISP() {
   useEffect(() => {
     if (!ispNome) return;
     const slug = ispNome.toLowerCase().replace(/\s+/g, "-");
-    const { data } = supabase.storage.from("cliente-logos").getPublicUrl(`${slug}/logo`);
+    const { data } = externalSupabase.storage.from("cliente-logos").getPublicUrl(`${slug}/logo`);
     fetch(data.publicUrl, { method: "HEAD" })
       .then((res) => { if (res.ok) setLogoUrl(data.publicUrl + `?t=${Date.now()}`); })
       .catch(() => {});
@@ -109,9 +109,10 @@ export default function PerfilISP() {
           tosVersion={tosData.currentVersion}
           onAccept={() => {
             setTosOpen(false);
-            // Após aceitar ToS, verificar se precisa mostrar prompt financeiro
-            // (se ainda não foi mostrado pelo ?new_account=1)
-            if (!showFinancialPrompt) setShowFinancialPrompt(true);
+            // Só mostrar financial prompt se o ISP não tem email financeiro
+            if (!tosData.hasFinancialEmail && !showFinancialPrompt) {
+              setShowFinancialPrompt(true);
+            }
           }}
         />
       )}

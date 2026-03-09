@@ -1,7 +1,7 @@
 // components/onboarding/IxcTutorialLightbox.tsx
 // Lightbox com tutorial passo a passo de como gerar a chave API do IXC
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
@@ -41,6 +41,12 @@ const STEPS = [
 
 export function IxcTutorialLightbox({ open, onClose }: Props) {
   const [current, setCurrent] = useState(0);
+
+  // Resetar ao passo 1 sempre que o lightbox abrir
+  useEffect(() => {
+    if (open) setCurrent(0);
+  }, [open]);
+
   const step = STEPS[current];
 
   const prev = () => setCurrent((c) => Math.max(0, c - 1));
