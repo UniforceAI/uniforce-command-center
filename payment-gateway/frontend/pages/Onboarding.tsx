@@ -10,7 +10,6 @@
 
 import { useState, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -27,6 +26,9 @@ import { externalSupabase } from "@/integrations/supabase/external-client";
 import { useStripeProducts } from "@/hooks/useStripeProducts";
 import { useStripeCheckout } from "@/hooks/useStripeSubscription";
 import { IxcTutorialLightbox } from "@/components/onboarding/IxcTutorialLightbox";
+
+const FUNCTIONS_URL = "https://yqdqmudsnjhixtxldqwi.supabase.co/functions/v1";
+const ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlxZHFtdWRzbmpoaXh0eGxkcXdpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTY0MjEwMzEsImV4cCI6MjA3MTk5NzAzMX0.UsrIuEgtJVdhZ0b76VLOjT1zVn2-OWeORGFoy487MfY";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -87,6 +89,7 @@ function Step1({ onNext }: { onNext: (data: Step1Data) => void }) {
   });
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [awaitingConfirmation, setAwaitingConfirmation] = useState(false);
 
   const set = (k: keyof Step1Data) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setForm((p) => ({ ...p, [k]: e.target.value }));
@@ -114,6 +117,14 @@ function Step1({ onNext }: { onNext: (data: Step1Data) => void }) {
       });
       if (error) throw error;
       if (!data.user) throw new Error("Usuário não criado.");
+
+      if (!data.session) {
+        // Email confirmation required — Supabase enviou e-mail de verificação
+        setAwaitingConfirmation(true);
+        return;
+      }
+
+      // Sessão disponível imediatamente — avançar
       onNext(form);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -134,6 +145,35 @@ function Step1({ onNext }: { onNext: (data: Step1Data) => void }) {
       },
     });
   };
+
+  if (awaitingConfirmation) {
+    return (
+      <Card className="max-w-lg mx-auto text-center">
+        <CardContent className="pt-10 pb-8 space-y-4">
+          <div className="h-16 w-16 rounded-full bg-blue-100 flex items-center justify-center mx-auto">
+            <CheckCircle2 className="h-8 w-8 text-blue-600" />
+          </div>
+          <h2 className="text-lg font-bold">Confirme seu e-mail</h2>
+          <p className="text-sm text-muted-foreground leading-relaxed">
+            Enviamos um link de confirmação para <strong>{form.email}</strong>.
+            Clique no link e volte aqui para continuar.
+          </p>
+          <p className="text-xs text-muted-foreground">
+            Não recebeu?{" "}
+            <button
+              className="text-primary underline"
+              onClick={async () => {
+                await externalSupabase.auth.resend({ type: "signup", email: form.email.trim() });
+                toast({ title: "E-mail reenviado!" });
+              }}
+            >
+              Reenviar e-mail
+            </button>
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
     <Card className="max-w-lg mx-auto">
@@ -258,6 +298,8 @@ function Step2({ step1, onNext, onBack }: Step2Props) {
   const [clientCount, setClientCount] = useState<number | null>(null);
   const [creating, setCreating] = useState(false);
 
+  const credentialFormatValid = apiCredentials.includes(":") && apiCredentials.indexOf(":") > 0;
+
   const splitCredentials = () => {
     const colonIdx = apiCredentials.indexOf(":");
     if (colonIdx < 1) return { api_key: apiCredentials.trim(), api_token: "" };
@@ -272,21 +314,23 @@ function Step2({ step1, onNext, onBack }: Step2Props) {
       toast({ title: "Preencha a URL e a chave de API.", variant: "destructive" });
       return;
     }
+    if (!credentialFormatValid) {
+      toast({ title: "Formato inválido", description: "Use o formato usuario:chave_de_api", variant: "destructive" });
+      return;
+    }
     setValidating(true);
     setValidated(false);
     setValidationMsg("");
     setClientCount(null);
     const { api_key, api_token } = splitCredentials();
     try {
-      const { data, error } = await supabase.functions.invoke("validate-erp-credentials", {
-        body: {
-          erp_type: "ixc",
-          base_url: erp_base_url.trim(),
-          api_key,
-          api_token,
-        },
+      const res = await fetch(`${FUNCTIONS_URL}/validate-erp-credentials`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", apikey: ANON_KEY },
+        body: JSON.stringify({ erp_type: "ixc", base_url: erp_base_url.trim(), api_key, api_token }),
       });
-      if (error) throw error;
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
       setValidated(data.valid);
       setValidationMsg(data.message);
       if (data.client_count != null) setClientCount(data.client_count);
@@ -305,12 +349,18 @@ function Step2({ step1, onNext, onBack }: Step2Props) {
     setCreating(true);
     try {
       const { api_key, api_token } = splitCredentials();
-      const { data: sessData } = await externalSupabase.auth.refreshSession();
-      const extToken = sessData?.session?.access_token
-        ?? (await externalSupabase.auth.getSession()).data.session?.access_token;
+      const { data: sessData } = await externalSupabase.auth.getSession();
+      const token = sessData?.session?.access_token;
+      if (!token) throw new Error("Sessão expirada. Faça login novamente.");
 
-      const { data, error } = await supabase.functions.invoke("onboard-create-isp", {
-        body: {
+      const res = await fetch(`${FUNCTIONS_URL}/onboard-create-isp`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+          apikey: ANON_KEY,
+        },
+        body: JSON.stringify({
           isp_nome: step1.isp_nome,
           cnpj: step1.cnpj,
           instancia_isp: "ixc",
@@ -318,10 +368,13 @@ function Step2({ step1, onNext, onBack }: Step2Props) {
           erp_api_key: api_key,
           erp_api_token: api_token || api_key,
           ip_blocking_requested: ipBlocking,
-        },
-        headers: extToken ? { Authorization: `Bearer ${extToken}` } : {},
+        }),
       });
-      if (error) throw error;
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error((body as { error?: string })?.error ?? `HTTP ${res.status}`);
+      }
+      const data = await res.json();
       if (data?.error) throw new Error(data.error);
 
       onNext({
@@ -379,9 +432,15 @@ function Step2({ step1, onNext, onBack }: Step2Props) {
               placeholder="155:1f6badf2d61ff35da9b62c26..."
               className="mt-1.5 h-9 font-mono text-sm"
             />
-            <p className="text-xs text-muted-foreground mt-1">
-              Formato: <code className="bg-muted px-1 rounded">usuario:chave_de_api</code>
-            </p>
+            {apiCredentials && !credentialFormatValid ? (
+              <p className="text-xs text-destructive mt-1">
+                Formato inválido. Use: <code className="bg-muted px-1 rounded">usuario:chave_de_api</code>
+              </p>
+            ) : (
+              <p className="text-xs text-muted-foreground mt-1">
+                Formato: <code className="bg-muted px-1 rounded">usuario:chave_de_api</code>
+              </p>
+            )}
           </div>
 
           {/* IP Blocking */}
@@ -440,7 +499,7 @@ function Step2({ step1, onNext, onBack }: Step2Props) {
             <Button
               variant="outline"
               onClick={handleValidate}
-              disabled={validating || !erp_base_url.trim() || !apiCredentials.trim()}
+              disabled={validating || !erp_base_url.trim() || !apiCredentials.trim() || !credentialFormatValid}
               className="w-full gap-2"
             >
               {validating ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
@@ -540,8 +599,9 @@ const PLAN_FEATURES: Record<string, string[]> = {
 
 function Step3({ ispId, onBack }: Step3Props) {
   const [searchParams] = useSearchParams();
-  const { data: catalog, isLoading } = useStripeProducts();
-  const checkout = useStripeCheckout();
+  // Passa ispId para garantir que o hook esteja habilitado (novo ISP já foi criado)
+  const { data: catalog, isLoading } = useStripeProducts(ispId);
+  const checkout = useStripeCheckout(ispId);
   const [lockInAccepted, setLockInAccepted] = useState(false);
   const [selectedPriceId, setSelectedPriceId] = useState<string | null>(null);
 
@@ -559,7 +619,10 @@ function Step3({ ispId, onBack }: Step3Props) {
   const handleCheckout = async (priceId: string) => {
     // Registrar aceite do lock-in de 3 meses antes do checkout
     const contractAcceptedAt = new Date().toISOString();
-    await supabase.from("isps").update({ contract_accepted_at: contractAcceptedAt }).eq("isp_id", ispId);
+    await externalSupabase
+      .from("isps")
+      .update({ contract_accepted_at: contractAcceptedAt })
+      .eq("isp_id", ispId);
 
     checkout.mutate({
       price_id: priceId,
@@ -684,20 +747,112 @@ function Step3({ ispId, onBack }: Step3Props) {
   );
 }
 
+// ─── Google OAuth Completion Form ────────────────────────────────────────────
+// Exibido após redirect do Google OAuth: coleta dados do ISP (nome, CNPJ, telefone)
+
+interface GoogleCompleteFormProps {
+  onComplete: (data: Step1Data) => void;
+}
+
+function GoogleCompleteForm({ onComplete }: GoogleCompleteFormProps) {
+  const { toast } = useToast();
+  const [ispNome, setIspNome] = useState("");
+  const [cnpj, setCnpj] = useState("");
+  const [phone, setPhone] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const valid = ispNome.trim().length >= 2;
+
+  const handleSubmit = async () => {
+    if (!valid) return;
+    setLoading(true);
+    try {
+      const { data: sessData } = await externalSupabase.auth.getSession();
+      const user = sessData?.session?.user;
+      if (!user) throw new Error("Sessão Google não encontrada. Tente fazer login novamente.");
+
+      onComplete({
+        admin_name: user.user_metadata?.full_name ?? user.email ?? "",
+        isp_nome: ispNome.trim(),
+        cnpj,
+        email: user.email ?? "",
+        phone: phone.trim(),
+        password: "", // já autenticado via OAuth
+      });
+    } catch (err) {
+      toast({ title: "Erro", description: String(err), variant: "destructive" });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Card className="max-w-lg mx-auto">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-lg">
+          <Building2 className="h-5 w-5 text-primary" />
+          Complete seu cadastro
+        </CardTitle>
+        <CardDescription>Precisamos de alguns dados do seu provedor para continuar.</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div>
+          <Label className="text-sm">Nome do Provedor / Razão Social *</Label>
+          <Input
+            value={ispNome}
+            onChange={(e) => setIspNome(e.target.value)}
+            placeholder="Fibra Digital Telecomunicações"
+            className="mt-1.5 h-9"
+          />
+        </div>
+        <div>
+          <Label className="text-sm">CNPJ</Label>
+          <Input
+            value={cnpj}
+            onChange={(e) => setCnpj(cnpjMask(e.target.value))}
+            placeholder="00.000.000/0001-00"
+            className="mt-1.5 h-9"
+          />
+        </div>
+        <div>
+          <Label className="text-sm">Telefone</Label>
+          <Input
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            placeholder="(11) 99999-0000"
+            className="mt-1.5 h-9"
+          />
+        </div>
+        <Button onClick={handleSubmit} disabled={!valid || loading} className="w-full gap-2">
+          {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ChevronRight className="h-4 w-4" />}
+          {loading ? "Salvando..." : "Continuar para Integração"}
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
+
 // ─── Main Component ──────────────────────────────────────────────────────────
 
 export default function Onboarding() {
   const [searchParams] = useSearchParams();
   // "confirmation" é a tela de transição entre steps 2 e 3
-  const [step, setStep] = useState<number | "confirmation">(() => {
-    const s = parseInt(searchParams.get("step") ?? "1", 10);
-    return isNaN(s) ? 1 : Math.max(1, Math.min(s, 3));
+  // "google-complete" é o formulário de complemento após OAuth Google
+  const [step, setStep] = useState<number | "confirmation" | "google-complete">(() => {
+    const urlStep = parseInt(searchParams.get("step") ?? "1", 10);
+    const isGoogleCallback = searchParams.get("google") === "1";
+    if (isGoogleCallback) return "google-complete";
+    return isNaN(urlStep) ? 1 : Math.max(1, Math.min(urlStep, 3));
   });
   const [step1Data, setStep1Data] = useState<Step1Data | null>(null);
   const [step2Result, setStep2Result] = useState<Step2Result | null>(null);
+  const [cameFromGoogle] = useState(() => searchParams.get("google") === "1");
 
   // Indicador numérico para o StepIndicator
-  const indicatorStep = step === "confirmation" ? 2 : step;
+  const indicatorStep =
+    step === "confirmation" ? 2 :
+    step === "google-complete" ? 1 :
+    typeof step === "number" ? step : 1;
 
   return (
     <div className="min-h-screen bg-background">
@@ -725,6 +880,16 @@ export default function Onboarding() {
           />
         )}
 
+        {/* Google OAuth: preencher dados do ISP após login com Google */}
+        {step === "google-complete" && (
+          <GoogleCompleteForm
+            onComplete={(data) => {
+              setStep1Data(data);
+              setStep(2);
+            }}
+          />
+        )}
+
         {step === 2 && step1Data && (
           <Step2
             step1={step1Data}
@@ -732,7 +897,7 @@ export default function Onboarding() {
               setStep2Result(result);
               setStep("confirmation");
             }}
-            onBack={() => setStep(1)}
+            onBack={() => setStep(cameFromGoogle ? "google-complete" : 1)}
           />
         )}
 

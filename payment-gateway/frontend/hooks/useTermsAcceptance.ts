@@ -1,9 +1,10 @@
 // hooks/useTermsAcceptance.ts
-// Verifica se o usuário admin precisa aceitar os Termos de Serviço
-// Retorna { needsAcceptance, currentVersion, isLoading }
+// Verifica se o admin precisa aceitar a versão corrente dos Termos de Serviço.
+// IMPORTANTE: usa externalSupabase (yqdqmudsnjhixtxldqwi) — fonte de dados Uniforce,
+// onde a sessão autenticada do usuário reside.
 
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { externalSupabase } from "@/integrations/supabase/external-client";
 import { useActiveIsp } from "@/hooks/useActiveIsp";
 import { useUserRole } from "@/hooks/useUserRole";
 
@@ -15,35 +16,34 @@ export function useTermsAcceptance() {
 
   return useQuery({
     queryKey: ["tos-acceptance", ispId],
-    staleTime: 30 * 60 * 1000, // 30 minutos
+    staleTime: 30 * 60 * 1000,
     enabled: !!ispId && isAdmin,
     queryFn: async () => {
-      // 1. Buscar versão atual dos ToS
-      const { data: current, error: tosErr } = await supabase
+      // 1. Buscar versão atual dos Termos de Serviço
+      const { data: current, error: tosErr } = await externalSupabase
         .from("terms_of_service")
         .select("version")
         .eq("is_current", true)
         .single();
 
       if (tosErr || !current) {
-        // Se não há ToS cadastrado, não bloquear
-        return { needsAcceptance: false, currentVersion: null };
+        // Sem ToS cadastrado — não bloquear
+        return { needsAcceptance: false, currentVersion: null, hasFinancialEmail: true };
       }
 
-      const currentVersion = current.version;
+      const currentVersion = current.version as string;
 
-      // 2. Verificar versão aceita pelo ISP
-      const { data: isp } = await supabase
+      // 2. Verificar versão aceita e email financeiro do ISP
+      const { data: isp } = await externalSupabase
         .from("isps")
-        .select("tos_accepted_version")
+        .select("tos_accepted_version, financial_email")
         .eq("isp_id", ispId)
         .single();
 
-      const acceptedVersion = isp?.tos_accepted_version;
-
       return {
-        needsAcceptance: acceptedVersion !== currentVersion,
+        needsAcceptance: isp?.tos_accepted_version !== currentVersion,
         currentVersion,
+        hasFinancialEmail: !!isp?.financial_email,
       };
     },
   });

@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { AlertTriangle, CheckCircle2, Loader2, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { supabase } from "@/integrations/supabase/client";
+import { externalSupabase } from "@/integrations/supabase/external-client";
 import { useActiveIsp } from "@/hooks/useActiveIsp";
 
 interface Props {
@@ -26,7 +26,7 @@ export function FinancialProfileBanner({ onDismiss }: Props) {
     if (!email.trim() || !ispId) return;
     setSaving(true);
     try {
-      const { error } = await supabase
+      const { error } = await externalSupabase
         .from("isps")
         .update({
           financial_email: email.trim(),
