@@ -17,10 +17,10 @@ export function useActiveIsp() {
     };
   }
 
-  // Usuário normal ou fallback
+  // Usuário normal: usa o ISP do profile (null enquanto carregando ou onboarding)
   return {
-    ispId: profile?.isp_id || "agy-telecom",
-    ispNome: profile?.isp_nome || "ISP",
-    instanciaIsp: profile?.instancia_isp || "",
+    ispId: profile?.isp_id ?? null,
+    ispNome: profile?.isp_nome ?? "",
+    instanciaIsp: profile?.instancia_isp ?? "",
   };
 }

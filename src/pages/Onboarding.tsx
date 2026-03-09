@@ -37,7 +37,6 @@ function StepIndicator({ current }: { current: number }) {
     { n: 1, label: "Conta" },
     { n: 2, label: "Integração" },
     { n: 3, label: "Plano" },
-    { n: 4, label: "Pagamento" },
   ];
   return (
     <div className="flex items-center gap-2 justify-center mb-8">
@@ -327,9 +326,16 @@ function Step2({ step1, onNext, onBack }: Step2Props) {
     setClientCount(null);
     const { api_key, api_token } = splitCredentials();
     try {
+      // Incluir JWT para evitar abuso do endpoint como relay HTTP anônimo
+      const { data: sessData } = await externalSupabase.auth.getSession();
+      const token = sessData?.session?.access_token;
       const res = await fetch(`${FUNCTIONS_URL}/validate-erp-credentials`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", apikey: ANON_KEY },
+        headers: {
+          "Content-Type": "application/json",
+          apikey: ANON_KEY,
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({ erp_type: "ixc", base_url: erp_base_url.trim(), api_key, api_token }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -620,18 +626,34 @@ function Step3({ ispId, onBack }: Step3Props) {
   }, [preselectedPlan, plans]);
 
   const handleCheckout = async (priceId: string) => {
-    // Registrar aceite do lock-in de 3 meses antes do checkout
+    // Registrar aceite do lock-in de 3 meses (requer RLS UPDATE policy em isps — migration 012)
     const contractAcceptedAt = new Date().toISOString();
-    await externalSupabase
+    const { error: updateErr } = await externalSupabase
       .from("isps")
       .update({ contract_accepted_at: contractAcceptedAt })
       .eq("isp_id", ispId);
 
-    checkout.mutate({
-      price_id: priceId,
-      success_url: `${window.location.origin}/configuracoes/perfil?tab=meus-produtos&success=true&new_account=1`,
-      cancel_url: `${window.location.origin}/onboarding?step=3`,
-    });
+    if (updateErr) {
+      // Log para debug mas não bloqueia — o aceite é registrado como audit trail best-effort
+      console.warn("contract_accepted_at update failed:", updateErr.message);
+    }
+
+    checkout.mutate(
+      {
+        price_id: priceId,
+        success_url: `${window.location.origin}/configuracoes/perfil?tab=meus-produtos&success=true&new_account=1`,
+        cancel_url: `${window.location.origin}/onboarding?step=3`,
+      },
+      {
+        onError: (err) => {
+          toast({
+            title: "Erro ao iniciar pagamento",
+            description: err instanceof Error ? err.message : "Tente novamente ou entre em contato com o suporte.",
+            variant: "destructive",
+          });
+        },
+      }
+    );
   };
 
   const today = new Date().toLocaleDateString("pt-BR");

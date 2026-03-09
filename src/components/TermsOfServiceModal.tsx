@@ -49,6 +49,21 @@ Fica eleito o foro da Comarca de Florianópolis/SC para dirimir quaisquer litíg
  * - Markdown com ## para títulos e **negrito**
  * - Texto simples com seções numeradas (1. Título, 2. Título, ...)
  */
+/** Escapa caracteres HTML perigosos para prevenir XSS antes de aplicar formatação */
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+/** Aplica **negrito** após escape de HTML */
+function applyBold(str: string): string {
+  return escapeHtml(str).replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+}
+
 function renderContent(text: string): string {
   const parts: string[] = [];
 
@@ -60,19 +75,18 @@ function renderContent(text: string): string {
 
     // Markdown heading: ## Título
     if (first.startsWith("## ")) {
-      const title = first.slice(3).replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
-      parts.push(`<h2 class="text-base font-semibold mt-6 mb-2 text-foreground">${title}</h2>`);
+      parts.push(`<h2 class="text-base font-semibold mt-6 mb-2 text-foreground">${applyBold(first.slice(3))}</h2>`);
       for (const l of lines.slice(1)) {
-        parts.push(`<p class="mb-2 text-sm text-muted-foreground leading-relaxed">${l.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")}</p>`);
+        parts.push(`<p class="mb-2 text-sm text-muted-foreground leading-relaxed">${applyBold(l)}</p>`);
       }
       continue;
     }
 
     // Numbered section: "1. Título", "12. Título"
     if (/^\d+\.\s+\S/.test(first)) {
-      parts.push(`<h2 class="text-base font-semibold mt-6 mb-2 text-foreground">${first}</h2>`);
+      parts.push(`<h2 class="text-base font-semibold mt-6 mb-2 text-foreground">${escapeHtml(first)}</h2>`);
       if (lines.length > 1) {
-        parts.push(`<p class="mb-3 text-sm text-muted-foreground leading-relaxed">${lines.slice(1).join(" ")}</p>`);
+        parts.push(`<p class="mb-3 text-sm text-muted-foreground leading-relaxed">${escapeHtml(lines.slice(1).join(" "))}</p>`);
       }
       continue;
     }
@@ -80,9 +94,9 @@ function renderContent(text: string): string {
     // ALL-CAPS title line (e.g. "TERMOS DE SERVIÇO (Terms of Service)")
     const stripped = first.replace(/[()]/g, "").replace(/\s+/g, " ").trim();
     if (stripped === stripped.toUpperCase() && stripped.length > 10 && /[A-Z]/.test(stripped)) {
-      parts.push(`<h1 class="text-lg font-bold mb-1 text-foreground">${first}</h1>`);
+      parts.push(`<h1 class="text-lg font-bold mb-1 text-foreground">${escapeHtml(first)}</h1>`);
       for (const l of lines.slice(1)) {
-        parts.push(`<p class="mb-2 text-sm text-muted-foreground">${l}</p>`);
+        parts.push(`<p class="mb-2 text-sm text-muted-foreground">${escapeHtml(l)}</p>`);
       }
       continue;
     }
@@ -92,10 +106,9 @@ function renderContent(text: string): string {
       const words = line.trim().split(/\s+/);
       // Short standalone term (≤5 words, no colon, no digit start) = definition label
       if (words.length <= 5 && !line.includes(":") && !/^\d/.test(line)) {
-        parts.push(`<p class="font-semibold text-sm text-foreground mt-3 mb-0.5">${line}</p>`);
+        parts.push(`<p class="font-semibold text-sm text-foreground mt-3 mb-0.5">${escapeHtml(line)}</p>`);
       } else {
-        const html = line.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
-        parts.push(`<p class="mb-2 text-sm text-muted-foreground leading-relaxed">${html}</p>`);
+        parts.push(`<p class="mb-2 text-sm text-muted-foreground leading-relaxed">${applyBold(line)}</p>`);
       }
     }
   }
