@@ -55,7 +55,7 @@ serve(async (req) => {
 
     const {
       isp_nome, cnpj, instancia_isp, erp_base_url, erp_api_key, erp_api_token,
-      ip_blocking_requested, contract_accepted_at,
+      ip_blocking_requested, contract_accepted_at, sandbox_mode,
     } = await req.json();
 
     // Validações básicas
@@ -93,6 +93,8 @@ serve(async (req) => {
     const extraUpdate: Record<string, unknown> = {};
     if (ip_blocking_requested === true) extraUpdate.ip_blocking_requested = true;
     if (contract_accepted_at) extraUpdate.contract_accepted_at = contract_accepted_at;
+    // sandbox_mode=true → forçar Stripe TEST keys neste ISP (uso exclusivo em testes)
+    if (sandbox_mode === true) extraUpdate.stripe_test_mode_enabled = true;
 
     if (Object.keys(extraUpdate).length > 0) {
       await serviceClient.from("isps").update(extraUpdate).eq("isp_id", row.isp_id);
