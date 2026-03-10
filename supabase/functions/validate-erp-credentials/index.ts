@@ -152,8 +152,9 @@ serve(async (req) => {
     );
 
   } catch (err) {
+    console.error("validate-erp-credentials unexpected error:", err);
     return new Response(
-      JSON.stringify({ valid: false, message: "Erro interno ao validar credenciais.", error: String(err) }),
+      JSON.stringify({ valid: false, message: "Erro interno ao validar credenciais." }),
       { status: 500, headers: { ...CORS, "Content-Type": "application/json" } }
     );
   }

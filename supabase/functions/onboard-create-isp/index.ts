@@ -82,7 +82,7 @@ serve(async (req) => {
     if (error) {
       console.error("create_isp_onboarding error:", error);
       return new Response(
-        JSON.stringify({ error: "Erro ao criar ISP. Tente novamente.", detail: error.message }),
+        JSON.stringify({ error: "Erro ao criar ISP. Tente novamente." }),
         { status: 500, headers: { ...CORS, "Content-Type": "application/json" } }
       );
     }
@@ -147,7 +147,7 @@ serve(async (req) => {
 
   } catch (err) {
     console.error("onboard-create-isp error:", err);
-    return new Response(JSON.stringify({ error: "Erro interno do servidor.", detail: String(err) }), {
+    return new Response(JSON.stringify({ error: "Erro interno do servidor." }), {
       status: 500, headers: { ...CORS, "Content-Type": "application/json" },
     });
   }

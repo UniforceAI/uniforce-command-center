@@ -9,7 +9,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-stripe-test-mode",
 };
 
-const TEST_MODE_ISP_IDS = ["uniforce"];
+const TEST_MODE_ISP_IDS = ["uniforce", "uniforce-sandbox"];
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {

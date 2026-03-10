@@ -76,7 +76,7 @@ serve(async (req) => {
 
     if (rpcErr) {
       console.error("record_tos_acceptance error:", rpcErr);
-      return new Response(JSON.stringify({ error: "Erro ao registrar aceite.", detail: rpcErr.message }), {
+      return new Response(JSON.stringify({ error: "Erro ao registrar aceite." }), {
         status: 500, headers: { ...CORS, "Content-Type": "application/json" },
       });
     }
@@ -87,7 +87,7 @@ serve(async (req) => {
 
   } catch (err) {
     console.error("accept-terms error:", err);
-    return new Response(JSON.stringify({ error: "Erro interno do servidor.", detail: String(err) }), {
+    return new Response(JSON.stringify({ error: "Erro interno do servidor." }), {
       status: 500, headers: { ...CORS, "Content-Type": "application/json" },
     });
   }

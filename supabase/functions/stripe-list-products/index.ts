@@ -41,8 +41,8 @@ const TEST_ADDON_IDS = [
   "prod_U6Prk0MgkLHVfc",
 ];
 
-// ÚNICO ISP que usa sandbox — jamais ISPs reais
-const TEST_MODE_ISP_IDS = ["uniforce"];
+// ISPs que usam sandbox Stripe — jamais ISPs de clientes reais
+const TEST_MODE_ISP_IDS = ["uniforce", "uniforce-sandbox"];
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
