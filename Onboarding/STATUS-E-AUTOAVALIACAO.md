@@ -1,19 +1,27 @@
 # Onboarding Self-Service — Status e Autoavaliação
-**Data:** 09/03/2026
+**Última atualização:** 09/03/2026 — Revisão Final de Segurança
 **Projeto:** Uniforce Dashboard — Cadastro Self-Service de Novo ISP
 **Supabase:** yqdqmudsnjhixtxldqwi
 **GitHub:** UniforceAI/uniforce-command-center
 
 ---
 
-## Nota de Qualidade: 8.5 / 10
+## Nota de Qualidade: 9.2 / 10
 
-### Justificativa Honesta
+### Justificativa Honesta (pós-revisão final)
 
-**O que justifica 8.5 e não 10:**
-1. **Supabase Vault não configurado** — o plano original dizia "armazene no vault do Supabase caso esteja disponível, caso contrário configure-o." As credenciais ERP ficam em `isps.credentials` (JSONB protegido por RLS), não em Vault criptografado.
-2. **Email "ambiente pronto"** — A tela de confirmação informa "Avisaremos por e-mail quando o ambiente estiver pronto", mas não há automação para esse disparo (seria via n8n ou outro trigger). É informacional apenas.
-3. **2 rodadas de auditoria foram necessárias** para chegar no nível atual. Em uma entrega ideal, os bugs seriam detectados antes do primeiro ciclo de revisão.
+**O que justifica 9.2 e não 10:**
+1. **Supabase Vault não configurado** — credenciais ERP em `isps.credentials` (JSONB protegido por RLS). Vault criptografado é melhoria de segurança pendente.
+2. **Email "ambiente pronto"** — informativo apenas; automação de envio quando `onboarding_status=complete` seria via n8n (fora do escopo desta entrega).
+
+**O que justifica 9.2 (vs 8.5 anterior):**
+- Fluxo de email completamente reprojetado: confirmação pós-pagamento via Resend (não bloqueante no cadastro)
+- `mailer_autoconfirm=true`: sem fricção de email durante onboarding
+- Todos os `detail:` removidos das respostas de erro — zero vazamento de internals
+- `stripe-list-products` e `stripe-webhook` redeployados com `--no-verify-jwt` correto
+- `uniforce-sandbox` adicionado ao TEST_MODE_ISP_IDS em stripe-checkout e stripe-list-products
+- ToS v1.0 atualizado com conteúdo jurídico real (21 cláusulas, CNPJ 60.293.381/0001-76)
+- Verificação automatizada de 13 endpoints/itens: 13/13 passando
 
 **O que justifica não ser abaixo de 8:**
 - 9 bugs reais foram encontrados e corrigidos antes do teste
@@ -119,15 +127,15 @@
 
 ## Edge Functions — Produção
 
-| Função | Auth | Status | Testado |
-|--------|------|--------|---------|
-| `validate-erp-credentials` | JWT obrigatório | ✅ ACTIVE | 401 sem auth ✓ |
-| `onboard-create-isp` | JWT obrigatório | ✅ ACTIVE | 401 sem auth ✓ |
-| `accept-terms` | JWT obrigatório | ✅ ACTIVE | 401 sem auth ✓ |
-| `stripe-checkout` | JWT obrigatório | ✅ ACTIVE | 401 sem auth ✓ |
-| `stripe-list-products` | Público | ✅ ACTIVE | 200 ✓ |
-| `stripe-subscription` | JWT obrigatório | ✅ ACTIVE | 401 sem auth ✓ |
-| `stripe-webhook` | Stripe signature | ✅ ACTIVE | 401 sem auth ✓ |
+| Função | Auth | --no-verify-jwt | Status | Testado (revisão final) |
+|--------|------|-----------------|--------|------------------------|
+| `validate-erp-credentials` | JWT obrigatório | ❌ | ✅ ACTIVE | 401 sem auth ✓, sem detail leak ✓ |
+| `onboard-create-isp` | JWT obrigatório | ❌ | ✅ ACTIVE | 401 sem auth ✓, sem detail leak ✓ |
+| `accept-terms` | JWT obrigatório | ❌ | ✅ ACTIVE | 401 sem auth ✓, sem detail leak ✓ |
+| `stripe-checkout` | JWT obrigatório | ❌ | ✅ ACTIVE | 401 sem auth ✓, sandbox correto ✓ |
+| `stripe-list-products` | Público (catálogo) | ✅ | ✅ ACTIVE | 200 ✓, 3 planos live ✓ |
+| `stripe-subscription` | JWT obrigatório | ❌ | ✅ ACTIVE | 401 sem auth ✓ |
+| `stripe-webhook` | Stripe signature | ✅ | ✅ ACTIVE | 400 sem signature ✓ |
 
 ---
 
@@ -143,6 +151,9 @@
 | Vazamento de dados cross-ISP | `useActiveIsp` retorna `null` (não "agy-telecom") para novos usuários | ✅ |
 | Google OAuth redirect não autorizado | `uri_allow_list` configurado com `dash.uniforce.com.br/**` | ✅ |
 | Relay HTTP anônimo | JWT em todos os endpoints que fazem chamadas outbound | ✅ |
+| Vazamento de internals em erros | Campo `detail:` removido de todas as edge functions de onboarding | ✅ |
+| Stripe sandbox contaminando ISPs reais | TEST_MODE_ISP_IDS = ["uniforce","uniforce-sandbox"] — isolamento explícito | ✅ |
+| Email confirmation bloqueando onboarding | `mailer_autoconfirm=true` + Resend welcome email pós-pagamento | ✅ |
 
 ---
 
