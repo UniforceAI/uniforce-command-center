@@ -5,6 +5,30 @@
 - Dev (Lovable): https://attendant-analytics.lovable.app/onboarding
 - Supabase: https://supabase.com/dashboard/project/yqdqmudsnjhixtxldqwi
 
+## Fluxo de Email — Novo Comportamento (pós 09/03/2026)
+
+**ANTES (removido):** Após signup → bloqueio "confirme seu e-mail" → só seguia após clicar no link
+**AGORA:** Signup → IXC → Stripe checkout → **PostPaymentScreen** → email de boas-vindas via Resend → clicar link → primeiro acesso com ToS
+
+- `mailer_autoconfirm = true` no Supabase: sem bloqueio de email durante o cadastro
+- Email de boas-vindas é enviado pelo `stripe-webhook` após `checkout.session.completed`
+- Link do email → `/configuracoes/perfil?new_account=1` → ToS modal aparece
+
+## Conta Sandbox (Stripe TEST mode)
+
+**IMPORTANTE:** `felipe@uniforce.com.br` é super_admin e **não pode testar o fluxo de onboarding** (wizard Steps 1-5). O guard de redirecionamento detecta `profile.isp_id='uniforce'` e envia direto para o dashboard.
+
+### Para testar o FLUXO DE ONBOARDING (Steps 1-5):
+Use um e-mail diferente de `@uniforce.com.br`, ex:
+- `teste.provedor@gmail.com`
+- Qualquer email de domínio diferente → será tratado como novo ISP
+
+### ISP sandbox `uniforce-sandbox` (para testar billing TEST):
+- Execute `payment-gateway/db/013_sandbox_isp.sql` no Supabase SQL Editor
+- `felipe@uniforce.com.br` (super_admin) pode navegar para este ISP no dashboard
+- Usa Stripe TEST keys (mesmo padrão do ISP `uniforce`)
+- CNPJ: 60.293.381/0001-76
+
 ## Fluxo Principal: Email/Senha
 
 1. Acessar `/onboarding` sem estar logado
