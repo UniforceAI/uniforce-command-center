@@ -545,7 +545,7 @@ interface Step3Props {
 function Step3({ ispId, clientCount, onBack }: Step3Props) {
   const [searchParams] = useSearchParams();
   const { toast } = useToast();
-  const { data: catalog, isLoading } = useStripeProducts(ispId);
+  const { data: catalog, isLoading, isError, refetch } = useStripeProducts(ispId);
   const checkout = useStripeCheckout(ispId);
   const [lockInAccepted, setLockInAccepted] = useState(false);
   const [selectedPriceId, setSelectedPriceId] = useState<string | null>(null);
@@ -608,6 +608,17 @@ function Step3({ ispId, clientCount, onBack }: Step3Props) {
       {isLoading ? (
         <div className="flex justify-center py-12">
           <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        </div>
+      ) : isError ? (
+        <div className="flex flex-col items-center justify-center py-12 gap-4 text-center">
+          <AlertCircle className="h-10 w-10 text-muted-foreground" />
+          <div>
+            <p className="font-medium text-foreground">Não foi possível carregar os planos</p>
+            <p className="text-sm text-muted-foreground mt-1">Verifique sua conexão e tente novamente.</p>
+          </div>
+          <Button variant="outline" onClick={() => refetch()} className="gap-2">
+            <Loader2 className="h-4 w-4" /> Tentar novamente
+          </Button>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
