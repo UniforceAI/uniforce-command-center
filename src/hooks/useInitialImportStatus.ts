@@ -59,10 +59,11 @@ export function useInitialImportStatus() {
 
   // ── Passo 2: RPC pesado — só executa se import_completed_at é NULL ──────────
   // Se ispFlag === true (já completo), não executa.
-  // Se ispFlag === false (ISP novo), executa com polling a cada 2 min.
-  return useQuery<ImportStatusData>({
+  // Se ispFlag === false (ISP novo) OU undefined (erro na query de flag) → executa.
+  // Usar !== true em vez de === false garante resiliência a erros na query de flag.
+  const statusQuery = useQuery<ImportStatusData>({
     queryKey: ["initial-import-status", ispId],
-    enabled: !!ispId && isAdmin && flagLoading === false && ispFlag === false,
+    enabled: !!ispId && isAdmin && flagLoading === false && ispFlag !== true,
     refetchInterval: (query) => {
       const data = query.state.data;
       if (!data || data.status === "complete") return false;
@@ -111,6 +112,14 @@ export function useInitialImportStatus() {
       return result;
     },
   });
+
+  // isLoading combinado: true enquanto o flag ou o status ainda não foram determinados.
+  // Usado pelo MainLayout para evitar flash de conteúdo vazio antes do status ser conhecido.
+  const isLoading =
+    (!!ispId && isAdmin && flagLoading) ||        // flag ainda carregando
+    (ispFlag !== true && statusQuery.isLoading);  // RPC ainda carregando (ISP novo)
+
+  return { ...statusQuery, isLoading };
 }
 
 async function sendImportCompleteEmail(

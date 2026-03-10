@@ -25,13 +25,15 @@ interface MainLayoutProps {
 export function MainLayout({ children }: MainLayoutProps) {
   const location = useLocation();
   const { ispNome, instanciaIsp } = useActiveIsp();
-  const { data: importData } = useInitialImportStatus();
+  const { data: importData, isLoading: importLoading } = useInitialImportStatus();
 
   const isDataRoute = DATA_ROUTES.some((r) => location.pathname.startsWith(r));
+  // Mostra overlay quando numa rota de dados E:
+  //   - queries ainda carregando (evita flash do conteúdo vazio) OU
+  //   - status conhecido e é pending/importing
   const showOverlay =
     isDataRoute &&
-    importData !== undefined &&
-    importData.status !== "complete";
+    (importLoading || (importData !== undefined && importData.status !== "complete"));
 
   return (
     <SidebarProvider>
