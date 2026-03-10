@@ -122,8 +122,15 @@ export function useStripeCheckout(ispId?: string | null) {
       return res.json() as Promise<{ url: string; session_id: string }>;
     },
     onSuccess: (data) => {
-      // Redirecionar para o Stripe Checkout na mesma aba — popup blockers bloqueiam window.open
-      window.location.href = data.url;
+      // Lovable editor roda o preview em iframe — window.location.href navega só o iframe
+      // e fica bloqueado. Detectar contexto e usar estratégia adequada.
+      if (window.self !== window.top) {
+        // Dentro de iframe (Lovable editor preview): abrir em nova aba
+        window.open(data.url, "_blank", "noopener,noreferrer");
+      } else {
+        // Produção / app standalone: redirect na mesma aba (padrão Stripe)
+        window.location.href = data.url;
+      }
     },
   });
 }

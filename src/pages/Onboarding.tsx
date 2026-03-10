@@ -539,11 +539,8 @@ interface Step3Props {
   onBack: () => void;
 }
 
-const PLAN_FEATURES: Record<string, string[]> = {
-  "prod_U41i5VULCVGKRl": ["Dashboard Analytics", "Análise de Churn Score®", "Detecção de Inadimplência", "Suporte por e-mail"],
-  "prod_U41iUfju8I1C2n": ["Dashboard de Retenção", "Churn Score® Avançado", "Régua de Inadimplência", "Alertas Automáticos", "Suporte prioritário"],
-  "prod_U41i4IUixqqdnT": ["Tudo do Retention", "IA Generativa", "Support Helper N1", "Integração N8N", "Suporte dedicado"],
-};
+// Features vêm diretamente do Stripe (marketing_features configuradas no painel Stripe)
+// Não há features hardcoded — tudo gerenciado centralmente no Stripe.
 
 function Step3({ ispId, clientCount, onBack }: Step3Props) {
   const [searchParams] = useSearchParams();
@@ -615,10 +612,10 @@ function Step3({ ispId, clientCount, onBack }: Step3Props) {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {plans.map((plan, i) => {
-            const isMiddle = i === 1;
+            const isFirst = i === 0;
             const isPreselected = selectedPriceId === plan.monthly_price_id
               || (preselectedPlan && (plan.id === preselectedPlan || plan.monthly_price_id === preselectedPlan));
-            const features = PLAN_FEATURES[plan.id] ?? plan.features ?? [];
+            const features = plan.features ?? [];
 
             return (
               <Card
@@ -632,9 +629,9 @@ function Step3({ ispId, clientCount, onBack }: Step3Props) {
                 }`}
                 onClick={() => setSelectedPriceId(plan.monthly_price_id ?? null)}
               >
-                {isMiddle && !isPreselected && (
+                {isFirst && !isPreselected && (
                   <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-                    <Badge className="bg-primary text-primary-foreground text-xs">Mais Popular</Badge>
+                    <Badge className="bg-primary text-primary-foreground text-xs">Recomendado para começar</Badge>
                   </div>
                 )}
                 {isPreselected && (
