@@ -1,14 +1,8 @@
 // src/pages/Onboarding.tsx
 // Wizard de onboarding self-service para novos ISPs
 // Rota: /onboarding
-//
-// Steps:
-//   1. Conta & Provedor (signup email/senha ou Google OAuth)
-//   2. Integração IXC (campo único user:key + URL + IP blocking)
-//   [tela transição: Conexão Confirmada]
-//   3. Plano de pagamento (preselect via ?plano=<price_id> + lock-in 3 meses)
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -20,7 +14,7 @@ import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Loader2, Building2, Server, CreditCard, CheckCircle2, AlertCircle,
-  ChevronRight, Users, Clock, HelpCircle, Info,
+  ChevronRight, Users, Clock, Heart,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { externalSupabase } from "@/integrations/supabase/external-client";
@@ -30,6 +24,7 @@ import { IxcTutorialLightbox } from "@/components/onboarding/IxcTutorialLightbox
 
 const FUNCTIONS_URL = "https://yqdqmudsnjhixtxldqwi.supabase.co/functions/v1";
 const ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlxZHFtdWRzbmpoaXh0eGxkcXdpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTY0MjEwMzEsImV4cCI6MjA3MTk5NzAzMX0.UsrIuEgtJVdhZ0b76VLOjT1zVn2-OWeORGFoy487MfY";
+const LOGO_URL = "https://yqdqmudsnjhixtxldqwi.supabase.co/storage/v1/object/public/Uniforce/ICON%202.png";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -71,6 +66,53 @@ function cnpjMask(v: string) {
     .substring(0, 18);
 }
 
+// ─── Access Granted Animation ─────────────────────────────────────────────
+
+function AccessGrantedScreen({ onDone }: { onDone: () => void }) {
+  const [phase, setPhase] = useState<"scanning" | "granted">("scanning");
+
+  useEffect(() => {
+    const t1 = setTimeout(() => setPhase("granted"), 1200);
+    const t2 = setTimeout(() => onDone(), 2800);
+    return () => { clearTimeout(t1); clearTimeout(t2); };
+  }, [onDone]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/95 backdrop-blur-sm">
+      <div className="text-center space-y-6">
+        {phase === "scanning" ? (
+          <>
+            <div className="relative mx-auto h-24 w-24">
+              <div className="absolute inset-0 rounded-full border-2 border-primary/20 animate-ping" />
+              <div className="absolute inset-2 rounded-full border-2 border-primary/40 animate-ping" style={{ animationDelay: "0.2s" }} />
+              <div className="absolute inset-4 rounded-full bg-primary/10 flex items-center justify-center">
+                <Server className="h-8 w-8 text-primary animate-pulse" />
+              </div>
+            </div>
+            <div>
+              <p className="text-lg font-semibold text-foreground">Verificando credenciais...</p>
+              <p className="text-sm text-muted-foreground mt-1">Estabelecendo conexão segura</p>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="relative mx-auto h-24 w-24">
+              <div className="absolute inset-0 rounded-full bg-green-500/10 animate-in zoom-in duration-500" />
+              <div className="absolute inset-0 rounded-full flex items-center justify-center">
+                <CheckCircle2 className="h-16 w-16 text-green-500 animate-in zoom-in duration-300" />
+              </div>
+            </div>
+            <div className="animate-in fade-in slide-in-from-bottom-2 duration-500">
+              <p className="text-2xl font-bold text-foreground">Acesso concedido.</p>
+              <p className="text-lg text-primary font-medium mt-1">Bem-vindo à era da inteligência!</p>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Step 1: Conta & Provedor ────────────────────────────────────────────────
 
 interface Step1Data {
@@ -96,7 +138,9 @@ function Step1({ onNext }: { onNext: (data: Step1Data) => void }) {
   const valid =
     form.admin_name.trim().length >= 2 &&
     form.isp_nome.trim().length >= 2 &&
+    form.cnpj.length >= 14 &&
     form.email.includes("@") &&
+    form.phone.trim().length >= 8 &&
     form.password.length >= 6 &&
     form.password === confirmPassword;
 
@@ -116,8 +160,6 @@ function Step1({ onNext }: { onNext: (data: Step1Data) => void }) {
       });
       if (error) throw error;
       if (!data.user) throw new Error("Usuário não criado.");
-
-      // autoconfirm habilitado — sessão disponível imediatamente
       onNext(form);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -146,7 +188,9 @@ function Step1({ onNext }: { onNext: (data: Step1Data) => void }) {
           <Building2 className="h-5 w-5 text-primary" />
           Criar sua conta
         </CardTitle>
-        <CardDescription>Dados do administrador e do seu provedor.</CardDescription>
+        <CardDescription>
+          Cada grande jornada começa com um primeiro passo. Vamos começar a sua.
+        </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -156,7 +200,7 @@ function Step1({ onNext }: { onNext: (data: Step1Data) => void }) {
               placeholder="João Silva" className="mt-1.5 h-9" />
           </div>
           <div>
-            <Label htmlFor="phone" className="text-sm">Telefone</Label>
+            <Label htmlFor="phone" className="text-sm">Telefone *</Label>
             <Input id="phone" value={form.phone} onChange={set("phone")}
               placeholder="(11) 99999-0000" className="mt-1.5 h-9" />
           </div>
@@ -169,7 +213,7 @@ function Step1({ onNext }: { onNext: (data: Step1Data) => void }) {
         </div>
 
         <div>
-          <Label htmlFor="cnpj" className="text-sm">CNPJ</Label>
+          <Label htmlFor="cnpj" className="text-sm">CNPJ *</Label>
           <Input id="cnpj" value={form.cnpj}
             onChange={(e) => setForm((p) => ({ ...p, cnpj: cnpjMask(e.target.value) }))}
             placeholder="00.000.000/0001-00" className="mt-1.5 h-9" />
@@ -253,17 +297,15 @@ interface Step2Props {
 
 function Step2({ step1, onNext, onBack, sandboxMode }: Step2Props) {
   const { toast } = useToast();
-  const [apiCredentials, setApiCredentials] = useState(""); // formato "usuario:chave"
+  const [apiCredentials, setApiCredentials] = useState("");
   const [erp_base_url, setErpBaseUrl] = useState("");
   const [ipBlocking, setIpBlocking] = useState(false);
   const [tutorialOpen, setTutorialOpen] = useState(false);
-  const [validating, setValidating] = useState(false);
-  const [validated, setValidated] = useState(false);
-  const [validationMsg, setValidationMsg] = useState("");
-  const [clientCount, setClientCount] = useState<number | null>(null);
-  const [creating, setCreating] = useState(false);
+  const [integrating, setIntegrating] = useState(false);
+  const [validationFailed, setValidationFailed] = useState(false);
+  const [showAccessGranted, setShowAccessGranted] = useState(false);
+  const clientCountRef = useRef<number | null>(null);
 
-  // Valida "usuario:chave" — precisa ter conteúdo antes E depois do ":"
   const credentialFormatValid = /^.+:.+$/.test(apiCredentials.trim());
 
   const splitCredentials = () => {
@@ -275,25 +317,26 @@ function Step2({ step1, onNext, onBack, sandboxMode }: Step2Props) {
     };
   };
 
-  const handleValidate = async () => {
+  // "Integrar" — valida E cria ISP em sequência
+  const handleIntegrate = async () => {
     if (!erp_base_url.trim() || !apiCredentials.trim()) {
-      toast({ title: "Preencha a URL e a chave de API.", variant: "destructive" });
+      toast({ title: "Preencha a URL e a chave de acesso.", variant: "destructive" });
       return;
     }
     if (!credentialFormatValid) {
       toast({ title: "Formato inválido", description: "Use o formato usuario:chave_de_api", variant: "destructive" });
       return;
     }
-    setValidating(true);
-    setValidated(false);
-    setValidationMsg("");
-    setClientCount(null);
+
+    setIntegrating(true);
+    setValidationFailed(false);
     const { api_key, api_token } = splitCredentials();
+
     try {
-      // Incluir JWT para evitar abuso do endpoint como relay HTTP anônimo
+      // Passo 1: validar credenciais
       const { data: sessData } = await externalSupabase.auth.getSession();
       const token = sessData?.session?.access_token;
-      const res = await fetch(`${FUNCTIONS_URL}/validate-erp-credentials`, {
+      const validRes = await fetch(`${FUNCTIONS_URL}/validate-erp-credentials`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -302,31 +345,24 @@ function Step2({ step1, onNext, onBack, sandboxMode }: Step2Props) {
         },
         body: JSON.stringify({ erp_type: "ixc", base_url: erp_base_url.trim(), api_key, api_token }),
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      setValidated(data.valid);
-      setValidationMsg(data.message);
-      if (data.client_count != null) setClientCount(data.client_count);
-      if (!data.valid) {
-        toast({ title: "Credenciais inválidas", description: data.message, variant: "destructive" });
+      if (!validRes.ok) throw new Error(`HTTP ${validRes.status}`);
+      const validData = await validRes.json();
+
+      if (!validData.valid) {
+        setValidationFailed(true);
+        toast({
+          title: "Não foi possível conectar ao IXC",
+          description: "Verifique a URL e a chave de acesso. Consulte o tutorial abaixo para gerar uma nova chave.",
+          variant: "destructive",
+        });
+        return;
       }
-    } catch (err) {
-      setValidationMsg("Erro ao validar. Verifique a URL e tente novamente.");
-      toast({ title: "Erro ao validar", description: String(err), variant: "destructive" });
-    } finally {
-      setValidating(false);
-    }
-  };
 
-  const handleCreate = async () => {
-    setCreating(true);
-    try {
-      const { api_key, api_token } = splitCredentials();
-      const { data: sessData } = await externalSupabase.auth.getSession();
-      const token = sessData?.session?.access_token;
+      if (validData.client_count != null) clientCountRef.current = validData.client_count;
+
+      // Passo 2: criar ISP
       if (!token) throw new Error("Sessão expirada. Faça login novamente.");
-
-      const res = await fetch(`${FUNCTIONS_URL}/onboard-create-isp`, {
+      const createRes = await fetch(`${FUNCTIONS_URL}/onboard-create-isp`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -344,47 +380,46 @@ function Step2({ step1, onNext, onBack, sandboxMode }: Step2Props) {
           sandbox_mode: sandboxMode ?? false,
         }),
       });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error((body as { error?: string })?.error ?? `HTTP ${res.status}`);
+      if (!createRes.ok) {
+        const body = await createRes.json().catch(() => ({}));
+        throw new Error((body as { error?: string })?.error ?? `HTTP ${createRes.status}`);
       }
-      const data = await res.json();
-      if (data?.error) throw new Error(data.error);
+      const createData = await createRes.json();
+      if (createData?.error) throw new Error(createData.error);
 
-      onNext({
-        erp_base_url: erp_base_url.trim(),
-        erp_api_key: api_key,
-        erp_api_token: api_token,
-        ip_blocking_requested: ipBlocking,
-        isp_id: data.isp_id,
-        client_count: clientCount,
-      });
+      // Passo 3: animação encantadora → avança para Step 3
+      setShowAccessGranted(true);
+      // onNext será chamado quando a animação terminar (via onDone prop)
+      setTimeout(() => {
+        onNext({
+          erp_base_url: erp_base_url.trim(),
+          erp_api_key: api_key,
+          erp_api_token: api_token,
+          ip_blocking_requested: ipBlocking,
+          isp_id: createData.isp_id,
+          client_count: clientCountRef.current,
+        });
+      }, 2800);
+
     } catch (err) {
-      toast({ title: "Erro ao criar provedor", description: String(err), variant: "destructive" });
+      toast({ title: "Erro ao integrar", description: String(err), variant: "destructive" });
     } finally {
-      setCreating(false);
+      setIntegrating(false);
     }
   };
 
-  const resetValidation = () => { setValidated(false); setValidationMsg(""); };
-
   return (
     <>
+      {showAccessGranted && <AccessGrantedScreen onDone={() => {}} />}
+
       <Card className="max-w-lg mx-auto">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-lg">
             <Server className="h-5 w-5 text-primary" />
-            Integração IXC Provedor
+            Conecte seu provedor
           </CardTitle>
           <CardDescription>
-            Conecte sua base de clientes ao painel Uniforce.{" "}
-            <button
-              onClick={() => setTutorialOpen(true)}
-              className="text-primary underline inline-flex items-center gap-0.5 hover:opacity-80"
-            >
-              <HelpCircle className="h-3.5 w-3.5" />
-              Como gerar minha chave API?
-            </button>
+            Sua base de clientes é o coração do seu negócio. Vamos conectá-la à inteligência da Uniforce.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -392,7 +427,7 @@ function Step2({ step1, onNext, onBack, sandboxMode }: Step2Props) {
             <Label className="text-sm">URL do seu servidor IXC *</Label>
             <Input
               value={erp_base_url}
-              onChange={(e) => { setErpBaseUrl(e.target.value); resetValidation(); }}
+              onChange={(e) => { setErpBaseUrl(e.target.value); setValidationFailed(false); }}
               placeholder="https://ixc.seuprovedor.com.br"
               className="mt-1.5 h-9"
             />
@@ -402,7 +437,7 @@ function Step2({ step1, onNext, onBack, sandboxMode }: Step2Props) {
             <Label className="text-sm">Chave de acesso à API do IXC *</Label>
             <Input
               value={apiCredentials}
-              onChange={(e) => { setApiCredentials(e.target.value); resetValidation(); }}
+              onChange={(e) => { setApiCredentials(e.target.value); setValidationFailed(false); }}
               placeholder="155:1f6badf2d61ff35da9b62c26..."
               className="mt-1.5 h-9 font-mono text-sm"
             />
@@ -435,126 +470,64 @@ function Step2({ step1, onNext, onBack, sandboxMode }: Step2Props) {
           </div>
 
           {ipBlocking && (
-            <div className="flex items-start gap-2 rounded-md p-3 text-sm border border-amber-200 bg-amber-50">
-              <Info className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
-              <div className="text-amber-800">
-                <p className="font-medium mb-1">Enviaremos um e-mail com os IPs para liberar</p>
-                <p className="text-xs">
-                  Após o cadastro, você receberá em <strong>{step1.email}</strong> as instruções
-                  para liberar nosso servidor (IPv4: 31.97.82.25 / IPv6: 2a02:4780:14:ecfb::1) no firewall do IXC.
-                </p>
-              </div>
+            <div className="rounded-md p-3 text-sm border border-amber-200 bg-amber-50">
+              <p className="font-medium text-amber-900 mb-0.5">Perfeito — cuidamos disso para você</p>
+              <p className="text-xs text-amber-800">
+                Após a integração, enviaremos para <strong>{step1.email}</strong> as
+                instruções completas com os IPs que precisam ser liberados no firewall do seu IXC.
+                É rápido e fazemos junto com você.
+              </p>
             </div>
           )}
 
-          {/* Resultado da validação */}
-          {validationMsg && (
-            <div className={`flex items-start gap-2 rounded-md p-3 text-sm border ${
-              validated
-                ? "bg-green-50 border-green-200 text-green-800"
-                : "bg-destructive/5 border-destructive/20 text-destructive"
-            }`}>
-              {validated
-                ? <CheckCircle2 className="h-4 w-4 shrink-0 mt-0.5" />
-                : <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />}
+          {/* Falha de validação */}
+          {validationFailed && (
+            <div className="flex items-start gap-2 rounded-md p-3 text-sm border border-destructive/20 bg-destructive/5 text-destructive">
+              <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
               <div>
-                <p>{validationMsg}</p>
-                {validated && clientCount != null && (
-                  <p className="mt-1 flex items-center gap-1 font-medium">
-                    <Users className="h-3.5 w-3.5" />
-                    {clientCount.toLocaleString("pt-BR")} clientes ativos identificados
-                  </p>
-                )}
+                <p className="font-medium">Não conseguimos conectar ao seu IXC</p>
+                <p className="text-xs mt-0.5">
+                  Verifique a URL e a chave de acesso. Veja o tutorial abaixo para gerar uma nova chave corretamente.
+                </p>
               </div>
             </div>
           )}
 
           <div className="flex flex-col gap-2 pt-1">
             <Button
-              variant="outline"
-              onClick={handleValidate}
-              disabled={validating || !erp_base_url.trim() || !apiCredentials.trim() || !credentialFormatValid}
+              onClick={handleIntegrate}
+              disabled={integrating || !erp_base_url.trim() || !apiCredentials.trim() || !credentialFormatValid}
               className="w-full gap-2"
             >
-              {validating ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
-              {validating ? "Validando conexão..." : "Testar Conexão"}
+              {integrating ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+              {integrating ? "Integrando..." : "Integrar"}
             </Button>
 
-            <Button
-              onClick={handleCreate}
-              disabled={!validated || creating}
-              className="w-full gap-2"
-            >
-              {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : <ChevronRight className="h-4 w-4" />}
-              {creating ? "Configurando..." : "Confirmar Integração"}
-            </Button>
-
-            <Button variant="ghost" onClick={onBack} disabled={creating} className="text-muted-foreground">
+            <Button variant="ghost" onClick={onBack} disabled={integrating} className="text-muted-foreground">
               Voltar
             </Button>
+          </div>
+
+          {/* Tutorial link — centralizado após os botões */}
+          <div className="text-center pt-1">
+            <button
+              onClick={() => setTutorialOpen(true)}
+              className="text-sm text-primary underline hover:opacity-80 inline-flex items-center gap-1"
+            >
+              Como gerar minha chave de acesso?
+            </button>
           </div>
         </CardContent>
       </Card>
 
+      {/* Frase de branding abaixo do card */}
+      <p className="text-center text-sm text-muted-foreground mt-6 flex items-center justify-center gap-1.5">
+        Liberte o seu time para o que importa, para o que é humano!
+        <Heart className="h-3.5 w-3.5 text-rose-400/60" />
+      </p>
+
       <IxcTutorialLightbox open={tutorialOpen} onClose={() => setTutorialOpen(false)} />
     </>
-  );
-}
-
-// ─── Tela de Transição: Conexão Confirmada ───────────────────────────────────
-
-interface ConfirmationScreenProps {
-  clientCount: number | null;
-  onNext: () => void;
-}
-
-function ConfirmationScreen({ clientCount, onNext }: ConfirmationScreenProps) {
-  return (
-    <Card className="max-w-lg mx-auto text-center">
-      <CardContent className="pt-10 pb-8 space-y-6">
-        {/* Ícone animado */}
-        <div className="flex justify-center">
-          <div className="h-20 w-20 rounded-full bg-green-100 flex items-center justify-center animate-in zoom-in duration-500">
-            <CheckCircle2 className="h-10 w-10 text-green-600" />
-          </div>
-        </div>
-
-        <div>
-          <h2 className="text-xl font-bold text-foreground mb-1">Integração confirmada!</h2>
-          <p className="text-muted-foreground text-sm">Sua base de dados foi conectada com sucesso.</p>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-left">
-          {clientCount != null && (
-            <div className="rounded-lg border bg-card p-4">
-              <div className="flex items-center gap-2 mb-1">
-                <Users className="h-4 w-4 text-primary" />
-                <span className="text-xs font-medium text-muted-foreground">Clientes Ativos</span>
-              </div>
-              <p className="text-2xl font-bold text-foreground">{clientCount.toLocaleString("pt-BR")}</p>
-              <p className="text-xs text-muted-foreground">identificados no seu provedor</p>
-            </div>
-          )}
-
-          <div className="rounded-lg border bg-card p-4">
-            <div className="flex items-center gap-2 mb-1">
-              <Clock className="h-4 w-4 text-primary" />
-              <span className="text-xs font-medium text-muted-foreground">Prazo de Ativação</span>
-            </div>
-            <p className="text-2xl font-bold text-foreground">3 dias</p>
-            <p className="text-xs text-muted-foreground">úteis para importação completa</p>
-          </div>
-        </div>
-
-        <p className="text-sm text-muted-foreground">
-          Avisaremos você por e-mail assim que os dados estiverem importados e o ambiente estiver configurado.
-        </p>
-
-        <Button onClick={onNext} className="w-full gap-2">
-          Escolher Plano <ChevronRight className="h-4 w-4" />
-        </Button>
-      </CardContent>
-    </Card>
   );
 }
 
@@ -562,6 +535,7 @@ function ConfirmationScreen({ clientCount, onNext }: ConfirmationScreenProps) {
 
 interface Step3Props {
   ispId: string;
+  clientCount: number | null;
   onBack: () => void;
 }
 
@@ -571,10 +545,9 @@ const PLAN_FEATURES: Record<string, string[]> = {
   "prod_U41i4IUixqqdnT": ["Tudo do Retention", "IA Generativa", "Support Helper N1", "Integração N8N", "Suporte dedicado"],
 };
 
-function Step3({ ispId, onBack }: Step3Props) {
+function Step3({ ispId, clientCount, onBack }: Step3Props) {
   const [searchParams] = useSearchParams();
   const { toast } = useToast();
-  // Passa ispId para garantir que o hook esteja habilitado (novo ISP já foi criado)
   const { data: catalog, isLoading } = useStripeProducts(ispId);
   const checkout = useStripeCheckout(ispId);
   const [lockInAccepted, setLockInAccepted] = useState(false);
@@ -583,7 +556,6 @@ function Step3({ ispId, onBack }: Step3Props) {
   const preselectedPlan = searchParams.get("plano");
   const plans = catalog?.plans ?? [];
 
-  // Preselecionar plano via URL param
   useEffect(() => {
     if (preselectedPlan && plans.length > 0) {
       const match = plans.find((p) => p.monthly_price_id === preselectedPlan || p.id === preselectedPlan);
@@ -592,7 +564,6 @@ function Step3({ ispId, onBack }: Step3Props) {
   }, [preselectedPlan, plans]);
 
   const handleCheckout = async (priceId: string) => {
-    // Registrar aceite do lock-in de 3 meses (requer RLS UPDATE policy em isps — migration 012)
     const contractAcceptedAt = new Date().toISOString();
     const { error: updateErr } = await externalSupabase
       .from("isps")
@@ -600,7 +571,6 @@ function Step3({ ispId, onBack }: Step3Props) {
       .eq("isp_id", ispId);
 
     if (updateErr) {
-      // Log para debug mas não bloqueia — o aceite é registrado como audit trail best-effort
       console.warn("contract_accepted_at update failed:", updateErr.message);
     }
 
@@ -632,7 +602,9 @@ function Step3({ ispId, onBack }: Step3Props) {
           Escolha seu Plano
         </h2>
         <p className="text-muted-foreground text-sm mt-1">
-          Selecione o plano ideal para seu provedor.
+          {clientCount != null
+            ? `Inteligência para os seus ${clientCount.toLocaleString("pt-BR")} clientes — a partir de hoje.`
+            : "Selecione o plano ideal para seu provedor."}
         </p>
       </div>
 
@@ -646,7 +618,6 @@ function Step3({ ispId, onBack }: Step3Props) {
             const isMiddle = i === 1;
             const isPreselected = selectedPriceId === plan.monthly_price_id
               || (preselectedPlan && (plan.id === preselectedPlan || plan.monthly_price_id === preselectedPlan));
-            // Usa features hardcoded se disponíveis; senão usa o catálogo real do Stripe
             const features = PLAN_FEATURES[plan.id] ?? plan.features ?? [];
 
             return (
@@ -696,7 +667,6 @@ function Step3({ ispId, onBack }: Step3Props) {
         </div>
       )}
 
-      {/* Lock-in acceptance */}
       {!isLoading && plans.length > 0 && (
         <div className="mt-6 space-y-4">
           <div className="flex items-start gap-3 p-4 rounded-lg border bg-muted/30">
@@ -740,7 +710,6 @@ function Step3({ ispId, onBack }: Step3Props) {
 }
 
 // ─── Google OAuth Completion Form ────────────────────────────────────────────
-// Exibido após redirect do Google OAuth: coleta dados do ISP (nome, CNPJ, telefone)
 
 interface GoogleCompleteFormProps {
   onComplete: (data: Step1Data) => void;
@@ -755,7 +724,6 @@ function GoogleCompleteForm({ onComplete }: GoogleCompleteFormProps) {
   const [googleUser, setGoogleUser] = useState<{ email: string; name: string } | null>(null);
   const [sessionChecking, setSessionChecking] = useState(true);
 
-  // Aguarda a sessão do Google OAuth estar disponível (o token do hash é processado assincronamente)
   useEffect(() => {
     let cancelled = false;
     let attempts = 0;
@@ -774,11 +742,10 @@ function GoogleCompleteForm({ onComplete }: GoogleCompleteFormProps) {
         return;
       }
 
-      // Supabase pode demorar até ~2s para processar o hash do OAuth redirect
       if (++attempts < 10) {
         setTimeout(check, 300);
       } else {
-        setSessionChecking(false); // timeout — mostrar erro no submit
+        setSessionChecking(false);
       }
     };
 
@@ -802,7 +769,7 @@ function GoogleCompleteForm({ onComplete }: GoogleCompleteFormProps) {
         cnpj,
         email: user.email ?? "",
         phone: phone.trim(),
-        password: "", // já autenticado via OAuth
+        password: "",
       });
     } catch (err) {
       toast({ title: "Erro", description: String(err), variant: "destructive" });
@@ -841,7 +808,7 @@ function GoogleCompleteForm({ onComplete }: GoogleCompleteFormProps) {
           />
         </div>
         <div>
-          <Label className="text-sm">CNPJ</Label>
+          <Label className="text-sm">CNPJ *</Label>
           <Input
             value={cnpj}
             onChange={(e) => setCnpj(cnpjMask(e.target.value))}
@@ -850,7 +817,7 @@ function GoogleCompleteForm({ onComplete }: GoogleCompleteFormProps) {
           />
         </div>
         <div>
-          <Label className="text-sm">Telefone</Label>
+          <Label className="text-sm">Telefone *</Label>
           <Input
             value={phone}
             onChange={(e) => setPhone(e.target.value)}
@@ -923,14 +890,10 @@ export default function Onboarding() {
   const navigate = useNavigate();
   const { profile, isLoading: authLoading } = useAuth();
 
-  // Detectar callbacks de OAuth e pós-pagamento via URL params
   const isGoogleCallback = searchParams.get("google") === "1";
   const isPaymentSuccess = searchParams.get("payment") === "success";
-  // sandbox=1 → força Stripe TEST keys no ISP criado (uso exclusivo em testes/dev)
   const isSandboxMode = searchParams.get("sandbox") === "1";
 
-  // Redirecionar usuários já autenticados com ISP completo para o dashboard
-  // (exceto se vierem de Google OAuth ou retorno de pagamento)
   useEffect(() => {
     if (authLoading) return;
     if (profile?.isp_id && !isGoogleCallback && !isPaymentSuccess) {
@@ -938,10 +901,7 @@ export default function Onboarding() {
     }
   }, [authLoading, profile?.isp_id, isGoogleCallback, isPaymentSuccess, navigate]);
 
-  // "confirmation" é a tela de transição entre steps 2 e 3
-  // "google-complete" é o formulário de complemento após OAuth Google
-  // "payment-success" é a tela pós-pagamento Stripe
-  const [step, setStep] = useState<number | "confirmation" | "google-complete" | "payment-success">(() => {
+  const [step, setStep] = useState<number | "google-complete" | "payment-success">(() => {
     if (isPaymentSuccess) return "payment-success";
     if (isGoogleCallback) return "google-complete";
     const urlStep = parseInt(searchParams.get("step") ?? "1", 10);
@@ -952,33 +912,32 @@ export default function Onboarding() {
   const [step2Result, setStep2Result] = useState<Step2Result | null>(null);
   const [cameFromGoogle] = useState(() => isGoogleCallback);
 
-  // Indicador numérico para o StepIndicator
   const indicatorStep =
-    step === "confirmation" ? 2 :
     step === "google-complete" ? 1 :
     step === "payment-success" ? 3 :
     typeof step === "number" ? step : 1;
 
   return (
     <div className="min-h-screen bg-background">
+      {/* Header com logo centralizado */}
       <header className="border-b border-border/50 bg-card/80 backdrop-blur-sm">
-        <div className="container mx-auto px-6 py-4 flex items-center gap-3">
-          <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center">
-            <Building2 className="h-4 w-4 text-primary-foreground" />
-          </div>
-          <div>
-            <h1 className="text-lg font-bold text-foreground">Uniforce</h1>
-            <p className="text-xs text-muted-foreground">Configuração inicial do provedor</p>
-          </div>
+        <div className="container mx-auto px-6 py-4 flex justify-center">
+          <img
+            src={LOGO_URL}
+            alt="Uniforce"
+            className="h-10 w-auto object-contain"
+            onError={(e) => {
+              // fallback se logo não carregar
+              (e.target as HTMLImageElement).style.display = "none";
+            }}
+          />
         </div>
       </header>
 
       <main className="container mx-auto px-6 py-10 max-w-4xl">
         {step !== "payment-success" && <StepIndicator current={indicatorStep} />}
 
-        {step === "payment-success" && (
-          <PostPaymentScreen />
-        )}
+        {step === "payment-success" && <PostPaymentScreen />}
 
         {step === 1 && (
           <Step1
@@ -989,7 +948,6 @@ export default function Onboarding() {
           />
         )}
 
-        {/* Google OAuth: preencher dados do ISP após login com Google */}
         {step === "google-complete" && (
           <GoogleCompleteForm
             onComplete={(data) => {
@@ -1005,23 +963,17 @@ export default function Onboarding() {
             sandboxMode={isSandboxMode}
             onNext={(result) => {
               setStep2Result(result);
-              setStep("confirmation");
+              setStep(3);
             }}
             onBack={() => setStep(cameFromGoogle ? "google-complete" : 1)}
-          />
-        )}
-
-        {step === "confirmation" && step2Result && (
-          <ConfirmationScreen
-            clientCount={step2Result.client_count}
-            onNext={() => setStep(3)}
           />
         )}
 
         {step === 3 && step2Result?.isp_id && (
           <Step3
             ispId={step2Result.isp_id}
-            onBack={() => setStep("confirmation")}
+            clientCount={step2Result.client_count}
+            onBack={() => setStep(2)}
           />
         )}
       </main>
