@@ -102,7 +102,7 @@ export function FinancialProfileBanner({ onDismiss }: Props) {
 
             <Button
               onClick={handleSave}
-              disabled={!email.trim() || saving}
+              disabled={!email.trim() || saving || !ispId}
               size="sm"
               className="mt-3 gap-1.5"
             >

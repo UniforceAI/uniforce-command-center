@@ -122,7 +122,8 @@ export function useStripeCheckout(ispId?: string | null) {
       return res.json() as Promise<{ url: string; session_id: string }>;
     },
     onSuccess: (data) => {
-      window.open(data.url, "_blank", "noopener,noreferrer");
+      // Redirecionar para o Stripe Checkout na mesma aba — popup blockers bloqueiam window.open
+      window.location.href = data.url;
     },
   });
 }

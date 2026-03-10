@@ -262,7 +262,7 @@ function Step1({ onNext }: { onNext: (data: Step1Data) => void }) {
 
         <p className="text-xs text-center text-muted-foreground">
           Já tem uma conta?{" "}
-          <a href="/login" className="text-primary underline">Fazer login</a>
+          <a href="/auth" className="text-primary underline">Fazer login</a>
         </p>
       </CardContent>
     </Card>
@@ -301,7 +301,8 @@ function Step2({ step1, onNext, onBack }: Step2Props) {
   const [clientCount, setClientCount] = useState<number | null>(null);
   const [creating, setCreating] = useState(false);
 
-  const credentialFormatValid = apiCredentials.includes(":") && apiCredentials.indexOf(":") > 0;
+  // Valida "usuario:chave" — precisa ter conteúdo antes E depois do ":"
+  const credentialFormatValid = /^.+:.+$/.test(apiCredentials.trim());
 
   const splitCredentials = () => {
     const colonIdx = apiCredentials.indexOf(":");
@@ -609,6 +610,7 @@ const PLAN_FEATURES: Record<string, string[]> = {
 
 function Step3({ ispId, onBack }: Step3Props) {
   const [searchParams] = useSearchParams();
+  const { toast } = useToast();
   // Passa ispId para garantir que o hook esteja habilitado (novo ISP já foi criado)
   const { data: catalog, isLoading } = useStripeProducts(ispId);
   const checkout = useStripeCheckout(ispId);
@@ -681,7 +683,8 @@ function Step3({ ispId, onBack }: Step3Props) {
             const isMiddle = i === 1;
             const isPreselected = selectedPriceId === plan.monthly_price_id
               || (preselectedPlan && (plan.id === preselectedPlan || plan.monthly_price_id === preselectedPlan));
-            const features = PLAN_FEATURES[plan.id] ?? [];
+            // Usa features hardcoded se disponíveis; senão usa o catálogo real do Stripe
+            const features = PLAN_FEATURES[plan.id] ?? plan.features ?? [];
 
             return (
               <Card
@@ -1009,7 +1012,7 @@ export default function Onboarding() {
           />
         )}
 
-        {step === 3 && step2Result && (
+        {step === 3 && step2Result?.isp_id && (
           <Step3
             ispId={step2Result.isp_id}
             onBack={() => setStep("confirmation")}
