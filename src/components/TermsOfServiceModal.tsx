@@ -4,6 +4,7 @@
 // IMPORTANTE: usa externalSupabase (yqdqmudsnjhixtxldqwi) para dados e JWT.
 
 import { useState, useEffect } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Loader2, FileText, CheckCircle2 } from "lucide-react";
@@ -118,6 +119,7 @@ function renderContent(text: string): string {
 
 export function TermsOfServiceModal({ open, onAccept, tosVersion }: Props) {
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [scrolledToEnd, setScrolledToEnd] = useState(false);
   const [accepting, setAccepting] = useState(false);
   const [content, setContent] = useState<string | null>(null);
@@ -170,6 +172,9 @@ export function TermsOfServiceModal({ open, onAccept, tosVersion }: Props) {
         const body = await res.json().catch(() => ({}));
         throw new Error((body as { error?: string })?.error ?? `HTTP ${res.status}`);
       }
+      // Invalidar cache para que useTermsAcceptance reflita o aceite imediatamente
+      // e não mostre o modal novamente nesta sessão
+      await queryClient.invalidateQueries({ queryKey: ["tos-acceptance"] });
       onAccept();
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Tente novamente.";
