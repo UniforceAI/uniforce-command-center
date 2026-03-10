@@ -89,7 +89,6 @@ function Step1({ onNext }: { onNext: (data: Step1Data) => void }) {
   });
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const [awaitingConfirmation, setAwaitingConfirmation] = useState(false);
 
   const set = (k: keyof Step1Data) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setForm((p) => ({ ...p, [k]: e.target.value }));
@@ -113,21 +112,12 @@ function Step1({ onNext }: { onNext: (data: Step1Data) => void }) {
             full_name: form.admin_name.trim(),
             phone: form.phone.trim(),
           },
-          // Após confirmação de e-mail, redireciona de volta ao onboarding com os dados salvos
-          emailRedirectTo: `${window.location.origin}/onboarding?confirmed=1`,
         },
       });
       if (error) throw error;
       if (!data.user) throw new Error("Usuário não criado.");
 
-      if (!data.session) {
-        // Email confirmation required — salvar dados no sessionStorage para recuperar após redirect
-        sessionStorage.setItem("onboarding_step1", JSON.stringify(form));
-        setAwaitingConfirmation(true);
-        return;
-      }
-
-      // Sessão disponível imediatamente (email confirm desabilitado) — avançar
+      // autoconfirm habilitado — sessão disponível imediatamente
       onNext(form);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -148,35 +138,6 @@ function Step1({ onNext }: { onNext: (data: Step1Data) => void }) {
       },
     });
   };
-
-  if (awaitingConfirmation) {
-    return (
-      <Card className="max-w-lg mx-auto text-center">
-        <CardContent className="pt-10 pb-8 space-y-4">
-          <div className="h-16 w-16 rounded-full bg-blue-100 flex items-center justify-center mx-auto">
-            <CheckCircle2 className="h-8 w-8 text-blue-600" />
-          </div>
-          <h2 className="text-lg font-bold">Confirme seu e-mail</h2>
-          <p className="text-sm text-muted-foreground leading-relaxed">
-            Enviamos um link de confirmação para <strong>{form.email}</strong>.
-            Clique no link e volte aqui para continuar.
-          </p>
-          <p className="text-xs text-muted-foreground">
-            Não recebeu?{" "}
-            <button
-              className="text-primary underline"
-              onClick={async () => {
-                await externalSupabase.auth.resend({ type: "signup", email: form.email.trim() });
-                toast({ title: "E-mail reenviado!" });
-              }}
-            >
-              Reenviar e-mail
-            </button>
-          </p>
-        </CardContent>
-      </Card>
-    );
-  }
 
   return (
     <Card className="max-w-lg mx-auto">
@@ -644,7 +605,7 @@ function Step3({ ispId, onBack }: Step3Props) {
     checkout.mutate(
       {
         price_id: priceId,
-        success_url: `${window.location.origin}/configuracoes/perfil?tab=meus-produtos&success=true&new_account=1`,
+        success_url: `${window.location.origin}/onboarding?payment=success`,
         cancel_url: `${window.location.origin}/onboarding?step=3`,
       },
       {
@@ -904,6 +865,55 @@ function GoogleCompleteForm({ onComplete }: GoogleCompleteFormProps) {
   );
 }
 
+// ─── PostPaymentScreen ───────────────────────────────────────────────────────
+
+function PostPaymentScreen() {
+  const [email, setEmail] = useState("");
+  useEffect(() => {
+    externalSupabase.auth.getUser().then(({ data }) => {
+      if (data.user?.email) setEmail(data.user.email);
+    });
+  }, []);
+  return (
+    <Card className="max-w-lg mx-auto text-center">
+      <CardContent className="pt-10 pb-8 space-y-6">
+        <div className="flex justify-center">
+          <div className="h-20 w-20 rounded-full bg-green-100 flex items-center justify-center animate-in zoom-in duration-500">
+            <CheckCircle2 className="h-10 w-10 text-green-600" />
+          </div>
+        </div>
+
+        <div>
+          <h2 className="text-xl font-bold text-foreground mb-2">Assinatura confirmada!</h2>
+          <p className="text-muted-foreground text-sm leading-relaxed">
+            Sua assinatura foi ativada com sucesso. Enviamos um e-mail de boas-vindas para{" "}
+            <strong>{email || "seu endereço de e-mail"}</strong> com o link de primeiro acesso.
+          </p>
+        </div>
+
+        <div className="rounded-lg border bg-blue-50 border-blue-200 p-4 text-left">
+          <p className="text-sm font-medium text-blue-900 mb-1">Próximo passo</p>
+          <p className="text-xs text-blue-700 leading-relaxed">
+            Abra o e-mail que enviamos e clique no botão <strong>"Acessar o Painel"</strong> para
+            fazer seu primeiro acesso e aceitar os Termos de Serviço.
+          </p>
+        </div>
+
+        <p className="text-xs text-muted-foreground">
+          Não recebeu o e-mail? Verifique a pasta de spam ou aguarde alguns minutos.
+        </p>
+
+        <a
+          href="/configuracoes/perfil?new_account=1"
+          className="inline-flex items-center gap-2 text-sm text-primary underline hover:opacity-80"
+        >
+          Acessar o painel agora <ChevronRight className="h-3.5 w-3.5" />
+        </a>
+      </CardContent>
+    </Card>
+  );
+}
+
 // ─── Main Component ──────────────────────────────────────────────────────────
 
 export default function Onboarding() {
@@ -911,44 +921,30 @@ export default function Onboarding() {
   const navigate = useNavigate();
   const { profile, isLoading: authLoading } = useAuth();
 
-  // Detectar callbacks de OAuth e confirmação de email via URL params
+  // Detectar callbacks de OAuth e pós-pagamento via URL params
   const isGoogleCallback = searchParams.get("google") === "1";
-  const isEmailConfirmed = searchParams.get("confirmed") === "1";
+  const isPaymentSuccess = searchParams.get("payment") === "success";
 
   // Redirecionar usuários já autenticados com ISP completo para o dashboard
+  // (exceto se vierem de Google OAuth ou retorno de pagamento)
   useEffect(() => {
     if (authLoading) return;
-    if (profile?.isp_id && !isGoogleCallback && !isEmailConfirmed) {
+    if (profile?.isp_id && !isGoogleCallback && !isPaymentSuccess) {
       navigate("/", { replace: true });
     }
-  }, [authLoading, profile?.isp_id, isGoogleCallback, isEmailConfirmed, navigate]);
+  }, [authLoading, profile?.isp_id, isGoogleCallback, isPaymentSuccess, navigate]);
 
   // "confirmation" é a tela de transição entre steps 2 e 3
   // "google-complete" é o formulário de complemento após OAuth Google
-  const [step, setStep] = useState<number | "confirmation" | "google-complete">(() => {
+  // "payment-success" é a tela pós-pagamento Stripe
+  const [step, setStep] = useState<number | "confirmation" | "google-complete" | "payment-success">(() => {
+    if (isPaymentSuccess) return "payment-success";
     if (isGoogleCallback) return "google-complete";
-    // Após confirmação de e-mail, restaurar step1Data do sessionStorage e ir para step 2
-    if (isEmailConfirmed) {
-      const saved = sessionStorage.getItem("onboarding_step1");
-      if (saved) return 2;
-    }
     const urlStep = parseInt(searchParams.get("step") ?? "1", 10);
     return isNaN(urlStep) ? 1 : Math.max(1, Math.min(urlStep, 3));
   });
 
-  // Restaurar step1Data do sessionStorage após confirmação de e-mail
-  const [step1Data, setStep1Data] = useState<Step1Data | null>(() => {
-    if (isEmailConfirmed) {
-      try {
-        const saved = sessionStorage.getItem("onboarding_step1");
-        if (saved) {
-          sessionStorage.removeItem("onboarding_step1"); // usar uma vez
-          return JSON.parse(saved) as Step1Data;
-        }
-      } catch { /* ignore */ }
-    }
-    return null;
-  });
+  const [step1Data, setStep1Data] = useState<Step1Data | null>(null);
   const [step2Result, setStep2Result] = useState<Step2Result | null>(null);
   const [cameFromGoogle] = useState(() => isGoogleCallback);
 
@@ -956,6 +952,7 @@ export default function Onboarding() {
   const indicatorStep =
     step === "confirmation" ? 2 :
     step === "google-complete" ? 1 :
+    step === "payment-success" ? 3 :
     typeof step === "number" ? step : 1;
 
   return (
@@ -973,7 +970,11 @@ export default function Onboarding() {
       </header>
 
       <main className="container mx-auto px-6 py-10 max-w-4xl">
-        <StepIndicator current={indicatorStep} />
+        {step !== "payment-success" && <StepIndicator current={indicatorStep} />}
+
+        {step === "payment-success" && (
+          <PostPaymentScreen />
+        )}
 
         {step === 1 && (
           <Step1
