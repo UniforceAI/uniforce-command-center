@@ -248,9 +248,10 @@ interface Step2Props {
   step1: Step1Data;
   onNext: (data: Step2Result) => void;
   onBack: () => void;
+  sandboxMode?: boolean;
 }
 
-function Step2({ step1, onNext, onBack }: Step2Props) {
+function Step2({ step1, onNext, onBack, sandboxMode }: Step2Props) {
   const { toast } = useToast();
   const [apiCredentials, setApiCredentials] = useState(""); // formato "usuario:chave"
   const [erp_base_url, setErpBaseUrl] = useState("");
@@ -340,6 +341,7 @@ function Step2({ step1, onNext, onBack }: Step2Props) {
           erp_api_key: api_key,
           erp_api_token: api_token || api_key,
           ip_blocking_requested: ipBlocking,
+          sandbox_mode: sandboxMode ?? false,
         }),
       });
       if (!res.ok) {
@@ -924,6 +926,8 @@ export default function Onboarding() {
   // Detectar callbacks de OAuth e pós-pagamento via URL params
   const isGoogleCallback = searchParams.get("google") === "1";
   const isPaymentSuccess = searchParams.get("payment") === "success";
+  // sandbox=1 → força Stripe TEST keys no ISP criado (uso exclusivo em testes/dev)
+  const isSandboxMode = searchParams.get("sandbox") === "1";
 
   // Redirecionar usuários já autenticados com ISP completo para o dashboard
   // (exceto se vierem de Google OAuth ou retorno de pagamento)
@@ -998,6 +1002,7 @@ export default function Onboarding() {
         {step === 2 && step1Data && (
           <Step2
             step1={step1Data}
+            sandboxMode={isSandboxMode}
             onNext={(result) => {
               setStep2Result(result);
               setStep("confirmation");
