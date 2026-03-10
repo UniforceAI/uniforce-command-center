@@ -69,12 +69,20 @@ export default function PerfilISP() {
     if (tosData?.needsAcceptance) setTosOpen(true);
   }, [tosData?.needsAcceptance]);
 
-  // Detectar ?new_account=1 para financial prompt
+  // Detectar ?new_account=1: primeiro acesso pós-pagamento
+  // Marca first_access_completed=true na tabela isps (uma única vez)
   useEffect(() => {
-    if (searchParams.get("new_account") === "1") {
-      setShowFinancialPrompt(true);
-    }
-  }, []);
+    if (searchParams.get("new_account") !== "1" || !ispId) return;
+    setShowFinancialPrompt(true);
+    externalSupabase
+      .from("isps")
+      .update({ first_access_completed: true })
+      .eq("isp_id", ispId)
+      .eq("first_access_completed", false) // só atualiza se ainda false (idempotente)
+      .then(({ error }) => {
+        if (error) console.warn("first_access_completed update failed:", error.message);
+      });
+  }, [ispId]);
 
   // Exibir toast de sucesso após retorno do Stripe Checkout
   useEffect(() => {
