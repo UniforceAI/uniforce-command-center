@@ -187,6 +187,60 @@ Deno.serve(async (req) => {
           // Concluir onboarding se ISP estava em payment_pending
           await supabaseAdmin.rpc("complete_isp_onboarding", { p_isp_id: ispId });
 
+          // Enviar e-mail de boas-vindas via Resend (fire-and-forget)
+          {
+            const resendKey = Deno.env.get("RESEND_API_KEY") ?? "";
+            if (resendKey) {
+              // Buscar e-mail do usuário dono deste ISP
+              const { data: roleRow } = await supabaseAdmin
+                .from("user_roles")
+                .select("user_id")
+                .eq("isp_id", ispId)
+                .eq("role", "admin")
+                .limit(1)
+                .maybeSingle();
+
+              if (roleRow?.user_id) {
+                const { data: { user } } = await supabaseAdmin.auth.admin.getUserById(roleRow.user_id);
+                if (user?.email) {
+                  const firstName = (user.user_metadata?.full_name as string ?? "").split(" ")[0] || "Administrador";
+                  const panelUrl = `${Deno.env.get("SUPABASE_URL")?.replace("supabase.co/functions", "supabase.co") ?? "https://dash.uniforce.com.br"}/configuracoes/perfil?new_account=1`;
+                  const dashUrl = "https://dash.uniforce.com.br/configuracoes/perfil?new_account=1";
+                  fetch("https://api.resend.com/emails", {
+                    method: "POST",
+                    headers: {
+                      "Content-Type": "application/json",
+                      "Authorization": `Bearer ${resendKey}`,
+                    },
+                    body: JSON.stringify({
+                      from: "Uniforce <noreply@uniforce.com.br>",
+                      to: [user.email],
+                      subject: "🚀 Bem-vindo à Uniforce — seu painel está pronto!",
+                      html: `
+                        <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:32px 24px;color:#1a1a1a">
+                          <div style="margin-bottom:24px">
+                            <h1 style="font-size:22px;font-weight:700;color:#7c3aed;margin:0">Uniforce</h1>
+                          </div>
+                          <h2 style="font-size:20px;font-weight:700;margin:0 0 12px">Olá, ${firstName}! Sua assinatura está ativa.</h2>
+                          <p style="color:#555;line-height:1.6;margin:0 0 20px">
+                            Sua conta na Uniforce foi criada com sucesso e a assinatura está confirmada.
+                            Estamos preparando o ambiente do seu provedor — você receberá uma notificação assim que a importação de dados estiver concluída.
+                          </p>
+                          <a href="${dashUrl}" style="display:inline-block;background:#7c3aed;color:#fff;text-decoration:none;padding:12px 28px;border-radius:8px;font-weight:600;font-size:15px">
+                            Acessar o Painel Uniforce →
+                          </a>
+                          <p style="color:#999;font-size:12px;margin:28px 0 0">
+                            Dúvidas? Fale conosco: suporte@uniforce.com.br
+                          </p>
+                        </div>
+                      `,
+                    }),
+                  }).catch((err) => console.warn("stripe-webhook: Resend welcome email failed:", err));
+                }
+              }
+            }
+          }
+
           // Fire-and-forget: registrar ISP no Asaas para NF-e futura
           fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/asaas-customer-sync`, {
             method: "POST",
