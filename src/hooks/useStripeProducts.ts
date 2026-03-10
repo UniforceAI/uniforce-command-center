@@ -37,9 +37,10 @@ export interface StripeProductsCatalog {
 }
 
 // ispId: o ISP selecionado no dashboard (pode diferir do ISP do JWT para super_admins)
-export function useStripeProducts(ispId?: string | null) {
+// testMode: força listagem de produtos do Stripe TEST (para onboarding em sandbox)
+export function useStripeProducts(ispId?: string | null, testMode?: boolean) {
   return useQuery<StripeProductsCatalog>({
-    queryKey: ["stripe-products", ispId],
+    queryKey: ["stripe-products", ispId, testMode],
     queryFn: async () => {
       const token = (await externalSupabase.auth.getSession()).data.session?.access_token;
       const res = await fetch(`${FUNCTIONS_URL}/stripe-list-products`, {
@@ -49,7 +50,10 @@ export function useStripeProducts(ispId?: string | null) {
           "Content-Type": "application/json",
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body: JSON.stringify({ target_isp_id: ispId ?? null }),
+        body: JSON.stringify({
+          target_isp_id: ispId ?? null,
+          ...(testMode ? { test_mode: true } : {}),
+        }),
       });
       if (!res.ok) {
         const text = await res.text().catch(() => `HTTP ${res.status}`);
@@ -61,6 +65,6 @@ export function useStripeProducts(ispId?: string | null) {
     retry: 1,
     throwOnError: false,
     refetchOnMount: true,
-    enabled: !!ispId,
+    enabled: ispId !== undefined ? !!ispId : true,
   });
 }

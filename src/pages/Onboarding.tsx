@@ -536,29 +536,26 @@ function Step2({ step1, onNext, onBack, sandboxMode }: Step2Props) {
 interface Step3Props {
   ispId: string;
   clientCount: number | null;
+  sandboxMode: boolean;
   onBack: () => void;
 }
 
-// Features vêm diretamente do Stripe (marketing_features configuradas no painel Stripe)
-// Não há features hardcoded — tudo gerenciado centralmente no Stripe.
-
-function Step3({ ispId, clientCount, onBack }: Step3Props) {
-  const [searchParams] = useSearchParams();
+function Step3({ ispId, clientCount, sandboxMode, onBack }: Step3Props) {
   const { toast } = useToast();
-  const { data: catalog, isLoading, isError, refetch } = useStripeProducts(ispId);
+  // testMode=true → stripe-list-products usa conta TEST sem consultar DB do ISP
+  const { data: catalog, isLoading, isError, refetch } = useStripeProducts(undefined, sandboxMode);
   const checkout = useStripeCheckout(ispId);
   const [lockInAccepted, setLockInAccepted] = useState(false);
   const [selectedPriceId, setSelectedPriceId] = useState<string | null>(null);
 
-  const preselectedPlan = searchParams.get("plano");
   const plans = catalog?.plans ?? [];
 
   useEffect(() => {
-    if (preselectedPlan && plans.length > 0) {
-      const match = plans.find((p) => p.monthly_price_id === preselectedPlan || p.id === preselectedPlan);
-      if (match?.monthly_price_id) setSelectedPriceId(match.monthly_price_id);
+    // Preselecionar o plano mais barato (Retention) por padrão
+    if (plans.length > 0 && !selectedPriceId) {
+      setSelectedPriceId(plans[0].monthly_price_id ?? null);
     }
-  }, [preselectedPlan, plans]);
+  }, [plans]);
 
   const handleCheckout = async (priceId: string) => {
     const contractAcceptedAt = new Date().toISOString();
@@ -606,7 +603,7 @@ function Step3({ ispId, clientCount, onBack }: Step3Props) {
       </div>
 
       {isLoading ? (
-        <div className="flex justify-center py-12">
+        <div className="flex justify-center py-16">
           <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
         </div>
       ) : isError ? (
@@ -624,25 +621,24 @@ function Step3({ ispId, clientCount, onBack }: Step3Props) {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {plans.map((plan, i) => {
             const isFirst = i === 0;
-            const isPreselected = selectedPriceId === plan.monthly_price_id
-              || (preselectedPlan && (plan.id === preselectedPlan || plan.monthly_price_id === preselectedPlan));
+            const isSelected = selectedPriceId === plan.monthly_price_id;
 
             return (
               <Card
                 key={plan.id}
                 className={`relative flex flex-col cursor-pointer transition-all ${
-                  isPreselected
+                  isSelected
                     ? "border-primary shadow-lg ring-2 ring-primary"
                     : "hover:border-primary/30"
                 }`}
                 onClick={() => setSelectedPriceId(plan.monthly_price_id ?? null)}
               >
-                {isFirst && !isPreselected && (
+                {isFirst && !isSelected && (
                   <div className="absolute -top-3 left-1/2 -translate-x-1/2">
                     <Badge className="bg-primary text-primary-foreground text-xs">Recomendado para começar</Badge>
                   </div>
                 )}
-                {isPreselected && (
+                {isSelected && (
                   <div className="absolute -top-3 left-1/2 -translate-x-1/2">
                     <Badge className="bg-green-600 text-white text-xs">Selecionado</Badge>
                   </div>
@@ -656,9 +652,9 @@ function Step3({ ispId, clientCount, onBack }: Step3Props) {
                     <span className="text-muted-foreground text-sm">/mês</span>
                   </div>
                 </CardHeader>
-                <CardContent className="flex-1 flex flex-col gap-4">
+                <CardContent className="flex-1">
                   {plan.description && (
-                    <p className="text-sm text-muted-foreground leading-relaxed flex-1">
+                    <p className="text-sm text-muted-foreground leading-relaxed">
                       {plan.description}
                     </p>
                   )}
@@ -690,10 +686,9 @@ function Step3({ ispId, clientCount, onBack }: Step3Props) {
 
           <Button
             onClick={() => {
-              const priceId = selectedPriceId ?? plans[1]?.monthly_price_id ?? plans[0]?.monthly_price_id;
-              if (priceId) handleCheckout(priceId);
+              if (selectedPriceId) handleCheckout(selectedPriceId);
             }}
-            disabled={!lockInAccepted || checkout.isPending || (!selectedPriceId && plans.length === 0)}
+            disabled={!lockInAccepted || checkout.isPending || !selectedPriceId}
             className="w-full gap-2"
           >
             {checkout.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />}
@@ -975,6 +970,7 @@ export default function Onboarding() {
           <Step3
             ispId={step2Result.isp_id}
             clientCount={step2Result.client_count}
+            sandboxMode={isSandboxMode}
             onBack={() => setStep(2)}
           />
         )}
