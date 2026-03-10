@@ -626,7 +626,6 @@ function Step3({ ispId, clientCount, onBack }: Step3Props) {
             const isFirst = i === 0;
             const isPreselected = selectedPriceId === plan.monthly_price_id
               || (preselectedPlan && (plan.id === preselectedPlan || plan.monthly_price_id === preselectedPlan));
-            const features = plan.features ?? [];
 
             return (
               <Card
@@ -634,8 +633,6 @@ function Step3({ ispId, clientCount, onBack }: Step3Props) {
                 className={`relative flex flex-col cursor-pointer transition-all ${
                   isPreselected
                     ? "border-primary shadow-lg ring-2 ring-primary"
-                    : isMiddle
-                    ? "border-primary/50 shadow-md"
                     : "hover:border-primary/30"
                 }`}
                 onClick={() => setSelectedPriceId(plan.monthly_price_id ?? null)}
@@ -660,14 +657,11 @@ function Step3({ ispId, clientCount, onBack }: Step3Props) {
                   </div>
                 </CardHeader>
                 <CardContent className="flex-1 flex flex-col gap-4">
-                  <ul className="space-y-1.5 flex-1">
-                    {features.map((f) => (
-                      <li key={f} className="flex items-center gap-2 text-sm">
-                        <CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" />
-                        {f}
-                      </li>
-                    ))}
-                  </ul>
+                  {plan.description && (
+                    <p className="text-sm text-muted-foreground leading-relaxed flex-1">
+                      {plan.description}
+                    </p>
+                  )}
                 </CardContent>
               </Card>
             );
