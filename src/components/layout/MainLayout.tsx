@@ -1,12 +1,38 @@
 import { ReactNode } from "react";
+import { useLocation } from "react-router-dom";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { AppSidebar } from "./AppSidebar";
+import { useInitialImportStatus } from "@/hooks/useInitialImportStatus";
+import { useActiveIsp } from "@/hooks/useActiveIsp";
+import { DataImportOverlay } from "@/components/shared/DataImportOverlay";
+
+// Rotas de dados que mostram o overlay durante importação inicial
+const DATA_ROUTES = [
+  "/visao-geral",
+  "/financeiro",
+  "/chamados",
+  "/crm",
+  "/cancelamentos",
+  "/nps",
+  "/churn-analytics",
+  "/churn-retencao",
+];
 
 interface MainLayoutProps {
   children: ReactNode;
 }
 
 export function MainLayout({ children }: MainLayoutProps) {
+  const location = useLocation();
+  const { ispNome, instanciaIsp } = useActiveIsp();
+  const { data: importData } = useInitialImportStatus();
+
+  const isDataRoute = DATA_ROUTES.some((r) => location.pathname.startsWith(r));
+  const showOverlay =
+    isDataRoute &&
+    importData !== undefined &&
+    importData.status !== "complete";
+
   return (
     <SidebarProvider>
       <div className="min-h-screen flex w-full">
@@ -20,6 +46,13 @@ export function MainLayout({ children }: MainLayoutProps) {
           </footer>
         </div>
       </div>
-    </SidebarProvider>);
-
+      {showOverlay && (
+        <DataImportOverlay
+          ispNome={ispNome}
+          instanciaIsp={instanciaIsp}
+          totalRecords={importData.totalRecords}
+        />
+      )}
+    </SidebarProvider>
+  );
 }
