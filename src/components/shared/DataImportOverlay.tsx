@@ -4,7 +4,9 @@
 // "Completo" = ≥ 40 min sem receber novo registro após o primeiro.
 
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import uniconIcon from "@/assets/uniforce-icon.png";
+import { Settings } from "lucide-react";
 
 const MESSAGES = [
   {
@@ -42,6 +44,7 @@ interface Props {
 }
 
 export function DataImportOverlay({ ispNome, instanciaIsp, totalRecords = 0 }: Props) {
+  const navigate = useNavigate();
   const [msgIdx, setMsgIdx] = useState(0);
   const [visible, setVisible] = useState(true);
   const [dots, setDots] = useState(1);
@@ -191,6 +194,28 @@ export function DataImportOverlay({ ispNome, instanciaIsp, totalRecords = 0 }: P
         <p className="mt-5 text-xs text-white/25 tracking-widest uppercase">
           Importação em andamento — aguarde
         </p>
+
+        {/* Botão para sair da espera e ir às configurações */}
+        <button
+          onClick={() => navigate("/configuracoes/perfil")}
+          className="mt-8 flex items-center gap-2 px-5 py-2 rounded-full text-sm font-medium transition-all"
+          style={{
+            background: "hsl(0 0% 100% / 0.06)",
+            border: "1px solid hsl(0 0% 100% / 0.12)",
+            color: "hsl(0 0% 100% / 0.45)",
+          }}
+          onMouseEnter={(e) => {
+            (e.currentTarget as HTMLButtonElement).style.background = "hsl(0 0% 100% / 0.10)";
+            (e.currentTarget as HTMLButtonElement).style.color = "hsl(0 0% 100% / 0.70)";
+          }}
+          onMouseLeave={(e) => {
+            (e.currentTarget as HTMLButtonElement).style.background = "hsl(0 0% 100% / 0.06)";
+            (e.currentTarget as HTMLButtonElement).style.color = "hsl(0 0% 100% / 0.45)";
+          }}
+        >
+          <Settings size={14} />
+          Ir para Configurações
+        </button>
       </div>
 
       <style>{`
