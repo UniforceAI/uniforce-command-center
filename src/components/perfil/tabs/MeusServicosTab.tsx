@@ -131,7 +131,7 @@ function ServiceItemCard({ item, canManage, billingSource, ispId, onCancelReques
         </div>
         <p className="text-sm text-muted-foreground">
           <span className="font-semibold text-foreground text-lg">{formatCurrency(item.monthly_amount, item.currency)}</span>
-          {" "}/mês · Assinatura recorrente via {isAsaas ? "Asaas" : "Stripe"}
+          {" "}/mês · Assinatura recorrente ativa
         </p>
       </CardHeader>
 
