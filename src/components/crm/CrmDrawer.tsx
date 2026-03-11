@@ -232,7 +232,6 @@ export function CrmDrawer({
     setActionLoading(actionType);
     try {
       await addComment(`Ação: ${label}`, "action", { action_type: actionType });
-      if (workflow) await onUpdateStatus(workflow.status_workflow);
       toast({ title: `${label} registrado` });
     } catch {toast({ title: "Erro ao registrar ação", variant: "destructive" });}
     setActionLoading(null);
