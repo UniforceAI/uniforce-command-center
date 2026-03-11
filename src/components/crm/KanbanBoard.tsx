@@ -7,6 +7,11 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel,
+  AlertDialogContent, AlertDialogDescription, AlertDialogFooter,
+  AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import {
   DndContext,
@@ -115,9 +120,11 @@ function DroppableColumn({ id, children, title, icon, color, count }: {
 }
 
 /* ── Draggable Card ── */
-function DraggableCard({ item, onSelect, onStart, onUpdate }: {
+function DraggableCard({ item, onSelect, onStart, onUpdate, onRequestPerdido }: {
   item: KanbanItem; onSelect: () => void;
-  onStart: () => void; onUpdate: (status: WorkflowStatus) => void;
+  onStart: () => void;
+  onUpdate: (status: WorkflowStatus) => void;
+  onRequestPerdido: () => void;
 }) {
   const dragId = `card-${item.cliente.isp_id}-${item.cliente.cliente_id}`;
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
@@ -127,15 +134,17 @@ function DraggableCard({ item, onSelect, onStart, onUpdate }: {
 
   return (
     <div ref={setNodeRef} {...listeners} {...attributes} className="w-full max-w-[300px]">
-      <KanbanCardVisual item={item} onSelect={onSelect} onStart={onStart} onUpdate={onUpdate} isDragging={isDragging} />
+      <KanbanCardVisual item={item} onSelect={onSelect} onStart={onStart} onUpdate={onUpdate} onRequestPerdido={onRequestPerdido} isDragging={isDragging} />
     </div>
   );
 }
 
 /* ── Card Visual — responsive for small screens ── */
-function KanbanCardVisual({ item, onSelect, onStart, onUpdate, isDragging }: {
+function KanbanCardVisual({ item, onSelect, onStart, onUpdate, onRequestPerdido, isDragging }: {
   item: KanbanItem; onSelect: () => void; onStart: () => void;
-  onUpdate: (status: WorkflowStatus) => void; isDragging?: boolean;
+  onUpdate: (status: WorkflowStatus) => void;
+  onRequestPerdido: () => void;
+  isDragging?: boolean;
 }) {
   const { cliente, score, bucket, workflow, driver } = item;
   return (
@@ -216,7 +225,7 @@ function KanbanCardVisual({ item, onSelect, onStart, onUpdate, isDragging }: {
             <Button size="sm" variant="outline" className="h-6 lg:h-7 text-[10px] lg:text-[11px] gap-1 flex-1" onClick={() => onUpdate("resolvido")}>
               <CheckCircle2 className="h-3 w-3" />Resolvido
             </Button>
-            <Button size="sm" variant="outline" className="h-6 lg:h-7 text-[10px] lg:text-[11px] gap-1 text-destructive" onClick={() => onUpdate("perdido")}>
+            <Button size="sm" variant="outline" className="h-6 lg:h-7 text-[10px] lg:text-[11px] gap-1 text-destructive" onClick={onRequestPerdido}>
               <XCircle className="h-3 w-3" />Perdido
             </Button>
           </>
@@ -254,7 +263,20 @@ export function KanbanBoard({
     resolvido: ITEMS_PER_PAGE,
     perdido: ITEMS_PER_PAGE,
   });
+  // Confirmation dialog for "Perdido" — stores the pending action to execute on confirm
+  const [perdidoConfirm, setPerdidoConfirm] = useState<{
+    clienteId: number;
+    clienteNome: string;
+    onConfirm: () => Promise<void>;
+  } | null>(null);
   const { toast } = useToast();
+
+  const requestPerdidoConfirmation = useCallback(
+    (clienteId: number, clienteNome: string, action: () => Promise<void>) => {
+      setPerdidoConfirm({ clienteId, clienteNome, onConfirm: action });
+    },
+    []
+  );
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
@@ -345,6 +367,26 @@ export function KanbanBoard({
       return;
     }
 
+    // "Perdido" requires explicit confirmation before persisting
+    if (targetStatus === "perdido") {
+      const executeDrag = async () => {
+        setPendingDrag(true);
+        try {
+          if (!item.workflow) {
+            await onStartTreatment(item.cliente);
+          }
+          await onUpdateStatus(clienteId, "perdido");
+        } catch (err) {
+          console.error("❌ Drag error:", err);
+          toast({ title: "Falha ao mover card", description: "Tente novamente.", variant: "destructive" });
+        } finally {
+          setPendingDrag(false);
+        }
+      };
+      requestPerdidoConfirmation(clienteId, item.cliente.cliente_nome || `#${clienteId}`, executeDrag);
+      return;
+    }
+
     setPendingDrag(true);
     try {
       if (!item.workflow && targetStatus === "em_tratamento") {
@@ -361,7 +403,7 @@ export function KanbanBoard({
     } finally {
       setPendingDrag(false);
     }
-  }, [allItems, onStartTreatment, onUpdateStatus, pendingDrag, toast]);
+  }, [allItems, onStartTreatment, onUpdateStatus, pendingDrag, toast, requestPerdidoConfirmation]);
 
   return (
     <DndContext
@@ -408,6 +450,19 @@ export function KanbanBoard({
                         toast({ title: "Erro ao atualizar status", variant: "destructive" });
                       }
                     }}
+                    onRequestPerdido={() =>
+                      requestPerdidoConfirmation(
+                        item.cliente.cliente_id,
+                        item.cliente.cliente_nome || `#${item.cliente.cliente_id}`,
+                        async () => {
+                          try {
+                            await onUpdateStatus(item.cliente.cliente_id, "perdido");
+                          } catch {
+                            toast({ title: "Erro ao atualizar status", variant: "destructive" });
+                          }
+                        }
+                      )
+                    }
                   />
                 ))
               )}
@@ -435,11 +490,44 @@ export function KanbanBoard({
               onSelect={() => {}}
               onStart={() => {}}
               onUpdate={() => {}}
+              onRequestPerdido={() => {}}
               isDragging
             />
           </div>
         ) : null}
       </DragOverlay>
+
+      {/* Confirmation dialog for "Perdido" — prevents accidental moves */}
+      <AlertDialog open={!!perdidoConfirm} onOpenChange={(open) => { if (!open) setPerdidoConfirm(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <XCircle className="h-5 w-5 text-destructive" />
+              Confirmar: Cliente em Churn
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Você está marcando <strong>{perdidoConfirm?.clienteNome}</strong> como{" "}
+              <strong>Perdido</strong>. O card será arquivado automaticamente após 7 dias úteis.
+              <br /><br />
+              Esta ação é reversível — você pode mover o card de volta para{" "}
+              <em>Em Tratamento</em> se necessário.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setPerdidoConfirm(null)}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive hover:bg-destructive/90"
+              onClick={async () => {
+                const action = perdidoConfirm?.onConfirm;
+                setPerdidoConfirm(null);
+                if (action) await action();
+              }}
+            >
+              Confirmar: Perdido
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </DndContext>
   );
 }
