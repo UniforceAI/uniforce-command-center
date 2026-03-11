@@ -87,6 +87,15 @@ const Financeiro = () => {
     });
     return m;
   }, [scoreMap]);
+
+  // Mapa cliente_id → status_internet (fonte: churn_status, mais completa que eventos financeiros)
+  const statusInternetMap = useMemo(() => {
+    const m = new Map<number, string>();
+    churnStatus.forEach(c => {
+      if (c.status_internet) m.set(c.cliente_id, c.status_internet);
+    });
+    return m;
+  }, [churnStatus]);
   // CRM profile drawer data
   const selectedCliente = useMemo(() => {
     if (!selectedClienteId) return null;
@@ -176,8 +185,12 @@ const Financeiro = () => {
     if (plano !== "todos") filtered = filtered.filter((e) => e.plano_nome === plano);
     if (metodo !== "todos") filtered = filtered.filter((e) => e.metodo_cobranca === metodo);
     if (filial !== "todos") filtered = filtered.filter((e) => String(e.filial_id) === filial);
+    if (statusInternet !== "todos") {
+      const codes = statusInternet === "bloqueado" ? ["B", "CM"] : [statusInternet];
+      filtered = filtered.filter((e) => codes.includes(statusInternetMap.get(e.cliente_id) ?? ""));
+    }
     return filtered;
-  }, [eventosFinanceiros, periodo, plano, metodo, filial]);
+  }, [eventosFinanceiros, periodo, plano, metodo, filial, statusInternet, statusInternetMap]);
 
   // ---- KPIs ----
   const kpis = useMemo(() => {
@@ -308,9 +321,12 @@ const Financeiro = () => {
       diasAtrasoReal: diasReal,
     }));
 
+    // Nota: statusInternet já filtrado em filteredEventos (acima) — aqui não é necessário
+    // pois clientesVencidosList usa `eventos` diretamente (sem período).
+    // Mantemos o filtro aqui para consistência da tabela quando statusInternet está ativo.
     if (statusInternet !== "todos") {
       const codes = statusInternet === "bloqueado" ? ["B", "CM"] : [statusInternet];
-      lista = lista.filter((e) => codes.includes(e.status_internet ?? ""));
+      lista = lista.filter((e) => codes.includes(statusInternetMap.get(e.cliente_id) ?? ""));
     }
 
     return lista.sort((a, b) => {
@@ -333,14 +349,15 @@ const Financeiro = () => {
           break;
         }
         case "status": cmp = a.diasAtrasoReal - b.diasAtrasoReal; break;
-        case "internet":
-          return sortDir === "desc"
-            ? (b.status_internet ?? "Z").localeCompare(a.status_internet ?? "Z")
-            : (a.status_internet ?? "Z").localeCompare(b.status_internet ?? "Z");
+        case "internet": {
+          const sia = statusInternetMap.get(a.cliente_id) ?? "Z";
+          const sib = statusInternetMap.get(b.cliente_id) ?? "Z";
+          return sortDir === "desc" ? sib.localeCompare(sia) : sia.localeCompare(sib);
+        }
       }
       return sortDir === "desc" ? -cmp : cmp;
     });
-  }, [eventos, sortColuna, sortDir, churnMap, statusInternet]);
+  }, [eventos, sortColuna, sortDir, churnMap, statusInternet, statusInternetMap]);
 
   // ---- Download ----
   const downloadTable = useCallback(async (format: "csv" | "xlsx" | "ods") => {
@@ -775,13 +792,14 @@ const Financeiro = () => {
                                 </Badge>
                               </TableCell>
                               <TableCell className="text-xs">
-                                {e.status_internet ? (
-                                  <Badge className={`border text-[10px] ${STATUS_INTERNET[e.status_internet]?.color ?? "bg-gray-100 text-gray-600"}`}>
-                                    {STATUS_INTERNET[e.status_internet]?.label ?? e.status_internet}
-                                  </Badge>
-                                ) : (
-                                  <span className="text-muted-foreground">—</span>
-                                )}
+                                {(() => {
+                                  const si = statusInternetMap.get(e.cliente_id);
+                                  return si ? (
+                                    <Badge className={`border text-[10px] ${STATUS_INTERNET[si]?.color ?? "bg-gray-100 text-gray-600"}`}>
+                                      {STATUS_INTERNET[si]?.label ?? si}
+                                    </Badge>
+                                  ) : <span className="text-muted-foreground">—</span>;
+                                })()}
                               </TableCell>
                               <TableCell className="text-center">
                                 <ActionMenu
