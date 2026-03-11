@@ -357,26 +357,22 @@ const ClientesEmRisco = () => {
     toast({ title: `Marcado como ${status}` });
   }, [updateStatus, clientesRisco, toast]);
 
+  // Auto-archive: "resolvido" após 7 dias corridos, "perdido" após 7 dias úteis.
+  // newSignal é usado APENAS para exibição (getEffectiveScore) — não para archive,
+  // pois qualquer variação diária de score dispararia archival no mesmo dia.
   useEffect(() => {
     if (!workflowMap.size) return;
     const now = new Date();
     workflowMap.forEach((wf, clienteId) => {
       const enteredAt = new Date(wf.status_entered_at ?? wf.last_action_at ?? wf.created_at);
       if (wf.status_workflow === "resolvido") {
-        const expired = countCalendarDays(enteredAt, now) >= 7;
-        const newSignal = !expired && wf.score_snapshot
-          ? hasNewSignal(
-              clientesRisco.find((c) => c.cliente_id === clienteId) ?? {} as ChurnStatus,
-              wf.score_snapshot
-            )
-          : false;
-        if (expired || newSignal) archiveWorkflow(clienteId).catch(console.error);
+        if (countCalendarDays(enteredAt, now) >= 7) archiveWorkflow(clienteId).catch(console.error);
       }
       if (wf.status_workflow === "perdido") {
         if (countBusinessDays(enteredAt, now) >= 7) archiveWorkflow(clienteId).catch(console.error);
       }
     });
-  }, [workflowMap, clientesRisco, archiveWorkflow]);
+  }, [workflowMap, archiveWorkflow]);
 
   if (isLoading) return <div className="min-h-screen bg-background"><LoadingScreen /></div>;
 
