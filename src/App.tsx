@@ -11,6 +11,7 @@ import { MainLayout } from "@/components/layout/MainLayout";
 import { ErrorBoundary } from "@/components/shared/ErrorBoundary";
 import { createLocalStoragePersister } from "@/lib/queryPersister";
 import { CacheRefreshGuard } from "@/components/CacheRefreshGuard";
+import { useLocation } from "react-router-dom";
 import Index from "./pages/Index";
 import NPS from "./pages/NPS";
 import Auth from "./pages/Auth";
@@ -59,6 +60,52 @@ const Protected = ({ children }: { children: React.ReactNode }) => (
   <ProtectedRoute><MainLayout>{children}</MainLayout></ProtectedRoute>
 );
 
+// Functional wrapper so ErrorBoundary can react to route changes via resetKey
+function AppRoutes() {
+  const location = useLocation();
+  return (
+    <ErrorBoundary resetKey={location.pathname}>
+      <ChurnScoreConfigProvider>
+        <Routes>
+          {/* Public */}
+          <Route path="/auth"          element={<Auth />} />
+          <Route path="/esqueci-senha" element={<EsqueciSenha />} />
+          <Route path="/reset-senha"   element={<ResetSenha />} />
+
+          {/* Semi-protected (no ISP required) */}
+          <Route path="/selecionar-cliente" element={<ProtectedRoute requireSelectedIsp={false}><SelecionarCliente /></ProtectedRoute>} />
+          <Route path="/onboarding"         element={<Onboarding />} />
+
+          {/* Main dashboard */}
+          <Route path="/"                 element={<Protected><VisaoGeral /></Protected>} />
+          <Route path="/visao-geral"      element={<Protected><VisaoGeral /></Protected>} />
+          <Route path="/financeiro"       element={<Protected><Financeiro /></Protected>} />
+          <Route path="/chamados"         element={<Protected><Index /></Protected>} />
+          <Route path="/crm"              element={<Protected><ClientesEmRisco /></Protected>} />
+          <Route path="/clientes-em-risco"element={<Protected><ClientesEmRisco /></Protected>} />
+          <Route path="/cancelamentos"    element={<Protected><Cancelamentos /></Protected>} />
+          <Route path="/nps"              element={<Protected><NPS /></Protected>} />
+
+          {/* Configurações */}
+          <Route path="/configuracoes"        element={<Protected><SetupProvedor /></Protected>} />
+          <Route path="/configuracoes/perfil" element={<Protected><PerfilISP /></Protected>} />
+
+          {/* Legacy redirects */}
+          <Route path="/configuracoes/churn-score" element={<Navigate to="/configuracoes" replace />} />
+          <Route path="/configuracoes/chamados"    element={<Navigate to="/configuracoes" replace />} />
+          <Route path="/configuracoes/contas"      element={<Navigate to="/configuracoes/perfil?tab=contas" replace />} />
+
+          {/* Standalone fallback for ContasAcesso (admin deep link) */}
+          <Route path="/configuracoes/contas-standalone" element={<Protected><ContasAcesso /></Protected>} />
+
+          <Route path="/eventos-debug" element={<EventosDebug />} />
+          <Route path="*" element={<NotFound />} />
+        </Routes>
+      </ChurnScoreConfigProvider>
+    </ErrorBoundary>
+  );
+}
+
 const App = () => (
   <PersistQueryClientProvider client={queryClient} persistOptions={persistOptions}>
     <TooltipProvider>
@@ -67,45 +114,7 @@ const App = () => (
       <BrowserRouter>
         <AuthProvider>
           <CacheRefreshGuard>
-            <ErrorBoundary>
-              <ChurnScoreConfigProvider>
-                <Routes>
-                  {/* Public */}
-                  <Route path="/auth"          element={<Auth />} />
-                  <Route path="/esqueci-senha" element={<EsqueciSenha />} />
-                  <Route path="/reset-senha"   element={<ResetSenha />} />
-
-                  {/* Semi-protected (no ISP required) */}
-                  <Route path="/selecionar-cliente" element={<ProtectedRoute requireSelectedIsp={false}><SelecionarCliente /></ProtectedRoute>} />
-                  <Route path="/onboarding"         element={<Onboarding />} />
-
-                  {/* Main dashboard */}
-                  <Route path="/"                 element={<Protected><VisaoGeral /></Protected>} />
-                  <Route path="/visao-geral"      element={<Protected><VisaoGeral /></Protected>} />
-                  <Route path="/financeiro"       element={<Protected><Financeiro /></Protected>} />
-                  <Route path="/chamados"         element={<Protected><Index /></Protected>} />
-                  <Route path="/crm"              element={<Protected><ClientesEmRisco /></Protected>} />
-                  <Route path="/clientes-em-risco"element={<Protected><ClientesEmRisco /></Protected>} />
-                  <Route path="/cancelamentos"    element={<Protected><Cancelamentos /></Protected>} />
-                  <Route path="/nps"              element={<Protected><NPS /></Protected>} />
-
-                  {/* Configurações */}
-                  <Route path="/configuracoes"        element={<Protected><SetupProvedor /></Protected>} />
-                  <Route path="/configuracoes/perfil" element={<Protected><PerfilISP /></Protected>} />
-
-                  {/* Legacy redirects */}
-                  <Route path="/configuracoes/churn-score" element={<Navigate to="/configuracoes" replace />} />
-                  <Route path="/configuracoes/chamados"    element={<Navigate to="/configuracoes" replace />} />
-                  <Route path="/configuracoes/contas"      element={<Navigate to="/configuracoes/perfil?tab=contas" replace />} />
-
-                  {/* Standalone fallback for ContasAcesso (admin deep link) */}
-                  <Route path="/configuracoes/contas-standalone" element={<Protected><ContasAcesso /></Protected>} />
-
-                  <Route path="/eventos-debug" element={<EventosDebug />} />
-                  <Route path="*" element={<NotFound />} />
-                </Routes>
-              </ChurnScoreConfigProvider>
-            </ErrorBoundary>
+            <AppRoutes />
           </CacheRefreshGuard>
         </AuthProvider>
       </BrowserRouter>
