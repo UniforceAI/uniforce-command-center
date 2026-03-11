@@ -55,7 +55,17 @@ import {
   ResponsiveContainer,
 } from "recharts";
 
-type SortColumn = "diasAtraso" | "valor" | "nome" | "plano" | "vencimento" | "churnScore" | "status";
+type SortColumn = "diasAtraso" | "valor" | "nome" | "plano" | "vencimento" | "churnScore" | "status" | "internet";
+
+const STATUS_INTERNET: Record<string, { label: string; color: string }> = {
+  A:  { label: "Ativo",           color: "bg-green-100 text-green-800" },
+  CA: { label: "Bloq. Cob. Auto", color: "bg-orange-100 text-orange-800" },
+  CM: { label: "Bloq. Manual",    color: "bg-orange-100 text-orange-800" },
+  B:  { label: "Bloqueado",       color: "bg-red-100 text-red-800" },
+  D:  { label: "Cancelado",       color: "bg-gray-100 text-gray-600" },
+  FA: { label: "Férias",          color: "bg-blue-100 text-blue-800" },
+  S:  { label: "Suspenso",        color: "bg-yellow-100 text-yellow-800" },
+};
 
 const Financeiro = () => {
   const navigate = useNavigate();
@@ -102,11 +112,12 @@ const Financeiro = () => {
     plano: "todos" as string,
     metodo: "todos" as string,
     filial: "todos" as string,
+    statusInternet: "todos" as string,
     ordemPlanoDecrescente: true as boolean,
     sortColuna: "churnScore" as SortColumn,
     sortDir: "desc" as "asc" | "desc",
   });
-  const { periodo, plano, metodo, filial, ordemPlanoDecrescente, sortColuna, sortDir } = filters;
+  const { periodo, plano, metodo, filial, statusInternet, ordemPlanoDecrescente, sortColuna, sortDir } = filters;
 
   const handleSortColuna = (col: SortColumn) => {
     if (sortColuna === col) {
@@ -292,10 +303,15 @@ const Financeiro = () => {
       }
     });
 
-    const lista = Array.from(porCliente.values()).map(({ evento, diasReal }) => ({
+    let lista = Array.from(porCliente.values()).map(({ evento, diasReal }) => ({
       ...evento,
       diasAtrasoReal: diasReal,
     }));
+
+    if (statusInternet !== "todos") {
+      const codes = statusInternet === "bloqueado" ? ["B", "CM"] : [statusInternet];
+      lista = lista.filter((e) => codes.includes(e.status_internet ?? ""));
+    }
 
     return lista.sort((a, b) => {
       let cmp = 0;
@@ -317,10 +333,14 @@ const Financeiro = () => {
           break;
         }
         case "status": cmp = a.diasAtrasoReal - b.diasAtrasoReal; break;
+        case "internet":
+          return sortDir === "desc"
+            ? (b.status_internet ?? "Z").localeCompare(a.status_internet ?? "Z")
+            : (a.status_internet ?? "Z").localeCompare(b.status_internet ?? "Z");
       }
       return sortDir === "desc" ? -cmp : cmp;
     });
-  }, [eventos, sortColuna, sortDir, churnMap]);
+  }, [eventos, sortColuna, sortDir, churnMap, statusInternet]);
 
   // ---- Download ----
   const downloadTable = useCallback(async (format: "csv" | "xlsx" | "ods") => {
@@ -415,6 +435,15 @@ const Financeiro = () => {
       id: "filial", label: "Filial", value: filial, onChange: (v: string) => setFilter("filial", v),
       disabled: filterOptions.filiais.length === 0,
       options: [{ value: "todos", label: "Todas" }, ...filterOptions.filiais.map(f => ({ value: f, label: `Filial ${f}` }))],
+    },
+    {
+      id: "statusInternet", label: "Internet", value: statusInternet, onChange: (v: string) => setFilter("statusInternet", v),
+      options: [
+        { value: "todos",     label: "Todos" },
+        { value: "A",         label: "Ativo" },
+        { value: "CA",        label: "Bloq. Cob. Auto" },
+        { value: "bloqueado", label: "Bloqueado (B+CM)" },
+      ],
     },
   ];
 
@@ -682,13 +711,16 @@ const Financeiro = () => {
                         <TableHead className="text-xs cursor-pointer hover:bg-muted select-none" onClick={() => handleSortColuna("status")}>
                           <div className="flex items-center gap-1">Status<SortArrow col="status" /></div>
                         </TableHead>
+                        <TableHead className="text-xs cursor-pointer hover:bg-muted select-none" onClick={() => handleSortColuna("internet")}>
+                          <div className="flex items-center gap-1">Internet<SortArrow col="internet" /></div>
+                        </TableHead>
                         <TableHead className="text-xs text-center w-[100px]">Ações</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {clientesVencidosList.length === 0 ? (
                         <TableRow>
-                          <TableCell colSpan={8} className="text-center text-muted-foreground py-8 text-sm">
+                          <TableCell colSpan={9} className="text-center text-muted-foreground py-8 text-sm">
                             Nenhum cliente inadimplente encontrado.
                           </TableCell>
                         </TableRow>
@@ -741,6 +773,15 @@ const Financeiro = () => {
                                 }>
                                   {diasAtraso > 60 ? "Crítico" : diasAtraso > 30 ? "Grave" : "Em atraso"}
                                 </Badge>
+                              </TableCell>
+                              <TableCell className="text-xs">
+                                {e.status_internet ? (
+                                  <Badge className={`border text-[10px] ${STATUS_INTERNET[e.status_internet]?.color ?? "bg-gray-100 text-gray-600"}`}>
+                                    {STATUS_INTERNET[e.status_internet]?.label ?? e.status_internet}
+                                  </Badge>
+                                ) : (
+                                  <span className="text-muted-foreground">—</span>
+                                )}
                               </TableCell>
                               <TableCell className="text-center">
                                 <ActionMenu
