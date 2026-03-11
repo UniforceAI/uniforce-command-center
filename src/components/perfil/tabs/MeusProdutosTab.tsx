@@ -174,7 +174,7 @@ export function MeusProdutosTab() {
       });
       toast({
         title: result.action === "created" ? "Plano ativado!" : "Plano atualizado!",
-        description: `${result.plan_name} — ${formatCurrency(result.plan_value)}/mês via Asaas`,
+        description: `${result.plan_name} — ${formatCurrency(result.plan_value)}/mês`,
       });
     } catch (err) {
       toast({
@@ -226,7 +226,7 @@ export function MeusProdutosTab() {
                   </p>
                 ) : (
                   <p>
-                    Uma nova assinatura será criada no Asaas com vencimento no 1º dia do próximo mês.
+                    Uma nova assinatura será criada com vencimento no 1º dia do próximo mês.
                   </p>
                 )}
                 <p className="text-xs">
@@ -288,7 +288,7 @@ export function MeusProdutosTab() {
                 <p className="text-2xl font-bold text-foreground">
                   {asaasSub.description ?? "Plano Uniforce"}
                 </p>
-                <p className="text-sm text-muted-foreground mt-0.5">Assinatura recorrente via Asaas</p>
+                <p className="text-sm text-muted-foreground mt-0.5">Assinatura recorrente ativa</p>
               </div>
               <div className="text-right">
                 <p className="text-3xl font-bold text-primary">{formatCurrency(asaasSub.value)}</p>
@@ -372,10 +372,9 @@ export function MeusProdutosTab() {
                 <CreditCard className="h-5 w-5 text-blue-600" />
               </div>
               <div>
-                <p className="text-sm font-semibold text-blue-900">Plano base via Asaas</p>
+                <p className="text-sm font-semibold text-blue-900">Selecione seu Plano</p>
                 <p className="text-sm text-blue-700 mt-1">
-                  Sua conta é gerenciada pelo Asaas. Selecione um plano abaixo para ativar sua assinatura,
-                  ou contrate add-ons via Stripe de forma independente.
+                  Selecione um plano abaixo para ativar sua assinatura.
                 </p>
                 <p className="text-xs text-blue-500 mt-2">
                   Dúvidas? Entre em contato:{" "}
@@ -516,8 +515,8 @@ export function MeusProdutosTab() {
         <h3 className="text-sm font-semibold text-foreground mb-1 flex items-center gap-2">
           {isAsaasLegacy ? (
             asaasSub
-              ? <><ArrowRightLeft className="h-4 w-4 text-primary" /> Alterar Plano via Asaas</>
-              : <><Package className="h-4 w-4 text-primary" /> Escolha seu Plano via Asaas</>
+              ? <><ArrowRightLeft className="h-4 w-4 text-primary" /> Alterar Plano</>
+              : <><Package className="h-4 w-4 text-primary" /> Escolha seu Plano</>
           ) : (
             hasActiveSub
               ? <><ArrowUpCircle className="h-4 w-4 text-primary" /> Outros Planos Disponíveis</>
@@ -525,9 +524,9 @@ export function MeusProdutosTab() {
           )}
         </h3>
 
-        {isAsaasLegacy && (
+        {isAsaasLegacy && asaasSub && (
           <p className="text-xs text-muted-foreground mb-3">
-            Precificação centralizada pelo Stripe. Ao selecionar, o plano é aplicado diretamente na sua assinatura Asaas.
+            Selecione um plano para atualizar sua assinatura. A mudança é aplicada imediatamente.
           </p>
         )}
 
