@@ -479,7 +479,7 @@ const ClientesEmRisco = () => {
               </div>
 
               <div className="flex flex-col gap-0.5">
-                <span className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">Bucket</span>
+                <span className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">Status</span>
                 <Select value={bucket} onValueChange={(v) => setFilter("bucket", v)}>
                   <SelectTrigger className="h-7 text-xs w-[100px]"><SelectValue /></SelectTrigger>
                   <SelectContent>
