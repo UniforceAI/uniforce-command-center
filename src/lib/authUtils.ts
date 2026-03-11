@@ -97,6 +97,9 @@ function deriveDomainsFromIspId(ispId: string): string[] {
  * 2. Static domain map lookup (for known ISPs)
  * 3. DB lookup: query active ISPs and try to match domain via derivation
  *    → This makes the system auto-scale as new ISPs are added to the DB
+ * 4. Registered user check: if the email was pre-created by a Uniforce admin
+ *    (any domain), authorize it. Uses a SECURITY DEFINER RPC to bypass RLS.
+ *    → Allows customers to use any email domain (gmail, corporate, etc.)
  *
  * Returns the resolved ISP info if valid, or an error message if not.
  */
@@ -148,10 +151,25 @@ export async function validateEmailDomain(
     console.warn("⚠️ DB domain lookup failed, falling back to static map:", err);
   }
 
+  // 4. Registered user check — any email domain is allowed if the user was
+  //    pre-created by a Uniforce admin. Uses SECURITY DEFINER to bypass RLS.
+  try {
+    const { data: registered } = await externalSupabase
+      .rpc("get_isp_for_registered_email", { p_email: email });
+
+    if (registered && registered.length > 0) {
+      const { isp_id, isp_nome, instancia_isp } = registered[0];
+      console.info(`✅ Email "${email}" authorized via registered user lookup (ISP: ${isp_id})`);
+      return { valid: true, isp_id, isp_nome, instancia_isp };
+    }
+  } catch (err) {
+    console.warn("⚠️ Registered user lookup failed:", err);
+  }
+
   return {
     valid: false,
     error:
-      "Domínio de email não autorizado. Entre em contato com o administrador da Uniforce.",
+      "Email não autorizado. Entre em contato com o administrador da Uniforce.",
   };
 }
 
