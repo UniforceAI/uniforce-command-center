@@ -191,6 +191,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const mountedRef = useRef(true);
   const profileLoadedRef = useRef(false);
   const initialLoadDoneRef = useRef(false);
+  const profileRef = useRef<AuthProfile | null>(null);
 
   const isSuperAdmin = !!(user?.email && isSuperAdminEmail(user.email));
 
@@ -217,6 +218,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!mountedRef.current) return;
 
       setProfile(p);
+      profileRef.current = p;
       setAvailableIsps(isps);
       profileLoadedRef.current = true;
 
@@ -248,7 +250,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const domain = emailDomain(email);
       const fallback = DOMAIN_ISP_FALLBACK[domain];
       if (fallback) {
-        setProfile({
+        const fallbackProfile = {
           user_id: targetUser.id,
           isp_id: fallback.isp_id,
           isp_nome: fallback.isp_nome,
@@ -256,10 +258,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           full_name: email.split("@")[0],
           email,
           role: isSuperAdminEmail(email) ? "super_admin" : "viewer",
-        });
+        };
+        setProfile(fallbackProfile);
+        profileRef.current = fallbackProfile;
         profileLoadedRef.current = true;
         setError(null);
-      } else {
+      } else if (!profileRef.current) {
+        // Only show error if we don't already have a valid profile loaded
         setError("Erro ao carregar perfil do usuário.");
       }
     }
@@ -309,15 +314,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           return;
         }
 
-        // SIGNED_IN (after initial load already ran): reload profile
-        // Use setTimeout(0) to dispatch AFTER the callback completes
+        // SIGNED_IN (after initial load already ran): silently reload profile
+        // No setIsLoading(true) — avoids unmounting the page during background refresh.
+        // Use setTimeout(0) to dispatch AFTER the callback completes (prevents deadlock).
         if (initialLoadDoneRef.current) {
-          setIsLoading(true);
           setTimeout(() => {
             if (!mountedRef.current) return;
-            loadFullProfile(newSession.user).finally(() => {
-              if (mountedRef.current) setIsLoading(false);
-            });
+            loadFullProfile(newSession.user);
           }, 0);
         }
       }
