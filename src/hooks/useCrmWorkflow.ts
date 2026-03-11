@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useActiveIsp } from "@/hooks/useActiveIsp";
 import { callCrmApi } from "@/lib/crmApi";
@@ -132,26 +132,38 @@ export function useCrmWorkflow() {
   const archiveWorkflow = useCallback(
     async (clienteId: number) => {
       if (!ispId) throw new Error("No ISP");
+      // Snapshot current record for rollback in case the backend call fails
+      const snapshot = queryClient.getQueryData<CrmWorkflowRecord[]>(queryKey);
       // Optimistic: remove from cache immediately
       queryClient.setQueryData<CrmWorkflowRecord[]>(queryKey, (old = []) =>
         old.filter((r) => r.cliente_id !== clienteId)
       );
-      // Persist
-      await callCrmApi({ action: "archive_workflow", isp_id: ispId, cliente_id: clienteId });
-      // Audit comment (fire-and-forget)
-      callCrmApi({
-        action: "add_comment",
-        isp_id: ispId,
-        cliente_id: clienteId,
-        body: "Card arquivado automaticamente.",
-        type: "status_change",
-        meta: { archived: true },
-      }).catch(console.error);
+      try {
+        // Persist
+        await callCrmApi({ action: "archive_workflow", isp_id: ispId, cliente_id: clienteId });
+        // Audit comment (fire-and-forget)
+        callCrmApi({
+          action: "add_comment",
+          isp_id: ispId,
+          cliente_id: clienteId,
+          body: "Card arquivado automaticamente.",
+          type: "status_change",
+          meta: { archived: true },
+        }).catch(console.error);
+      } catch (err) {
+        // Rollback optimistic removal so the card reappears
+        if (snapshot) queryClient.setQueryData(queryKey, snapshot);
+        throw err;
+      }
     },
     [ispId, queryClient, queryKey]
   );
 
-  const workflowMap = new Map(records.map((r) => [r.cliente_id, r]));
+  // Memoized so consumers don't re-render on every query re-render
+  const workflowMap = useMemo(
+    () => new Map(records.map((r) => [r.cliente_id, r])),
+    [records]
+  );
 
   const refetch = useCallback(() => {
     queryClient.invalidateQueries({ queryKey });
