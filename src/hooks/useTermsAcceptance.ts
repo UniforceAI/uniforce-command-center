@@ -12,12 +12,14 @@ export function useTermsAcceptance() {
   const { ispId } = useActiveIsp();
   const { data: role } = useUserRole();
 
-  const isAdmin = role === "admin" || role === "super_admin";
+  // ToS é obrigação legal do admin do ISP, não do super_admin (manutenção Uniforce).
+  // super_admin NÃO deve aceitar em nome do cliente — poluiria o registro legal.
+  const isIspAdmin = role === "admin";
 
   return useQuery({
     queryKey: ["tos-acceptance", ispId],
     staleTime: 30 * 60 * 1000,
-    enabled: !!ispId && isAdmin,
+    enabled: !!ispId && isIspAdmin,
     queryFn: async () => {
       // 1. Buscar versão atual dos Termos de Serviço
       const { data: current, error: tosErr } = await externalSupabase
