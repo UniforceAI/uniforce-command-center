@@ -84,11 +84,12 @@ const ClientesEmRisco = () => {
     cidade: "todos" as string,
     bairro: "todos" as string,
     periodo: "todos" as string,
+    statusInternet: "todos" as string,
     viewMode: "kanban" as "lista" | "kanban",
     sortField: "score" as SortField,
     sortDir: "desc" as SortDir,
   });
-  const { scoreMin, bucket, plano, cidade, bairro, periodo, viewMode, sortField, sortDir } = filters;
+  const { scoreMin, bucket, plano, cidade, bairro, periodo, statusInternet, viewMode, sortField, sortDir } = filters;
 
   const [selectedCliente, setSelectedCliente] = useState<ChurnStatus | null>(null);
 
@@ -172,6 +173,10 @@ const ClientesEmRisco = () => {
     if (plano !== "todos") f = f.filter((c) => c.plano_nome === plano);
     if (cidade !== "todos") f = f.filter((c) => c.cliente_cidade === cidade);
     if (bairro !== "todos") f = f.filter((c) => c.cliente_bairro === bairro);
+    if (statusInternet !== "todos") {
+      const codes = statusInternet === "bloqueado" ? ["B", "CM"] : [statusInternet];
+      f = f.filter((c) => codes.includes(c.status_internet ?? ""));
+    }
 
     // Apply sort
     const dir = sortDir === "desc" ? -1 : 1;
@@ -210,7 +215,7 @@ const ClientesEmRisco = () => {
     });
 
     return f;
-  }, [clientesRisco, scoreMin, bucket, plano, cidade, bairro, periodo, dataMaxDataset, getScoreTotalReal, getBucket, sortField, sortDir, chamadosPorClienteMap]);
+  }, [clientesRisco, scoreMin, bucket, plano, cidade, bairro, periodo, statusInternet, dataMaxDataset, getScoreTotalReal, getBucket, sortField, sortDir, chamadosPorClienteMap]);
 
   const kpis = useMemo(() => {
     const totalRisco = filtered.length;
@@ -222,7 +227,7 @@ const ClientesEmRisco = () => {
     return { totalRisco, mrrRisco, ltvRisco, scoreMedio, bloqueadosCobranca };
   }, [filtered, getScoreTotalReal]);
 
-  const hasActiveFilters = scoreMin > 0 || bucket !== "todos" || plano !== "todos" || cidade !== "todos" || bairro !== "todos" || periodo !== "todos";
+  const hasActiveFilters = scoreMin > 0 || bucket !== "todos" || plano !== "todos" || cidade !== "todos" || bairro !== "todos" || periodo !== "todos" || statusInternet !== "todos";
 
   // Chamados for selected client
   const selectedClienteChamados = useMemo(() => {
@@ -524,6 +529,19 @@ const ClientesEmRisco = () => {
                   </Select>
                 </div>
               )}
+
+              <div className="flex flex-col gap-0.5">
+                <span className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">Internet</span>
+                <Select value={statusInternet} onValueChange={(v) => setFilter("statusInternet", v)}>
+                  <SelectTrigger className="h-7 text-xs w-[130px]"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="todos">Todos</SelectItem>
+                    <SelectItem value="A">Ativo</SelectItem>
+                    <SelectItem value="CA">Bloq. Cob. Auto</SelectItem>
+                    <SelectItem value="bloqueado">Bloqueado (B+CM)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
 
               {hasActiveFilters && (
                 <Button variant="ghost" size="sm" className="h-7 text-xs gap-1 text-muted-foreground" onClick={resetFilters}>
