@@ -1,4 +1,5 @@
-import { useState, useMemo } from "react";
+import { useMemo } from "react";
+import { usePageFilters } from "@/hooks/usePageFilters";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -51,15 +52,19 @@ export function RiskClientsTable({
   onSelectCliente,
   onNavigate,
 }: RiskClientsTableProps) {
-  const [sortKey, setSortKey] = useState<SortKey>("score");
-  const [sortDir, setSortDir] = useState<SortDir>("desc");
+  const { filters: sortState, setFilter: setSortState } = usePageFilters(
+    "visao-geral-risk-table",
+    { sortKey: "score" as SortKey, sortDir: "desc" as SortDir }
+  );
+  const sortKey = sortState.sortKey;
+  const sortDir = sortState.sortDir;
 
   const toggleSort = (key: SortKey) => {
     if (sortKey === key) {
-      setSortDir(d => d === "desc" ? "asc" : "desc");
+      setSortState("sortDir", sortDir === "desc" ? "asc" : "desc");
     } else {
-      setSortKey(key);
-      setSortDir("desc");
+      setSortState("sortKey", key);
+      setSortState("sortDir", "desc");
     }
   };
 
