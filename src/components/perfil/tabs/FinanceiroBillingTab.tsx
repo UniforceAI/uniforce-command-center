@@ -150,7 +150,7 @@ export function FinanceiroBillingTab() {
             ) : (
               <p className="text-base font-semibold text-foreground">
                 {isAsaas
-                  ? (asaasSub?.description ?? "Plano Asaas")
+                  ? (asaasSub?.description ?? "Plano Ativo")
                   : (sub?.product_name ?? "—")}
               </p>
             )}
@@ -196,7 +196,7 @@ export function FinanceiroBillingTab() {
                 Histórico de Cobranças
               </CardTitle>
               <CardDescription className="mt-0.5">
-                Cobranças da sua assinatura via Asaas
+                Histórico de cobranças da sua assinatura
               </CardDescription>
             </div>
           </CardHeader>
