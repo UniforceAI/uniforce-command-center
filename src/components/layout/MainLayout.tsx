@@ -52,7 +52,7 @@ export function MainLayout({ children }: MainLayoutProps) {
         <DataImportOverlay
           ispNome={ispNome}
           instanciaIsp={instanciaIsp}
-          totalRecords={importData.totalRecords}
+          totalRecords={importData?.totalRecords ?? 0}
         />
       )}
     </SidebarProvider>
