@@ -7,11 +7,9 @@
 import { externalSupabase } from "@/integrations/supabase/external-client";
 
 export async function callCrmApi(payload: Record<string, any>) {
-  // 1. Ensure a valid session token
-  const { data: sessionData } = await externalSupabase.auth.refreshSession();
-  const token =
-    sessionData?.session?.access_token ??
-    (await externalSupabase.auth.getSession()).data.session?.access_token;
+  // 1. Ensure a valid session token (getSession is passive — no auth events fired)
+  const { data: sessionData } = await externalSupabase.auth.getSession();
+  const token = sessionData?.session?.access_token;
 
   if (!token) {
     throw new Error("Sessão expirada. Faça login novamente.");
