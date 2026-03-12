@@ -1,7 +1,8 @@
 # Implementação Session Infrastructure v1
-**Data**: 2026-03-11
+**Data**: 2026-03-11 (criação) | 2026-03-12 (v1.3, v1.4)
 **Status**: Aplicado em produção (yqdqmudsnjhixtxldqwi)
-**Versão frontend**: session-infra-v1.2 (revisão final)
+**Versão frontend**: session-infra-v1.4 (fix persistência filtros)
+**TanStack Query buster**: v11
 
 ---
 
@@ -54,20 +55,48 @@ ON CONFLICT (domain) DO NOTHING;
 
 **Problema**: Filtros sumiam ao trocar de tab, Chrome freezar aba, ou após login no dia seguinte.
 
-**Solução implementada** (`/tmp/uniforce-cc/src/hooks/usePageFilters.ts`):
+**Solução implementada** (`/tmp/uniforce-lovable/src/hooks/usePageFilters.ts` — v1.4):
 - Storage: localStorage com chave `uf_filters_v3_{ispId}_{pageKey}`
 - Session-aware: entrada inclui `_session_ts`; filtros de sessão anterior são descartados
 - Cross-tab sync: `BroadcastChannel("uf_filters")` sincroniza em tempo real entre tabs
-- F5/reload: `isPageReload()` → reset para defaults (mantém comportamento original)
+- F5/reload: IIFE `initSession()` no module load grava novo `SESSION_START_KEY` → `readFromStorage` descarta filtros antigos via comparação `_session_ts < sessionStart`
+
+**⚠️ BUG CRÍTICO corrigido em v1.4** (commit `c47376e`, 2026-03-12):
+
+A versão anterior usava `isPageReload()` (via `performance.getEntriesByType("navigation")`) no `useState` initializer para decidir se resetava filtros. Porém, em uma SPA (React Router), o resultado de `performance.getEntriesByType("navigation")` **NUNCA muda** — ele retorna o tipo da carga **inicial** da página. Consequência: após qualquer F5, **toda navegação SPA resetava filtros** porque `isPageReload()` retornava `true` em cada component mount subsequente.
+
+**Fix**: `isPageReload()` removido do `useState` initializer. Substituído por IIFE `initSession()` que roda **uma vez** no module load: se foi reload, grava novo timestamp em `uf_session_start`. A função `readFromStorage()` já fazia o stale check correto via `_session_ts < sessionStart` — agora funciona porque `sessionStart` é efetivamente inicializado.
+
+**Mecanismo de invalidação (v1.4)**:
+```
+F5/Reload → initSession() grava novo sessionStart → filtros salvos com _session_ts antigo → readFromStorage retorna defaults
+SPA nav → sessionStart inalterado → readFromStorage lê filtros salvos → PERSISTEM
+Browser tab switch → componente não desmonta → estado React mantido → PERSISTEM
+Novo login → novo sessionStart → filtros da sessão anterior descartados
+```
 
 **Comportamento esperado após aplicar**:
 | Cenário | Resultado |
 |---|---|
-| Trocar de tab | Filtros mantidos ✅ |
+| Navegar entre páginas do dashboard (SPA) | Filtros mantidos ✅ |
+| Trocar de browser tab e voltar | Filtros mantidos ✅ |
 | Reload (F5) | Filtros resetados ✅ |
 | Retorno no dia seguinte (novo login) | Filtros resetados ✅ |
 | Chrome freeze/unfreeze de aba | Filtros mantidos ✅ |
 | Duas abas abertas, filtro muda numa | Outra tab atualiza em tempo real ✅ |
+
+**Páginas beneficiadas** (9 no total — todas usam `usePageFilters`):
+| Página | pageKey | Filtros persistidos |
+|---|---|---|
+| Visão Geral | `visao-geral` | periodo, bairro, cidade, bucket, geoMetric |
+| Financeiro | `financeiro` | periodo, plano, metodo, filial, statusInternet, sorting |
+| CRM / Clientes em Risco | `crm` | scoreMin, bucket, plano, cidade, bairro, periodo, statusInternet, viewMode, ownerFilter, sorting |
+| Cancelamentos | `cancelamentos` | plano, cidade, bairro, bucket, churnDimension, periodo, cohortMetric, sorting |
+| NPS | `nps` | periodo, tipoNPS, classificacao |
+| Chamados | `chamados-frequentes` | periodo, status, urgencia, setor |
+| Churn Analytics | `chamados-analytics` | plano, cidade, bairro, bucket |
+| Churn Retenção | `churn-retencao` | periodo, uf, plano, riscoBucket, filial |
+| Risk Table (Visão Geral) | `visao-geral-risk-table` | sortKey, sortDir |
 
 ---
 
@@ -164,11 +193,12 @@ Infraestrutura criada que suporta:
 
 | Arquivo | Local | Ação |
 |---|---|---|
-| `/tmp/uniforce-cc/src/contexts/AuthContext.tsx` | `src/contexts/AuthContext.tsx` | Substituir completo |
-| `/tmp/uniforce-cc/src/lib/authUtils.ts` | `src/lib/authUtils.ts` | Substituir completo |
-| `/tmp/uniforce-cc/src/hooks/usePageFilters.ts` | `src/hooks/usePageFilters.ts` | Substituir/criar |
-| `/tmp/uniforce-cc/src/components/BillingGuard.tsx` | `src/components/BillingGuard.tsx` | Criar (novo) |
-| `/tmp/uniforce-cc/src/components/PATCHES.md` | — | Guia de patches manuais |
+| `src/contexts/AuthContext.tsx` | `src/contexts/AuthContext.tsx` | Substituir completo | ✅ Aplicado |
+| `src/lib/authUtils.ts` | `src/lib/authUtils.ts` | Substituir/criar | ✅ Aplicado |
+| `src/hooks/usePageFilters.ts` | `src/hooks/usePageFilters.ts` | **v1.4** (fix filtros SPA) | ✅ Commit `c47376e` |
+| `src/components/BillingGuard.tsx` | `src/components/BillingGuard.tsx` | Criar (novo) | ✅ Aplicado |
+| `src/hooks/useTeamMembers.ts` | `src/hooks/useTeamMembers.ts` | Novo (CRM owner avatars) | ✅ Commit `1f0854d` |
+| `src/App.tsx` | `src/App.tsx` | Buster v11 | ✅ Commit `c47376e` |
 
 ---
 
@@ -180,11 +210,21 @@ Infraestrutura criada que suporta:
    - Dashboard deve carregar sem quebrar
    - Trocar de página → sessão mantida
 
-2. Filtros cross-tab:
+2. Filtros navegação SPA (TESTE MAIS IMPORTANTE — bug v1.4):
+   - Abrir /financeiro → aplicar filtro "plano = Fibra 100"
+   - Navegar para /crm (menu lateral)
+   - Voltar para /financeiro → filtro "Fibra 100" DEVE estar aplicado
+   - Repetir com todas as 9 páginas que usam filtros
+   - Verificar: DevTools → Application → localStorage → buscar uf_filters_v3_*
+
+2b. Filtros cross-tab:
    - Aplicar filtro em Financeiro
    - Abrir nova aba com o mesmo dashboard
    - Navegar de volta → filtro permanece
-   - Verificar: DevTools → Application → localStorage → buscar uf_filters_v3_*
+
+2c. Filtros após F5:
+   - Aplicar filtro → F5 → filtro DEVE resetar (nova sessão)
+   - Após F5, navegar entre páginas → filtros definidos PÓS-F5 DEVEM persistir
 
 3. Filtros entre dias:
    - Aplicar filtro
@@ -278,3 +318,35 @@ ON CONFLICT (domain) DO NOTHING;
 | `refreshProfile()` no BillingGuard sem `.catch()` | Média | BillingGuard.tsx | `.catch()` adicionado — evita guard travado em silêncio |
 | `ensureUserProfile` inseria `viewer` mesmo se admin já atribuído | Alta | authUtils.ts | Check explícito de role existente antes do insert |
 | `session-infra-v1.sql` tinha `USING(true)` vulnerável + funções ausentes | Alta | session-infra-v1.sql | RLS corrigido + `get_isp_by_email_domain()` + `refresh_billing_blocked()` adicionados |
+
+### Correções v1.3 (2026-03-12, commit `ec6a000`):
+
+| Bug | Severidade | Arquivo | Fix |
+|---|---|---|---|
+| `usePageFilters` mudou API para `{pageKey,ispId,defaults}` mas TODOS os callers usavam `("pageKey", defaults)` | **Crítica** | usePageFilters.ts | Aceitar ambas as formas; `ispId` via `useActiveIsp()` como fallback |
+| `defaults=undefined` → crash em TODAS as páginas ao destruturar `filters` | **Crítica** | usePageFilters.ts | `safeDefaults: T = defaults ?? ({} as T)` |
+
+### Correções v1.4 (2026-03-12, commit `c47376e`):
+
+| Bug | Severidade | Arquivo | Fix |
+|---|---|---|---|
+| `isPageReload()` retornava `true` para TODOS os mounts após F5 (SPA navigation type nunca muda) → filtros resetados a cada navegação entre páginas | **Crítica** | usePageFilters.ts | IIFE `initSession()` no module load grava `SESSION_START_KEY`; `isPageReload()` removido do `useState` init; `readFromStorage` faz stale check via `_session_ts < sessionStart` |
+| `SESSION_START_KEY` nunca era escrito — `getSessionStart()` sempre retornava 0 → `_session_ts` comparison nunca invalidava filtros de sessão anterior | **Alta** | usePageFilters.ts | `initSession()` grava timestamp no load; `writeToStorage` usa `sessionStart` real |
+| Buster `v10` não invalidava cache de browsers com filtros broken | **Média** | App.tsx | Buster v10 → v11 |
+
+---
+
+## Anti-Regressão: Regras para Futuras Alterações em usePageFilters
+
+> **NUNCA usar `performance.getEntriesByType("navigation")` em lógica condicional dentro de hooks React.**
+> Em SPAs, esse valor reflete a carga inicial da página e NUNCA muda durante a sessão.
+> Usar module-level initialization (IIFE) + timestamp comparison em localStorage.
+
+> **Ao alterar a assinatura do hook, manter retrocompatibilidade** com a forma legada `usePageFilters("pageKey", defaults)`.
+> 9 callers no codebase usam essa forma. Quebrá-la causa crash em TODAS as páginas.
+
+> **Sempre bumpar o buster em App.tsx** ao alterar o formato de dados persistidos.
+> Browsers com JS antigo podem ter localStorage com schema incompatível.
+
+> **Testar navegação SPA (não apenas F5)**: aplicar filtro → navegar para outra página → voltar → filtro deve persistir.
+> Este é o cenário que o bug v1.4 quebrava e que os clientes reportaram repetidamente.
