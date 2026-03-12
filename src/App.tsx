@@ -63,7 +63,7 @@ const HEAVY_QUERY_PREFIXES = new Set([
 const persistOptions = {
   persister,
   maxAge: TEN_HOURS,
-  buster: "v10",
+  buster: "v11",
   dehydrateOptions: {
     shouldDehydrateQuery: (query: { queryKey: readonly unknown[]; state: { status: string } }) => {
       // Preservar default do TanStack: não persistir queries sem dados (pending)

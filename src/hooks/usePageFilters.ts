@@ -1,8 +1,7 @@
 // src/hooks/usePageFilters.ts
-// VERSÃO: session-infra-v1.2 (revisão final)
+// VERSÃO: session-infra-v1.4 (fix persistência filtros)
 // Correções v1.1:
 //   - BroadcastChannel: flag de loop prevention usa origem por ID (não flag global assíncrona)
-//   - isPageReload() fallback deprecated removido; apenas getEntriesByType
 //   - readFromStorage mescla tipado com validação de undefined
 //   - Tipo de message do BroadcastChannel validado antes de aplicar
 // Correções v1.2:
@@ -12,6 +11,13 @@
 //   - Suporte retroativo à forma de 2 args: usePageFilters("pageKey", defaults)
 //   - ispId resolvido automaticamente via useActiveIsp quando não informado explicitamente
 //   - Evita crash em TODOS os callers que ainda usam a API antiga (filters = undefined → crash)
+// Correções v1.4 (fix crítico — 2026-03-12):
+//   - BUG: isPageReload() usa performance.getEntriesByType("navigation") que retorna o tipo
+//     da carga INICIAL da página. Em uma SPA, esse valor NUNCA muda — se o usuário carregou
+//     com F5, isPageReload() retorna true para TODOS os component mounts subsequentes,
+//     resetando filtros toda vez que o usuário navega entre páginas via React Router.
+//   - FIX: Inicializar SESSION_START_KEY no module load. readFromStorage já compara
+//     _session_ts < sessionStart corretamente — isPageReload() removido do useState init.
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useActiveIsp } from "@/hooks/useActiveIsp";
@@ -74,19 +80,34 @@ function storageKey(ispId: string, pageKey: string): string {
   return `uf_filters_${STORAGE_VERSION}_${ispId}_${pageKey}`;
 }
 
-function isPageReload(): boolean {
-  try {
-    const entries = performance.getEntriesByType("navigation");
-    if (entries.length > 0) {
-      return (entries[0] as PerformanceNavigationTiming).type === "reload";
-    }
-  } catch { /* SSR or unsupported */ }
-  return false;
-}
-
 function getSessionStart(): number {
   return parseInt(lsGet(SESSION_START_KEY) ?? "0", 10) || 0;
 }
+
+// ─────────────────────────────────────────────────────────────
+// Session initialization (module-level, runs once on import)
+// ─────────────────────────────────────────────────────────────
+// Se a página foi carregada via F5/reload, inicia uma nova sessão.
+// Filtros salvos com _session_ts anterior ao novo sessionStart serão
+// descartados por readFromStorage (stale check).
+// Em navegação SPA normal (sem reload), reutiliza a sessão existente.
+(function initSession() {
+  try {
+    const nav = performance.getEntriesByType(
+      "navigation"
+    )[0] as PerformanceNavigationTiming | undefined;
+    const wasReload = nav ? nav.type === "reload" : false;
+
+    if (wasReload || !getSessionStart()) {
+      lsSet(SESSION_START_KEY, String(Date.now()));
+    }
+  } catch {
+    // SSR ou browser sem suporte — inicia sessão se não existir
+    if (!getSessionStart()) {
+      lsSet(SESSION_START_KEY, String(Date.now()));
+    }
+  }
+})();
 
 function readFromStorage<T extends FilterMap>(
   key: string,
@@ -179,9 +200,11 @@ export function usePageFilters<T extends FilterMap>(
   // o useEffect de re-sync também roda no primeiro mount — sem guard causaria render extra.
   const isInitialMountRef = useRef(true);
 
-  // Inicializar estado: reset em reload ou sessão nova; restaurar caso contrário
+  // Inicializar estado: restaurar filtros do localStorage se existem na sessão atual.
+  // Em reload (F5), initSession() já atualizou sessionStart — readFromStorage descarta
+  // filtros da sessão anterior automaticamente via _session_ts < sessionStart.
   const [filters, setFiltersState] = useState<T>(() => {
-    if (!key || isPageReload()) return stableDefaultsRef.current;
+    if (!key) return stableDefaultsRef.current;
     return readFromStorage(key, stableDefaultsRef.current, getSessionStart());
   });
 
