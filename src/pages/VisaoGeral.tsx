@@ -877,16 +877,27 @@ const VisaoGeral = () => {
   }, [mapEventos, getChamadosPorCliente, scoreMap, canceladoMap]);
 
   const allMapBounds = useMemo(() => {
-    const pts = mapData.filter(p => p.geo_lat && p.geo_lng && !isNaN(p.geo_lat) && !isNaN(p.geo_lng));
+    // P2/P98 percentile bounds — resistente a outliers (coordenadas erradas no ERP dos ISPs)
+    // Fix: anterior usava min/max bruto → outliers do igp-fibra/agy-telecom inflavam bbox para 20°×14°
+    const BRAZIL = { minLat: -34, maxLat: 6, minLng: -74, maxLng: -28 };
+    const pts = mapData.filter((p: any) =>
+      p.geo_lat && p.geo_lng && !isNaN(p.geo_lat) && !isNaN(p.geo_lng) &&
+      p.geo_lat >= BRAZIL.minLat && p.geo_lat <= BRAZIL.maxLat &&
+      p.geo_lng >= BRAZIL.minLng && p.geo_lng <= BRAZIL.maxLng
+    );
     if (pts.length === 0) return undefined;
-    let minLat = 90, maxLat = -90, minLng = 180, maxLng = -180;
-    pts.forEach((p: any) => {
-      minLat = Math.min(minLat, p.geo_lat); maxLat = Math.max(maxLat, p.geo_lat);
-      minLng = Math.min(minLng, p.geo_lng); maxLng = Math.max(maxLng, p.geo_lng);
-    });
-    const latPad = (maxLat - minLat) * 0.1 || 0.01;
-    const lngPad = (maxLng - minLng) * 0.1 || 0.01;
-    return { minLat: minLat - latPad, maxLat: maxLat + latPad, minLng: minLng - lngPad, maxLng: maxLng + lngPad };
+    const lats = pts.map((p: any) => p.geo_lat as number).sort((a: number, b: number) => a - b);
+    const lngs = pts.map((p: any) => p.geo_lng as number).sort((a: number, b: number) => a - b);
+    const n = pts.length;
+    const lo = n >= 50 ? 0.02 : 0.0;
+    const hi = n >= 50 ? 0.98 : 1.0;
+    const p2lat  = lats[Math.floor(n * lo)];
+    const p98lat = lats[Math.min(Math.floor(n * hi) - 1, n - 1)];
+    const p2lng  = lngs[Math.floor(n * lo)];
+    const p98lng = lngs[Math.min(Math.floor(n * hi) - 1, n - 1)];
+    const latMargin = Math.max((p98lat - p2lat) * 0.60, 0.24);
+    const lngMargin = Math.max((p98lng - p2lng) * 0.60, 0.24);
+    return { minLat: p2lat - latMargin, maxLat: p98lat + latMargin, minLng: p2lng - lngMargin, maxLng: p98lng + lngMargin };
   }, [mapData]);
 
   const formatCurrency = (value: number) => {
