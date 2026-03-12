@@ -217,25 +217,60 @@ const VisaoGeral = () => {
     };
   }, [eventos]);
 
-  // Filtered events (aplica cidade, bairro, plano, filial)
+  // Usar data de hoje como referência para filtros de período (previsível e estável)
+  // Mesmo padrão de Cancelamentos.tsx e Financeiro.tsx.
+  const maxDate = useMemo(() => new Date(), []);
+
+  // Data limite do período — null quando "todos". UTC midnight para campos date-only.
+  const dataLimite = useMemo(() => {
+    if (periodo === "todos") return null;
+    const d = new Date(maxDate.getTime() - parseInt(periodo) * 24 * 60 * 60 * 1000);
+    d.setUTCHours(0, 0, 0, 0);
+    return d;
+  }, [periodo, maxDate]);
+
+  // ─────────────────────────────────────────────────────────────
+  // Filtered events — aplica TODOS os filtros (período + cidade + bairro + plano + filial).
+  // Padrão idêntico ao Financeiro.tsx: período filtra por event_datetime >= dataLimite.
+  // ─────────────────────────────────────────────────────────────
   const filteredEventos = useMemo(() => {
     let filtered = [...eventos] as Evento[];
+    if (dataLimite) {
+      filtered = filtered.filter((e) => {
+        const d = e.event_datetime ? new Date(e.event_datetime) : e.created_at ? new Date(e.created_at) : null;
+        if (!d || isNaN(d.getTime())) return true;
+        return d >= dataLimite;
+      });
+    }
     if (cidade !== "todos") filtered = filtered.filter((e) => e.cliente_cidade === cidade);
     if (bairro !== "todos") filtered = filtered.filter((e) => e.cliente_bairro === bairro);
     if (plano !== "todos") filtered = filtered.filter((e) => e.plano_nome === plano);
     if (filial !== "todos") filtered = filtered.filter((e) => String(e.filial_id) === filial);
     return filtered;
-  }, [eventos, cidade, bairro, plano, filial]);
+  }, [eventos, dataLimite, cidade, bairro, plano, filial]);
 
   // ─────────────────────────────────────────────────────────────
   // Filtered churnStatus — fonte centralizada para TODAS as métricas baseadas em churn.
-  // Aplica cidade, bairro, plano + filial (via cross-reference com filteredEventos,
-  // pois churn_status não possui coluna filial_id).
-  // NÃO aplica período (dataLimiteChurn) — cada useMemo aplica conforme necessário.
+  // Aplica TODOS os filtros: período + cidade + bairro + plano + filial.
+  // Período: cancelados filtram por data_cancelamento, ativos por updated_at.
+  // Padrão idêntico ao Cancelamentos.tsx (data_cancelamento com UTC midnight).
   // ─────────────────────────────────────────────────────────────
   const filteredChurnStatus = useMemo(() => {
     let result = churnStatus;
 
+    if (dataLimite) {
+      result = result.filter(cs => {
+        // Cancelados: filtrar por data_cancelamento (mesmo padrão de Cancelamentos.tsx)
+        if (cs.status_churn === "cancelado") {
+          if (!cs.data_cancelamento) return false;
+          const d = new Date(cs.data_cancelamento);
+          return !isNaN(d.getTime()) && d >= dataLimite;
+        }
+        // Ativos/risco: SEMPRE incluir — são estado atual, não histórico.
+        // (updated_at é timestamp do cron batch, não indica atividade do cliente)
+        return true;
+      });
+    }
     if (cidade !== "todos") {
       result = result.filter(cs => cidadeMatches(cs.cliente_cidade, cidade));
     }
@@ -254,53 +289,42 @@ const VisaoGeral = () => {
     }
 
     return result;
-  }, [churnStatus, cidade, bairro, plano, filial, filteredEventos]);
+  }, [churnStatus, dataLimite, cidade, bairro, plano, filial, filteredEventos]);
 
-  // Snapshot date
+  // Snapshot date (data do evento mais recente — indicador de freshness dos dados)
   const snapshotDate = useMemo(() => {
     if (eventos.length === 0) return null;
-    let maxDate = new Date(0);
+    let latest = new Date(0);
     eventos.forEach(e => {
       const d = new Date(e.event_datetime || e.created_at);
-      if (!isNaN(d.getTime()) && d > maxDate) maxDate = d;
+      if (!isNaN(d.getTime()) && d > latest) latest = d;
     });
-    return maxDate.getTime() > 0 ? maxDate : null;
+    return latest.getTime() > 0 ? latest : null;
   }, [eventos]);
 
-  // Compute data age span (in days) for smart period filter
+  // Compute data age span (in days) for smart period filter button availability
   const dataSpanDays = useMemo(() => {
     if (eventos.length === 0) return 0;
-    let minDate = new Date();
-    let maxDate = new Date(0);
+    let earliest = new Date();
+    let latest = new Date(0);
     eventos.forEach(e => {
       const d = new Date(e.event_datetime || e.created_at);
       if (!isNaN(d.getTime())) {
-        if (d < minDate) minDate = d;
-        if (d > maxDate) maxDate = d;
+        if (d < earliest) earliest = d;
+        if (d > latest) latest = d;
       }
     });
-    // Also consider churn data
     churnStatus.forEach(cs => {
       if (cs.data_cancelamento) {
         const d = new Date(cs.data_cancelamento);
         if (!isNaN(d.getTime())) {
-          if (d < minDate) minDate = d;
-          if (d > maxDate) maxDate = d;
+          if (d < earliest) earliest = d;
+          if (d > latest) latest = d;
         }
       }
     });
-    return Math.max(0, Math.ceil((maxDate.getTime() - minDate.getTime()) / (1000 * 60 * 60 * 24)));
+    return Math.max(0, Math.ceil((latest.getTime() - earliest.getTime()) / (1000 * 60 * 60 * 24)));
   }, [eventos, churnStatus]);
-
-  // Usar data de hoje como referência para filtros de período (previsível e estável)
-  const maxCancelamentoDate = useMemo(() => new Date(), []);
-
-  const dataLimiteChurn = useMemo(() => {
-    if (periodo === "todos") return null;
-    const d = new Date(maxCancelamentoDate.getTime() - parseInt(periodo) * 24 * 60 * 60 * 1000);
-    d.setUTCHours(0, 0, 0, 0); // alinha ao UTC midnight — data_cancelamento date-only é parseado como UTC midnight
-    return d;
-  }, [periodo, maxCancelamentoDate]);
 
   const periodoLabel = useMemo(() => {
     if (periodo === "todos") return "Todo o histórico";
@@ -330,7 +354,7 @@ const VisaoGeral = () => {
       e.status_contrato !== "C" && e.servico_status !== "C"
     ).length;
 
-    // Churn no período — usa filteredChurnStatus (já pré-filtrado por cidade/bairro/plano/filial)
+    // Churn no período — filteredChurnStatus já pré-filtrado por período + cidade/bairro/plano/filial
     let canceladosPeriodo = 0;
     let receitaPerdida = 0;
     let ticketsPerdidos: number[] = [];
@@ -338,10 +362,6 @@ const VisaoGeral = () => {
     const canceladosViaChurn = new Set<number>();
     filteredChurnStatus.forEach(cs => {
       if (cs.status_churn !== "cancelado") return;
-      if (!cs.data_cancelamento) return;
-      const d = new Date(cs.data_cancelamento);
-      if (isNaN(d.getTime())) return;
-      if (dataLimiteChurn && d < dataLimiteChurn) return;
       if (canceladosViaChurn.has(cs.cliente_id)) return;
       canceladosViaChurn.add(cs.cliente_id);
       canceladosPeriodo++;
@@ -407,7 +427,7 @@ const VisaoGeral = () => {
       totalVencido,
       pctInadimplencia,
     };
-  }, [filteredEventos, filteredChurnStatus, scoreMap, dataLimiteChurn, getScoreTotalReal, getBucketVisao, workflowMap]);
+  }, [filteredEventos, filteredChurnStatus, scoreMap, getScoreTotalReal, getBucketVisao, workflowMap]);
 
   // =========================================================
   // BLOCO 2 — FATORES DE RISCO
@@ -433,12 +453,9 @@ const VisaoGeral = () => {
         plano_nome: e.plano_nome,
       }));
     } else {
+      // filteredChurnStatus já filtrado por período (data_cancelamento >= dataLimite)
       filteredChurnStatus.forEach(cs => {
         if (cs.status_churn !== "cancelado") return;
-        if (dataLimiteChurn && cs.data_cancelamento) {
-          const d = new Date(cs.data_cancelamento);
-          if (!isNaN(d.getTime()) && d < dataLimiteChurn) return;
-        }
         populacao.push({
           cliente_id: cs.cliente_id,
           dias_atraso: cs.dias_atraso,
@@ -524,7 +541,7 @@ const VisaoGeral = () => {
     ].filter(f => f.count > 0).sort((a, b) => b.pct - a.pct);
 
     return { factors, totalBase };
-  }, [fatoresMode, saudeAtual.clientesAtivos, filteredEventos, getChamadosPorCliente, filteredChurnStatus, dataLimiteChurn]);
+  }, [fatoresMode, saudeAtual.clientesAtivos, filteredEventos, getChamadosPorCliente, filteredChurnStatus]);
 
   // =========================================================
   // BLOCO 3 — DISTRIBUIÇÃO GEOGRÁFICA (multi-metric por bairro)
@@ -539,15 +556,11 @@ const VisaoGeral = () => {
     });
 
     if (geoMetric === "churn") {
-      // Cancelados por bairro (filteredChurnStatus já filtra cidade/bairro/plano/filial)
+      // Cancelados por bairro — filteredChurnStatus já filtrado por período + dimensões
       const canceladosPorBairro = new Map<string, Set<number>>();
       filteredChurnStatus.forEach(cs => {
         if (cs.status_churn !== "cancelado") return;
         if (!cs.cliente_bairro) return;
-        if (dataLimiteChurn && cs.data_cancelamento) {
-          const d = new Date(cs.data_cancelamento);
-          if (!isNaN(d.getTime()) && d < dataLimiteChurn) return;
-        }
         if (!canceladosPorBairro.has(cs.cliente_bairro)) canceladosPorBairro.set(cs.cliente_bairro, new Set());
         canceladosPorBairro.get(cs.cliente_bairro)!.add(cs.cliente_id);
         if (!totalPorBairro.has(cs.cliente_bairro)) totalPorBairro.set(cs.cliente_bairro, new Set());
@@ -622,7 +635,7 @@ const VisaoGeral = () => {
     }
 
     return [];
-  }, [filteredEventos, filteredChurnStatus, dataLimiteChurn, churnChartMode, geoMetric]);
+  }, [filteredEventos, filteredChurnStatus, churnChartMode, geoMetric]);
 
   // =========================================================
   // BLOCO 4 — IMPACTO FINANCEIRO
@@ -642,12 +655,9 @@ const VisaoGeral = () => {
       }
     });
 
+    // filteredChurnStatus já filtrado por período — cancelados fora do range já excluídos
     filteredChurnStatus.forEach(cs => {
       if (cs.status_churn !== "cancelado") return;
-      if (dataLimiteChurn && cs.data_cancelamento) {
-        const d = new Date(cs.data_cancelamento);
-        if (!isNaN(d.getTime()) && d < dataLimiteChurn) return;
-      }
       const ltv = cs.ltv_estimado || (cs.valor_mensalidade || 0) * (cs.tempo_cliente_meses || 12);
       ltvsPerdidos.push(ltv);
     });
@@ -662,7 +672,7 @@ const VisaoGeral = () => {
       ticketMedioChurnado: saudeAtual.ticketMedioPerdido,
       ltvMedioPerdido,
     };
-  }, [filteredChurnStatus, scoreMap, dataLimiteChurn, saudeAtual, workflowMap]);
+  }, [filteredChurnStatus, scoreMap, saudeAtual, workflowMap]);
 
   // =========================================================
   // BLOCO 5 — AÇÕES PRIORITÁRIAS (inteligência)
@@ -847,15 +857,6 @@ const VisaoGeral = () => {
     "Fazenda": { lat: -26.9200, lng: -48.6600 },
   };
 
-  const mapEventos = useMemo(() => {
-    let filtered = [...eventos] as Evento[];
-    if (cidade !== "todos") filtered = filtered.filter((e) => e.cliente_cidade === cidade);
-    if (bairro !== "todos") filtered = filtered.filter((e) => e.cliente_bairro === bairro);
-    if (plano !== "todos") filtered = filtered.filter((e) => e.plano_nome === plano);
-    if (filial !== "todos") filtered = filtered.filter((e) => String(e.filial_id) === filial);
-    return filtered;
-  }, [eventos, cidade, bairro, plano, filial]);
-
   const canceladoMap = useMemo(() => {
     const m = new Map<string, string>(); // cliente_id (string) → data_cancelamento (latest)
     filteredChurnStatus.forEach(cs => {
@@ -872,7 +873,7 @@ const VisaoGeral = () => {
   const mapData = useMemo(() => {
     const clientesMap = new Map<number, any>();
     const chamadosPorCliente = getChamadosPorCliente(undefined);
-    mapEventos.forEach(e => {
+    filteredEventos.forEach(e => {
       let lat = e.geo_lat;
       let lng = e.geo_lng;
       if ((!lat || !lng || lat === 0 || lng === 0) && e.cliente_bairro) {
@@ -897,7 +898,7 @@ const VisaoGeral = () => {
       }
     });
     return Array.from(clientesMap.values());
-  }, [mapEventos, getChamadosPorCliente, scoreMap, canceladoMap]);
+  }, [filteredEventos, getChamadosPorCliente, scoreMap, canceladoMap]);
 
   const allMapBounds = useMemo(() => {
     // P2/P98 percentile bounds — resistente a outliers (coordenadas erradas no ERP dos ISPs)
