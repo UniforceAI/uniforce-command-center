@@ -317,10 +317,13 @@ const VisaoGeral = () => {
       : 0;
 
     // Clientes em alto risco — DEDUPLICATED by cliente_id (same logic as ClientesEmRisco menu)
+    // Exclui clientes já tratados no Kanban (resolvido/perdido) para consistência com filaRisco.
     const riscoMap = new Map<number, { score: number; bucket: RiskBucket; mrr: number }>();
     churnStatus.forEach(cs => {
       if (cs.status_churn === "cancelado") return;
       if (cs.status_internet === "D") return;
+      const wfStatus = workflowMap.get(cs.cliente_id)?.status_workflow;
+      if (wfStatus === "resolvido" || wfStatus === "perdido") return;
       if (cidade !== "todos" && String(cs.cliente_cidade) !== cidade && getCidadeNome(cs.cliente_cidade) !== cidade) return;
       if (bairro !== "todos" && cs.cliente_bairro !== bairro) return;
       if (plano !== "todos" && cs.plano_nome !== plano) return;
@@ -369,7 +372,7 @@ const VisaoGeral = () => {
       totalVencido,
       pctInadimplencia,
     };
-  }, [filteredEventos, churnStatus, scoreMap, dataLimiteChurn, cidade, bairro, plano, getScoreTotalReal, getBucketVisao]);
+  }, [filteredEventos, churnStatus, scoreMap, dataLimiteChurn, cidade, bairro, plano, getScoreTotalReal, getBucketVisao, workflowMap]);
 
   // =========================================================
   // BLOCO 2 — FATORES DE RISCO
@@ -605,6 +608,8 @@ const VisaoGeral = () => {
     churnStatus.forEach(cs => {
       if (cs.status_churn === "cancelado") return;
       if (cs.status_internet === "D") return;
+      const wfStatusLtv = workflowMap.get(cs.cliente_id)?.status_workflow;
+      if (wfStatusLtv === "resolvido" || wfStatusLtv === "perdido") return;
       if (cidade !== "todos" && String(cs.cliente_cidade) !== cidade && getCidadeNome(cs.cliente_cidade) !== cidade) return;
       if (bairro !== "todos" && cs.cliente_bairro !== bairro) return;
       if (plano !== "todos" && cs.plano_nome !== plano) return;
@@ -637,7 +642,7 @@ const VisaoGeral = () => {
       ticketMedioChurnado: saudeAtual.ticketMedioPerdido,
       ltvMedioPerdido,
     };
-  }, [churnStatus, scoreMap, dataLimiteChurn, cidade, bairro, plano, saudeAtual]);
+  }, [churnStatus, scoreMap, dataLimiteChurn, cidade, bairro, plano, saudeAtual, workflowMap]);
 
   // =========================================================
   // BLOCO 5 — AÇÕES PRIORITÁRIAS (inteligência)
@@ -648,6 +653,8 @@ const VisaoGeral = () => {
     let riscoComAtraso = 0;
     churnStatus.forEach(cs => {
       if (cs.status_churn === "cancelado" || cs.status_internet === "D") return;
+      const wfAcao = workflowMap.get(cs.cliente_id)?.status_workflow;
+      if (wfAcao === "resolvido" || wfAcao === "perdido") return;
       if (cidade !== "todos" && String(cs.cliente_cidade) !== cidade && getCidadeNome(cs.cliente_cidade) !== cidade) return;
       if (bairro !== "todos" && cs.cliente_bairro !== bairro) return;
       if (plano !== "todos" && cs.plano_nome !== plano) return;
@@ -672,6 +679,8 @@ const VisaoGeral = () => {
     let detratoresSemContato = 0;
     churnStatus.forEach(cs => {
       if (cs.status_churn === "cancelado" || cs.status_internet === "D") return;
+      const wfDet = workflowMap.get(cs.cliente_id)?.status_workflow;
+      if (wfDet === "resolvido" || wfDet === "perdido") return;
       if (cidade !== "todos" && String(cs.cliente_cidade) !== cidade && getCidadeNome(cs.cliente_cidade) !== cidade) return;
       if (bairro !== "todos" && cs.cliente_bairro !== bairro) return;
       if (plano !== "todos" && cs.plano_nome !== plano) return;
@@ -696,7 +705,7 @@ const VisaoGeral = () => {
       const order = { critical: 0, high: 1, medium: 2 };
       return order[a.severity] - order[b.severity];
     });
-  }, [churnStatus, scoreMap, geoPorBairro, geoMetric, saudeAtual, cidade, bairro, plano]);
+  }, [churnStatus, scoreMap, geoPorBairro, geoMetric, saudeAtual, cidade, bairro, plano, workflowMap]);
 
   // =========================================================
   // FILA DE RISCO (top 8 clientes - mesma lógica do Clientes em Risco)
