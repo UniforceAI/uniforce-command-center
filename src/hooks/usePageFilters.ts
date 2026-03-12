@@ -8,8 +8,13 @@
 // Correções v1.2:
 //   - stableDefaults: useMemo → useRef (evita re-compute com valores array/object nos defaults)
 //   - isInitialMountRef: evita double-render no mount (useState + useEffect lendo storage 2x)
+// Correções v1.3 (fix crítico — 2026-03-12):
+//   - Suporte retroativo à forma de 2 args: usePageFilters("pageKey", defaults)
+//   - ispId resolvido automaticamente via useActiveIsp quando não informado explicitamente
+//   - Evita crash em TODOS os callers que ainda usam a API antiga (filters = undefined → crash)
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import { useActiveIsp } from "@/hooks/useActiveIsp";
 
 // ─────────────────────────────────────────────────────────────
 // Types
@@ -124,21 +129,48 @@ function writeToStorage(key: string, filters: FilterMap): void {
 
 // ─────────────────────────────────────────────────────────────
 // Hook
+// Suporta duas formas de chamada:
+//   Nova:  usePageFilters({ pageKey, ispId, defaults })
+//   Legada: usePageFilters("pageKey", defaults)   ← mesma semântica, ispId via useActiveIsp
 // ─────────────────────────────────────────────────────────────
 
-export function usePageFilters<T extends FilterMap>({
-  pageKey,
-  ispId,
-  defaults,
-}: UsePageFiltersOptions<T>): {
+export function usePageFilters<T extends FilterMap>(
+  optionsOrPageKey: UsePageFiltersOptions<T> | string,
+  legacyDefaults?: T
+): {
   filters: T;
   setFilter: (key: keyof T, value: FilterValue) => void;
   resetFilters: () => void;
 } {
+  // useActiveIsp sempre chamado (regra dos hooks: não chamar condicionalmente).
+  // Usado como fallback quando ispId não é passado explicitamente (API legada).
+  const { ispId: activeIspId } = useActiveIsp();
+
+  // Normalizar as duas formas de chamada para variáveis locais
+  let pageKey: string;
+  let ispId: string | null | undefined;
+  let defaults: T;
+
+  if (typeof optionsOrPageKey === "string") {
+    // Forma legada: usePageFilters("pageKey", defaults)
+    pageKey = optionsOrPageKey;
+    ispId = activeIspId;          // resolve automaticamente via contexto
+    defaults = legacyDefaults as T; // caller sempre passa defaults nesta forma
+  } else {
+    // Forma nova: usePageFilters({ pageKey, ispId, defaults })
+    pageKey = optionsOrPageKey.pageKey;
+    ispId = optionsOrPageKey.ispId ?? activeIspId;
+    defaults = optionsOrPageKey.defaults;
+  }
+
+  // Garantia de segurança: se defaults ainda for undefined (bug do caller), usa objeto vazio
+  // para evitar crash em destructuring posterior.
+  const safeDefaults: T = defaults ?? ({} as T);
+
   // Estabilizar defaults com useRef: captura do primeiro render, nunca re-computa.
   // useMemo(() => defaults, Object.values(defaults)) quebrava para arrays/objects em defaults:
   // Object.values() retorna refs — array inline criada a cada render muda a dep → loop de invalidação.
-  const stableDefaultsRef = useRef<T>(defaults);
+  const stableDefaultsRef = useRef<T>(safeDefaults);
   const stableDefaults = stableDefaultsRef.current;
 
   const key = ispId ? storageKey(ispId, pageKey) : null;
