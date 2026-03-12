@@ -706,6 +706,11 @@ const VisaoGeral = () => {
     churnStatus.forEach(cs => {
       if (cs.status_internet === "D") return;
       if (cs.status_churn === "cancelado") return;
+      // Clientes já tratados no Kanban (resolvido/perdido) não entram na fila de risco.
+      // Se novos sinais surgirem, auto-reentry em ClientesEmRisco os recoloca em "em_tratamento"
+      // e eles voltam a aparecer aqui automaticamente.
+      const wfStatus = workflowMap.get(cs.cliente_id)?.status_workflow;
+      if (wfStatus === "resolvido" || wfStatus === "perdido") return;
       if (cidade !== "todos" && String(cs.cliente_cidade) !== cidade && getCidadeNome(cs.cliente_cidade) !== cidade) return;
       if (bairro !== "todos" && cs.cliente_bairro !== bairro) return;
       if (plano !== "todos" && cs.plano_nome !== plano) return;
@@ -720,7 +725,7 @@ const VisaoGeral = () => {
     return Array.from(map.values())
       .sort((a, b) => getScoreTotalReal(b) - getScoreTotalReal(a))
       .slice(0, 8);
-  }, [churnStatus, scoreMap, cidade, bairro, plano, getScoreTotalReal, getBucketVisao]);
+  }, [churnStatus, scoreMap, cidade, bairro, plano, getScoreTotalReal, getBucketVisao, workflowMap]);
 
   // Handlers for CRM drawer in Visão Geral
   const handleStartTreatmentVG = useCallback(async (c: ChurnStatus) => {

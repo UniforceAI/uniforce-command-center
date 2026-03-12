@@ -309,6 +309,9 @@ const Financeiro = () => {
     const vencidos = todosEventosFinanceiros.filter(e => e.dias_atraso > 0);
     const porCliente = new Map<number, { evento: typeof vencidos[0]; diasReal: number }>();
     vencidos.forEach(e => {
+      // Clientes já tratados no Kanban não aparecem na tabela financeira de risco.
+      const wfStatus = workflowMap.get(e.cliente_id)?.status_workflow;
+      if (wfStatus === "resolvido" || wfStatus === "perdido") return;
       const diasReal = calcDiasAtrasoReal(e);
       const existing = porCliente.get(e.cliente_id);
       if (!existing || diasReal > existing.diasReal) {
@@ -357,7 +360,7 @@ const Financeiro = () => {
       }
       return sortDir === "desc" ? -cmp : cmp;
     });
-  }, [eventos, sortColuna, sortDir, churnMap, statusInternet, statusInternetMap]);
+  }, [eventos, sortColuna, sortDir, churnMap, statusInternet, statusInternetMap, workflowMap]);
 
   // ---- Download ----
   const downloadTable = useCallback(async (format: "csv" | "xlsx" | "ods") => {

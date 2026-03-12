@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import { usePageFilters } from "@/hooks/usePageFilters";
 import { useChurnData } from "@/hooks/useChurnData";
+import { useCrmWorkflow } from "@/hooks/useCrmWorkflow";
 import { useChamados } from "@/hooks/useChamados";
 import { useRiskBucketConfig } from "@/hooks/useRiskBucketConfig";
 import { IspActions } from "@/components/shared/IspActions";
@@ -41,6 +42,7 @@ const cidadeColor = (idx: number) => {
 
 const ChurnAnalytics = () => {
   const { churnStatus, isLoading, error } = useChurnData();
+  const { workflowMap } = useCrmWorkflow();
   const { getChamadosPorCliente } = useChamados();
   const { getBucket } = useRiskBucketConfig();
   const chamadosMap90d = useMemo(() => getChamadosPorCliente(90), [getChamadosPorCliente]);
@@ -72,12 +74,17 @@ const ChurnAnalytics = () => {
 
   const filtered = useMemo(() => {
     let f = [...churnStatus];
+    // Excluir clientes já tratados no Kanban (resolvido/perdido)
+    f = f.filter((c) => {
+      const wfStatus = workflowMap.get(c.cliente_id)?.status_workflow;
+      return wfStatus !== "resolvido" && wfStatus !== "perdido";
+    });
     if (plano !== "todos") f = f.filter((c) => c.plano_nome === plano);
     if (cidade !== "todos") f = f.filter((c) => normalizarCidade(c.cliente_cidade) === cidade);
     if (bairro !== "todos") f = f.filter((c) => c.cliente_bairro === bairro);
     if (bucket !== "todos") f = f.filter((c) => getBucket(c.churn_risk_score) === bucket);
     return f;
-  }, [churnStatus, plano, cidade, bairro, bucket]);
+  }, [churnStatus, plano, cidade, bairro, bucket, workflowMap]);
 
   const ativos = useMemo(() => filtered.filter((c) => c.status_churn !== "cancelado"), [filtered]);
   const emRisco = useMemo(() => filtered.filter((c) => c.status_churn === "risco"), [filtered]);

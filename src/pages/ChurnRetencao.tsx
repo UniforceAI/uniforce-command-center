@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { useToast } from "@/hooks/use-toast";
 import { useEventos } from "@/hooks/useEventos";
 import { useChurnData } from "@/hooks/useChurnData";
+import { useCrmWorkflow } from "@/hooks/useCrmWorkflow";
 import { useRiskBucketConfig, RiskBucket } from "@/hooks/useRiskBucketConfig";
 import { GlobalFilters } from "@/components/shared/GlobalFilters";
 import { IspActions } from "@/components/shared/IspActions";
@@ -66,6 +67,7 @@ const ChurnRetencao = () => {
   const { ispNome } = useActiveIsp();
   const { eventos, isLoading, error } = useEventos();
   const { churnStatus } = useChurnData();
+  const { workflowMap } = useCrmWorkflow();
   const { getBucket } = useRiskBucketConfig();
   // Filtros — persisted in sessionStorage for the session
   const { filters, setFilter } = usePageFilters("churn-retencao", {
@@ -284,6 +286,10 @@ const ChurnRetencao = () => {
   const filaRisco = useMemo(() => {
     return clientesFiltrados
       .filter(c => c.churn_risk_score !== undefined && c.churn_risk_score >= 40)
+      .filter(c => {
+        const wfStatus = workflowMap.get(c.cliente_id)?.status_workflow;
+        return wfStatus !== "resolvido" && wfStatus !== "perdido";
+      })
       .sort((a, b) => (b.churn_risk_score || 0) - (a.churn_risk_score || 0))
       .slice(0, 20)
       .map(c => ({
@@ -300,7 +306,7 @@ const ChurnRetencao = () => {
         alerta: c.alerta_tipo,
         acao: c.acao_recomendada_1,
       }));
-  }, [clientesFiltrados]);
+  }, [clientesFiltrados, workflowMap]);
 
   const filaRiscoColumns: Column<typeof filaRisco[0]>[] = [
     { key: "cliente_nome", label: "Cliente" },
