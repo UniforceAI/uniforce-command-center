@@ -196,6 +196,62 @@ Deno.serve(async (req) => {
         const { cliente_id } = params;
         if (!cliente_id) throw new Error("cliente_id required");
 
+        // ── Buscar registro atual para validar elegibilidade ──
+        const { data: wfRecord, error: wfErr } = await extClient
+          .from("crm_workflow")
+          .select("id, status_workflow, status_entered_at, archived")
+          .eq("isp_id", isp_id)
+          .eq("cliente_id", cliente_id)
+          .maybeSingle();
+        if (wfErr) throw wfErr;
+        if (!wfRecord) throw new Error("Workflow record not found");
+
+        // Idempotente: já arquivado → retorna sem erro e sem ação
+        if (wfRecord.archived) {
+          result = wfRecord;
+          break;
+        }
+
+        // ── GUARD BACKEND: valida thresholds antes de arquivar ──
+        // Esta é a camada definitiva de proteção — o servidor é o árbitro final.
+        // Rejeita pedidos de archive prematuro mesmo que venham de JS antigo no cliente.
+        if (wfRecord.status_entered_at) {
+          const msPerDay = 1000 * 60 * 60 * 24;
+          const now = new Date();
+          const enteredAt = new Date(wfRecord.status_entered_at);
+
+          if (wfRecord.status_workflow === "resolvido") {
+            const calendarDays =
+              Math.floor(now.getTime() / msPerDay) -
+              Math.floor(enteredAt.getTime() / msPerDay);
+            if (calendarDays < 30) {
+              throw {
+                status: 400,
+                message: `Archive prematuro: ${calendarDays} de 30 dias corridos decorridos para status "resolvido".`,
+              };
+            }
+          }
+
+          if (wfRecord.status_workflow === "perdido") {
+            let businessDays = 0;
+            const cursor = new Date(enteredAt);
+            cursor.setHours(0, 0, 0, 0);
+            const end = new Date(now);
+            end.setHours(0, 0, 0, 0);
+            while (cursor < end) {
+              cursor.setDate(cursor.getDate() + 1);
+              const dow = cursor.getDay();
+              if (dow !== 0 && dow !== 6) businessDays++;
+            }
+            if (businessDays < 30) {
+              throw {
+                status: 400,
+                message: `Archive prematuro: ${businessDays} de 30 dias úteis decorridos para status "perdido".`,
+              };
+            }
+          }
+        }
+
         const { data, error } = await extClient
           .from("crm_workflow")
           .update({
@@ -203,8 +259,7 @@ Deno.serve(async (req) => {
             archived_at: new Date().toISOString(),
             last_action_at: new Date().toISOString(),
           })
-          .eq("isp_id", isp_id)
-          .eq("cliente_id", cliente_id)
+          .eq("id", wfRecord.id)
           .select()
           .single();
         if (error) throw error;
