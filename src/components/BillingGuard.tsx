@@ -13,7 +13,7 @@ import { ReactNode, useEffect, useRef } from "react";
 import { Navigate, useLocation } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
-import { supabase } from "@/integrations/supabase/client";
+import { externalSupabase } from "@/integrations/supabase/external-client";
 
 // ─────────────────────────────────────────────────────────────
 // Config
@@ -51,7 +51,7 @@ function isPathAllowed(pathname: string): boolean {
 }
 
 async function fetchBillingStatus(ispId: string): Promise<boolean> {
-  const { data, error } = await supabase
+  const { data, error } = await externalSupabase
     .from("isps")
     .select("billing_blocked")
     .eq("isp_id", ispId)
