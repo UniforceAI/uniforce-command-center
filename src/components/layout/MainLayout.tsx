@@ -28,12 +28,15 @@ export function MainLayout({ children }: MainLayoutProps) {
   const { data: importData, isLoading: importLoading } = useInitialImportStatus();
 
   const isDataRoute = DATA_ROUTES.some((r) => location.pathname.startsWith(r));
-  // Mostra overlay quando numa rota de dados E:
-  //   - queries ainda carregando (evita flash do conteúdo vazio) OU
-  //   - status conhecido e é pending/importing
+  // Mostra overlay SOMENTE quando temos certeza de que a importação está em andamento.
+  // Não mostra durante loading (importLoading=true) — ISPs estabelecidos nunca devem
+  // ver este overlay, nem por 1 frame. Cada página tem seu próprio LoadingScreen para
+  // cobrir o carregamento de dados; o DataImportOverlay é exclusivo para onboarding.
   const showOverlay =
     isDataRoute &&
-    (importLoading || (importData !== undefined && importData.status !== "complete"));
+    !importLoading &&
+    importData !== undefined &&
+    importData.status !== "complete";
 
   return (
     <SidebarProvider>
