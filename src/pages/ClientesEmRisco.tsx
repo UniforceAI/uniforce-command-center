@@ -337,7 +337,8 @@ const ClientesEmRisco = () => {
   const getEffectiveScore = useCallback((c: ChurnStatus): number => {
     const wf = workflowMap.get(c.cliente_id);
     if (wf?.status_workflow !== "resolvido") return getScoreTotalReal(c);
-    const enteredAt = new Date(wf.status_entered_at ?? wf.last_action_at ?? wf.created_at);
+    if (!wf.status_entered_at) return 0;
+    const enteredAt = new Date(wf.status_entered_at);
     if (countCalendarDays(enteredAt, new Date()) >= 30) return getScoreTotalReal(c);
     if (wf.score_snapshot && hasNewSignal(c, wf.score_snapshot)) return getScoreTotalReal(c);
     return 0;
@@ -370,7 +371,10 @@ const ClientesEmRisco = () => {
     if (!workflowMap.size) return;
     const now = new Date();
     workflowMap.forEach((wf, clienteId) => {
-      const enteredAt = new Date(wf.status_entered_at ?? wf.last_action_at ?? wf.created_at);
+      // GUARD CRÍTICO: não arquivar se status_entered_at não está definido.
+      // Evita usar created_at como fallback e arquivar prematuramente (incidente 2026-03-11).
+      if (!wf.status_entered_at) return;
+      const enteredAt = new Date(wf.status_entered_at);
       if (wf.status_workflow === "resolvido") {
         if (countCalendarDays(enteredAt, now) >= 30) archiveWorkflow(clienteId).catch(console.error);
       }

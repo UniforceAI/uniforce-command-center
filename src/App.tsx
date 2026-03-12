@@ -54,7 +54,7 @@ const persister = createLocalStoragePersister();
 const persistOptions = {
   persister,
   maxAge: TEN_HOURS,
-  buster: "v7",
+  buster: "v8",
 };
 
 // BillingGuard redireciona para /configuracoes/perfil?tab=financeiro
