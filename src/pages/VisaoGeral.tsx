@@ -72,6 +72,24 @@ import {
   Cell,
 } from "recharts";
 
+// ─────────────────────────────────────────────────────────────
+// Stable helpers (fora do componente — referência estável para useMemos)
+// ─────────────────────────────────────────────────────────────
+
+const CIDADE_ID_MAP: Record<string, string> = {
+  "4405": "Gaspar",
+  "4419": "Ilhota",
+};
+
+/** Compara valor de cidade (ID numérico ou nome) com o filtro selecionado. */
+function cidadeMatches(raw: string | number | null | undefined, filterVal: string): boolean {
+  if (!raw && raw !== 0) return false;
+  const key = String(raw).trim();
+  if (key === filterVal) return true;
+  const nome = CIDADE_ID_MAP[key] || key;
+  return nome === filterVal;
+}
+
 // Map Filter Tabs
 const MapTabs = ({ activeTab, onTabChange, availableTabs }: { activeTab: string; onTabChange: (tab: string) => void; availableTabs: string[] }) => {
   const allTabs = [
@@ -167,20 +185,15 @@ const VisaoGeral = () => {
   const [mapLightboxOpen, setMapLightboxOpen] = useState(false);
   const [mapViewMode, setMapViewMode] = useState<"markers" | "grid">("markers");
 
-  // Mapeamento de IDs de cidade para nomes
-  const cidadeIdMap: Record<string, string> = {
-    "4405": "Gaspar",
-    "4419": "Ilhota",
-  };
-
-  const getCidadeNome = (cidadeValue: any): string | null => {
-    if (cidadeValue === null || cidadeValue === undefined || String(cidadeValue).trim() === "") return null;
-    const cidadeKey = String(cidadeValue).trim();
-    return cidadeIdMap[cidadeKey] || cidadeKey;
-  };
-
   const isClienteVencido = (e: Evento): boolean => {
     return (e.dias_atraso !== null && e.dias_atraso !== undefined && Number(e.dias_atraso) > 0);
+  };
+
+  // getCidadeNome wrapper mantido para compatibilidade com os componentes filhos (RiskClientsTable etc.)
+  const getCidadeNome = (cidadeValue: any): string | null => {
+    if (!cidadeValue && cidadeValue !== 0) return null;
+    const key = String(cidadeValue).trim();
+    return CIDADE_ID_MAP[key] || key;
   };
 
   // Filter options
@@ -204,7 +217,7 @@ const VisaoGeral = () => {
     };
   }, [eventos]);
 
-  // Filtered events
+  // Filtered events (aplica cidade, bairro, plano, filial)
   const filteredEventos = useMemo(() => {
     let filtered = [...eventos] as Evento[];
     if (cidade !== "todos") filtered = filtered.filter((e) => e.cliente_cidade === cidade);
@@ -213,6 +226,35 @@ const VisaoGeral = () => {
     if (filial !== "todos") filtered = filtered.filter((e) => String(e.filial_id) === filial);
     return filtered;
   }, [eventos, cidade, bairro, plano, filial]);
+
+  // ─────────────────────────────────────────────────────────────
+  // Filtered churnStatus — fonte centralizada para TODAS as métricas baseadas em churn.
+  // Aplica cidade, bairro, plano + filial (via cross-reference com filteredEventos,
+  // pois churn_status não possui coluna filial_id).
+  // NÃO aplica período (dataLimiteChurn) — cada useMemo aplica conforme necessário.
+  // ─────────────────────────────────────────────────────────────
+  const filteredChurnStatus = useMemo(() => {
+    let result = churnStatus;
+
+    if (cidade !== "todos") {
+      result = result.filter(cs => cidadeMatches(cs.cliente_cidade, cidade));
+    }
+    if (bairro !== "todos") {
+      result = result.filter(cs => cs.cliente_bairro === bairro);
+    }
+    if (plano !== "todos") {
+      result = result.filter(cs => cs.plano_nome === plano);
+    }
+    // Filial: churn_status não tem filial_id. Filtramos via cliente_ids presentes
+    // nos eventos filtrados (que já incluem o filtro de filial).
+    if (filial !== "todos") {
+      const idsFilial = new Set<number>();
+      filteredEventos.forEach(e => idsFilial.add(e.cliente_id));
+      result = result.filter(cs => idsFilial.has(cs.cliente_id));
+    }
+
+    return result;
+  }, [churnStatus, cidade, bairro, plano, filial, filteredEventos]);
 
   // Snapshot date
   const snapshotDate = useMemo(() => {
@@ -288,19 +330,15 @@ const VisaoGeral = () => {
       e.status_contrato !== "C" && e.servico_status !== "C"
     ).length;
 
-    // Churn no período — usa EXCLUSIVAMENTE churn_status (fonte única)
+    // Churn no período — usa filteredChurnStatus (já pré-filtrado por cidade/bairro/plano/filial)
     let canceladosPeriodo = 0;
     let receitaPerdida = 0;
     let ticketsPerdidos: number[] = [];
-    
+
     const canceladosViaChurn = new Set<number>();
-    churnStatus.forEach(cs => {
+    filteredChurnStatus.forEach(cs => {
       if (cs.status_churn !== "cancelado") return;
       if (!cs.data_cancelamento) return;
-      // Apply dimension filters
-      if (cidade !== "todos" && String(cs.cliente_cidade) !== cidade && getCidadeNome(cs.cliente_cidade) !== cidade) return;
-      if (bairro !== "todos" && cs.cliente_bairro !== bairro) return;
-      if (plano !== "todos" && cs.plano_nome !== plano) return;
       const d = new Date(cs.data_cancelamento);
       if (isNaN(d.getTime())) return;
       if (dataLimiteChurn && d < dataLimiteChurn) return;
@@ -319,14 +357,11 @@ const VisaoGeral = () => {
     // Clientes em alto risco — DEDUPLICATED by cliente_id (same logic as ClientesEmRisco menu)
     // Exclui clientes já tratados no Kanban (resolvido/perdido) para consistência com filaRisco.
     const riscoMap = new Map<number, { score: number; bucket: RiskBucket; mrr: number }>();
-    churnStatus.forEach(cs => {
+    filteredChurnStatus.forEach(cs => {
       if (cs.status_churn === "cancelado") return;
       if (cs.status_internet === "D") return;
       const wfStatus = workflowMap.get(cs.cliente_id)?.status_workflow;
       if (wfStatus === "resolvido" || wfStatus === "perdido") return;
-      if (cidade !== "todos" && String(cs.cliente_cidade) !== cidade && getCidadeNome(cs.cliente_cidade) !== cidade) return;
-      if (bairro !== "todos" && cs.cliente_bairro !== bairro) return;
-      if (plano !== "todos" && cs.plano_nome !== plano) return;
       const score = getScoreTotalReal(cs);
       const bucket = getBucketVisao(score);
       if (bucket !== "ALERTA" && bucket !== "CRÍTICO") return;
@@ -372,7 +407,7 @@ const VisaoGeral = () => {
       totalVencido,
       pctInadimplencia,
     };
-  }, [filteredEventos, churnStatus, scoreMap, dataLimiteChurn, cidade, bairro, plano, getScoreTotalReal, getBucketVisao, workflowMap]);
+  }, [filteredEventos, filteredChurnStatus, scoreMap, dataLimiteChurn, getScoreTotalReal, getBucketVisao, workflowMap]);
 
   // =========================================================
   // BLOCO 2 — FATORES DE RISCO
@@ -398,11 +433,8 @@ const VisaoGeral = () => {
         plano_nome: e.plano_nome,
       }));
     } else {
-      churnStatus.forEach(cs => {
+      filteredChurnStatus.forEach(cs => {
         if (cs.status_churn !== "cancelado") return;
-        if (cidade !== "todos" && String(cs.cliente_cidade) !== cidade && getCidadeNome(cs.cliente_cidade) !== cidade) return;
-        if (bairro !== "todos" && cs.cliente_bairro !== bairro) return;
-        if (plano !== "todos" && cs.plano_nome !== plano) return;
         if (dataLimiteChurn && cs.data_cancelamento) {
           const d = new Date(cs.data_cancelamento);
           if (!isNaN(d.getTime()) && d < dataLimiteChurn) return;
@@ -443,7 +475,7 @@ const VisaoGeral = () => {
     let detratores = 0;
     let comNps = 0;
     if (isRisco) {
-      churnStatus.forEach(cs => {
+      filteredChurnStatus.forEach(cs => {
         if (cs.status_churn === "cancelado" || cs.status_internet === "D") return;
         if (!clienteIds.has(cs.cliente_id)) return;
         if (cs.nps_classificacao) {
@@ -453,7 +485,7 @@ const VisaoGeral = () => {
       });
     } else {
       populacao.forEach(p => {
-        const cs = churnStatus.find(c => c.cliente_id === p.cliente_id && c.status_churn === "cancelado");
+        const cs = filteredChurnStatus.find(c => c.cliente_id === p.cliente_id && c.status_churn === "cancelado");
         if (cs?.nps_classificacao) {
           comNps++;
           if (cs.nps_classificacao.toUpperCase() === "DETRATOR") detratores++;
@@ -492,7 +524,7 @@ const VisaoGeral = () => {
     ].filter(f => f.count > 0).sort((a, b) => b.pct - a.pct);
 
     return { factors, totalBase };
-  }, [fatoresMode, saudeAtual.clientesAtivos, filteredEventos, getChamadosPorCliente, churnStatus, cidade, bairro, plano, dataLimiteChurn]);
+  }, [fatoresMode, saudeAtual.clientesAtivos, filteredEventos, getChamadosPorCliente, filteredChurnStatus, dataLimiteChurn]);
 
   // =========================================================
   // BLOCO 3 — DISTRIBUIÇÃO GEOGRÁFICA (multi-metric por bairro)
@@ -507,13 +539,11 @@ const VisaoGeral = () => {
     });
 
     if (geoMetric === "churn") {
-      // Cancelados por bairro
+      // Cancelados por bairro (filteredChurnStatus já filtra cidade/bairro/plano/filial)
       const canceladosPorBairro = new Map<string, Set<number>>();
-      churnStatus.forEach(cs => {
+      filteredChurnStatus.forEach(cs => {
         if (cs.status_churn !== "cancelado") return;
         if (!cs.cliente_bairro) return;
-        if (cidade !== "todos" && String(cs.cliente_cidade) !== cidade && getCidadeNome(cs.cliente_cidade) !== cidade) return;
-        if (plano !== "todos" && cs.plano_nome !== plano) return;
         if (dataLimiteChurn && cs.data_cancelamento) {
           const d = new Date(cs.data_cancelamento);
           if (!isNaN(d.getTime()) && d < dataLimiteChurn) return;
@@ -551,11 +581,9 @@ const VisaoGeral = () => {
       // Detratores NPS por bairro
       const detratoresPorBairro = new Map<string, Set<number>>();
       const respondeuPorBairro = new Map<string, Set<number>>();
-      churnStatus.forEach(cs => {
+      filteredChurnStatus.forEach(cs => {
         if (cs.status_churn === "cancelado" || cs.status_internet === "D") return;
         if (!cs.cliente_bairro) return;
-        if (cidade !== "todos" && String(cs.cliente_cidade) !== cidade && getCidadeNome(cs.cliente_cidade) !== cidade) return;
-        if (plano !== "todos" && cs.plano_nome !== plano) return;
         if (cs.nps_classificacao) {
           if (!respondeuPorBairro.has(cs.cliente_bairro)) respondeuPorBairro.set(cs.cliente_bairro, new Set());
           respondeuPorBairro.get(cs.cliente_bairro)!.add(cs.cliente_id);
@@ -576,11 +604,9 @@ const VisaoGeral = () => {
     if (geoMetric === "ltv") {
       // LTV médio por bairro
       const ltvPorBairro = new Map<string, { total: number; count: number }>();
-      churnStatus.forEach(cs => {
+      filteredChurnStatus.forEach(cs => {
         if (cs.status_churn === "cancelado" || cs.status_internet === "D") return;
         if (!cs.cliente_bairro) return;
-        if (cidade !== "todos" && String(cs.cliente_cidade) !== cidade && getCidadeNome(cs.cliente_cidade) !== cidade) return;
-        if (plano !== "todos" && cs.plano_nome !== plano) return;
         const ltv = cs.ltv_estimado || (cs.valor_mensalidade || 0) * (cs.tempo_cliente_meses || 12);
         if (!ltvPorBairro.has(cs.cliente_bairro)) ltvPorBairro.set(cs.cliente_bairro, { total: 0, count: 0 });
         const v = ltvPorBairro.get(cs.cliente_bairro)!;
@@ -596,7 +622,7 @@ const VisaoGeral = () => {
     }
 
     return [];
-  }, [filteredEventos, churnStatus, dataLimiteChurn, cidade, plano, churnChartMode, geoMetric]);
+  }, [filteredEventos, filteredChurnStatus, dataLimiteChurn, churnChartMode, geoMetric]);
 
   // =========================================================
   // BLOCO 4 — IMPACTO FINANCEIRO
@@ -605,25 +631,19 @@ const VisaoGeral = () => {
     let receitaEmRisco = 0;
     let ltvsPerdidos: number[] = [];
 
-    churnStatus.forEach(cs => {
+    filteredChurnStatus.forEach(cs => {
       if (cs.status_churn === "cancelado") return;
       if (cs.status_internet === "D") return;
       const wfStatusLtv = workflowMap.get(cs.cliente_id)?.status_workflow;
       if (wfStatusLtv === "resolvido" || wfStatusLtv === "perdido") return;
-      if (cidade !== "todos" && String(cs.cliente_cidade) !== cidade && getCidadeNome(cs.cliente_cidade) !== cidade) return;
-      if (bairro !== "todos" && cs.cliente_bairro !== bairro) return;
-      if (plano !== "todos" && cs.plano_nome !== plano) return;
       const sm = scoreMap.get(cs.cliente_id);
       if (sm && (sm.bucket === "ALERTA" || sm.bucket === "CRÍTICO")) {
         receitaEmRisco += cs.ltv_estimado || (cs.valor_mensalidade || 0) * 12;
       }
     });
 
-    churnStatus.forEach(cs => {
+    filteredChurnStatus.forEach(cs => {
       if (cs.status_churn !== "cancelado") return;
-      if (cidade !== "todos" && String(cs.cliente_cidade) !== cidade && getCidadeNome(cs.cliente_cidade) !== cidade) return;
-      if (bairro !== "todos" && cs.cliente_bairro !== bairro) return;
-      if (plano !== "todos" && cs.plano_nome !== plano) return;
       if (dataLimiteChurn && cs.data_cancelamento) {
         const d = new Date(cs.data_cancelamento);
         if (!isNaN(d.getTime()) && d < dataLimiteChurn) return;
@@ -642,7 +662,7 @@ const VisaoGeral = () => {
       ticketMedioChurnado: saudeAtual.ticketMedioPerdido,
       ltvMedioPerdido,
     };
-  }, [churnStatus, scoreMap, dataLimiteChurn, cidade, bairro, plano, saudeAtual, workflowMap]);
+  }, [filteredChurnStatus, scoreMap, dataLimiteChurn, saudeAtual, workflowMap]);
 
   // =========================================================
   // BLOCO 5 — AÇÕES PRIORITÁRIAS (inteligência)
@@ -651,13 +671,10 @@ const VisaoGeral = () => {
     const acoes: { id: string; texto: string; severity: "critical" | "high" | "medium"; route: string; count: number }[] = [];
 
     let riscoComAtraso = 0;
-    churnStatus.forEach(cs => {
+    filteredChurnStatus.forEach(cs => {
       if (cs.status_churn === "cancelado" || cs.status_internet === "D") return;
       const wfAcao = workflowMap.get(cs.cliente_id)?.status_workflow;
       if (wfAcao === "resolvido" || wfAcao === "perdido") return;
-      if (cidade !== "todos" && String(cs.cliente_cidade) !== cidade && getCidadeNome(cs.cliente_cidade) !== cidade) return;
-      if (bairro !== "todos" && cs.cliente_bairro !== bairro) return;
-      if (plano !== "todos" && cs.plano_nome !== plano) return;
       const sm = scoreMap.get(cs.cliente_id);
       if (sm && (sm.bucket === "ALERTA" || sm.bucket === "CRÍTICO") && cs.dias_atraso && cs.dias_atraso > 15) {
         riscoComAtraso++;
@@ -677,13 +694,10 @@ const VisaoGeral = () => {
     }
 
     let detratoresSemContato = 0;
-    churnStatus.forEach(cs => {
+    filteredChurnStatus.forEach(cs => {
       if (cs.status_churn === "cancelado" || cs.status_internet === "D") return;
       const wfDet = workflowMap.get(cs.cliente_id)?.status_workflow;
       if (wfDet === "resolvido" || wfDet === "perdido") return;
-      if (cidade !== "todos" && String(cs.cliente_cidade) !== cidade && getCidadeNome(cs.cliente_cidade) !== cidade) return;
-      if (bairro !== "todos" && cs.cliente_bairro !== bairro) return;
-      if (plano !== "todos" && cs.plano_nome !== plano) return;
       if (cs.nps_classificacao?.toUpperCase() === "DETRATOR") {
         if (!cs.ultimo_atendimento_data) { detratoresSemContato++; }
         else {
@@ -705,24 +719,19 @@ const VisaoGeral = () => {
       const order = { critical: 0, high: 1, medium: 2 };
       return order[a.severity] - order[b.severity];
     });
-  }, [churnStatus, scoreMap, geoPorBairro, geoMetric, saudeAtual, cidade, bairro, plano, workflowMap]);
+  }, [filteredChurnStatus, scoreMap, geoPorBairro, geoMetric, saudeAtual, workflowMap]);
 
   // =========================================================
   // FILA DE RISCO (top 8 clientes - mesma lógica do Clientes em Risco)
   // =========================================================
   const filaRisco = useMemo(() => {
     const map = new Map<number, ChurnStatus>();
-    churnStatus.forEach(cs => {
+    filteredChurnStatus.forEach(cs => {
       if (cs.status_internet === "D") return;
       if (cs.status_churn === "cancelado") return;
       // Clientes já tratados no Kanban (resolvido/perdido) não entram na fila de risco.
-      // Se novos sinais surgirem, auto-reentry em ClientesEmRisco os recoloca em "em_tratamento"
-      // e eles voltam a aparecer aqui automaticamente.
       const wfStatus = workflowMap.get(cs.cliente_id)?.status_workflow;
       if (wfStatus === "resolvido" || wfStatus === "perdido") return;
-      if (cidade !== "todos" && String(cs.cliente_cidade) !== cidade && getCidadeNome(cs.cliente_cidade) !== cidade) return;
-      if (bairro !== "todos" && cs.cliente_bairro !== bairro) return;
-      if (plano !== "todos" && cs.plano_nome !== plano) return;
       const score = getScoreTotalReal(cs);
       const b = getBucketVisao(score);
       if (b !== "ALERTA" && b !== "CRÍTICO") return;
@@ -734,7 +743,7 @@ const VisaoGeral = () => {
     return Array.from(map.values())
       .sort((a, b) => getScoreTotalReal(b) - getScoreTotalReal(a))
       .slice(0, 8);
-  }, [churnStatus, scoreMap, cidade, bairro, plano, getScoreTotalReal, getBucketVisao, workflowMap]);
+  }, [filteredChurnStatus, scoreMap, getScoreTotalReal, getBucketVisao, workflowMap]);
 
   // Handlers for CRM drawer in Visão Geral
   const handleStartTreatmentVG = useCallback(async (c: ChurnStatus) => {
@@ -849,7 +858,7 @@ const VisaoGeral = () => {
 
   const canceladoMap = useMemo(() => {
     const m = new Map<string, string>(); // cliente_id (string) → data_cancelamento (latest)
-    churnStatus.forEach(cs => {
+    filteredChurnStatus.forEach(cs => {
       if (cs.status_churn === "cancelado" && cs.data_cancelamento) {
         const key = String(cs.cliente_id);
         const existing = m.get(key);
@@ -858,7 +867,7 @@ const VisaoGeral = () => {
       }
     });
     return m;
-  }, [churnStatus]);
+  }, [filteredChurnStatus]);
 
   const mapData = useMemo(() => {
     const clientesMap = new Map<number, any>();
@@ -999,7 +1008,7 @@ const VisaoGeral = () => {
                 id: "cidade", label: "Cidade", value: cidade, onChange: (v: string) => setFilter("cidade", v),
                 disabled: filterOptions.cidades.length === 0,
                 tooltip: "Nenhuma cidade encontrada",
-                options: [{ value: "todos", label: "Todas" }, ...filterOptions.cidades.map(c => ({ value: c, label: cidadeIdMap[c] || c }))],
+                options: [{ value: "todos", label: "Todas" }, ...filterOptions.cidades.map(c => ({ value: c, label: CIDADE_ID_MAP[c] || c }))],
               },
               {
                 id: "bairro", label: "Bairro", value: bairro, onChange: (v: string) => setFilter("bairro", v),
