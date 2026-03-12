@@ -146,6 +146,12 @@ Deno.serve(async (req) => {
           if (status_workflow !== undefined) {
             updates.status_workflow = status_workflow;
             updates.status_entered_at = now;
+            // Se o registro estava arquivado (ex: re-adicionado após archive),
+            // reativa automaticamente para que apareça no kanban.
+            if (existing.archived) {
+              updates.archived = false;
+              updates.archived_at = null;
+            }
           }
           if (tags !== undefined) updates.tags = tags;
           if (owner_user_id !== undefined) updates.owner_user_id = owner_user_id;

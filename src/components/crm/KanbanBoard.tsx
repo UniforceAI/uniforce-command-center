@@ -204,11 +204,11 @@ function KanbanCardVisual({ item, onSelect, onStart, onUpdate, onRequestPerdido,
           <Badge key={t} variant="secondary" className="text-[8px] lg:text-[9px] py-0 px-1 lg:px-1.5">{t}</Badge>
         ))}
         {workflow?.status_entered_at && workflow.status_workflow === "resolvido" && (() => {
-          const days = 7 - countCalendarDays(new Date(workflow.status_entered_at), new Date());
+          const days = 30 - countCalendarDays(new Date(workflow.status_entered_at), new Date());
           return <ExpiryBadge daysRemaining={days} />;
         })()}
         {workflow?.status_entered_at && workflow.status_workflow === "perdido" && (() => {
-          const days = 7 - countBusinessDays(new Date(workflow.status_entered_at), new Date());
+          const days = 30 - countBusinessDays(new Date(workflow.status_entered_at), new Date());
           return <ExpiryBadge daysRemaining={days} isBusinessDays />;
         })()}
       </div>
@@ -507,7 +507,7 @@ export function KanbanBoard({
             </AlertDialogTitle>
             <AlertDialogDescription>
               Você está marcando <strong>{perdidoConfirm?.clienteNome}</strong> como{" "}
-              <strong>Perdido</strong>. O card será arquivado automaticamente após 7 dias úteis.
+              <strong>Perdido</strong>. O card será arquivado automaticamente após 30 dias úteis.
               <br /><br />
               Esta ação é reversível — você pode mover o card de volta para{" "}
               <em>Em Tratamento</em> se necessário.

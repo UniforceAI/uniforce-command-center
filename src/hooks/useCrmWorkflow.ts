@@ -31,7 +31,9 @@ export interface CrmWorkflowRecord {
 export function useCrmWorkflow() {
   const { ispId } = useActiveIsp();
   const queryClient = useQueryClient();
-  const queryKey = ["crm-workflow", ispId];
+  // Memoized para referência estável — evita recriar archiveWorkflow a cada render,
+  // o que causaria o useEffect de auto-archive disparar em todo re-render do componente.
+  const queryKey = useMemo(() => ["crm-workflow", ispId], [ispId]);
 
   const { data: records = [], isLoading } = useQuery({
     queryKey,
