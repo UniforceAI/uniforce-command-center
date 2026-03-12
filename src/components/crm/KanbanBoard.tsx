@@ -3,6 +3,8 @@ import { ChurnStatus } from "@/hooks/useChurnData";
 import { RiskBucket } from "@/hooks/useRiskBucketConfig";
 import { WorkflowStatus, CrmWorkflowRecord } from "@/hooks/useCrmWorkflow";
 import { countCalendarDays, countBusinessDays } from "@/lib/workflowLifecycle";
+import { useActiveIsp } from "@/hooks/useActiveIsp";
+import { useTeamMembers } from "@/hooks/useTeamMembers";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -37,6 +39,7 @@ export interface KanbanItem {
   workflow?: CrmWorkflowRecord;
   driver?: string;
   columnId: string;
+  ownerInitials?: string;
 }
 
 interface KanbanBoardProps {
@@ -146,17 +149,22 @@ function KanbanCardVisual({ item, onSelect, onStart, onUpdate, onRequestPerdido,
   onRequestPerdido: () => void;
   isDragging?: boolean;
 }) {
-  const { cliente, score, bucket, workflow, driver } = item;
+  const { cliente, score, bucket, workflow, driver, ownerInitials } = item;
   return (
     <Card
       className={`p-2.5 lg:p-4 cursor-grab active:cursor-grabbing hover:shadow-md transition-shadow space-y-2 lg:space-y-3 w-full max-w-[300px] ${isDragging ? "opacity-40 shadow-lg ring-2 ring-primary" : ""}`}
       onClick={onSelect}
     >
-      {/* Row 1: Name + Score Badge */}
+      {/* Row 1: Name + Owner Avatar + Score Badge */}
       <div className="flex items-start justify-between gap-1.5">
         <span className="text-xs lg:text-sm font-semibold truncate flex-1 leading-tight">
           {cliente.cliente_nome || `#${cliente.cliente_id}`}
         </span>
+        {ownerInitials && (
+          <span className="shrink-0 h-5 w-5 rounded-full bg-primary/15 text-primary text-[9px] font-bold flex items-center justify-center" title={`Responsável: ${ownerInitials}`}>
+            {ownerInitials}
+          </span>
+        )}
         <Badge className={`${BUCKET_COLORS[bucket]} border text-[10px] lg:text-[11px] font-mono shrink-0 px-1.5 lg:px-2`}>
           {score}
         </Badge>
@@ -255,6 +263,8 @@ export function KanbanBoard({
   clientes, getScore, getBucket, workflowMap,
   onSelectCliente, onStartTreatment, onUpdateStatus,
 }: KanbanBoardProps) {
+  const { ispId } = useActiveIsp();
+  const { memberMap } = useTeamMembers(ispId);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [pendingDrag, setPendingDrag] = useState(false);
   const [visibleCounts, setVisibleCounts] = useState<Record<string, number>>({
@@ -296,9 +306,11 @@ export function KanbanBoard({
       else if (bucket === "CRÍTICO" || bucket === "ALERTA") columnId = "em_risco";
       else return null;
 
-      return { cliente: c, score, bucket, workflow: wf, driver, columnId };
+      const ownerInitials = wf?.owner_user_id ? memberMap.get(wf.owner_user_id)?.initials : undefined;
+
+      return { cliente: c, score, bucket, workflow: wf, driver, columnId, ownerInitials };
     }).filter(Boolean) as KanbanItem[];
-  }, [clientes, getScore, getBucket, workflowMap]);
+  }, [clientes, getScore, getBucket, workflowMap, memberMap]);
 
   const columnGroups = useMemo(() => {
     const groups: Record<string, KanbanItem[]> = {

@@ -8,7 +8,9 @@ import { useChurnScoreConfig, calcScoreSuporteConfiguravel, calcScoreFinanceiroC
 import { useRiskBucketConfig, RiskBucket } from "@/hooks/useRiskBucketConfig";
 import { useCrmWorkflow, WorkflowStatus } from "@/hooks/useCrmWorkflow";
 import { countCalendarDays, countBusinessDays, hasNewSignal } from "@/lib/workflowLifecycle";
+import { callCrmApi } from "@/lib/crmApi";
 import { useChurnScore } from "@/hooks/useChurnScore";
+import { useAuth } from "@/contexts/AuthContext";
 import { IspActions } from "@/components/shared/IspActions";
 import { ActionMenu } from "@/components/shared/ActionMenu";
 import { LoadingScreen } from "@/components/shared/LoadingScreen";
@@ -70,6 +72,7 @@ const ClientesEmRisco = () => {
   const { chamados, getChamadosPorCliente } = useChamados();
   const { ispId } = useActiveIsp();
   const { workflowMap, records, isLoading: workflowLoading, addToWorkflow, updateStatus, updateTags, updateOwner, archiveWorkflow } = useCrmWorkflow();
+  const { user } = useAuth();
   const { toast } = useToast();
 
   // Guards para o auto-archive: evita re-entrada e loop optimistic+rollback
@@ -90,10 +93,11 @@ const ClientesEmRisco = () => {
     periodo: "todos" as string,
     statusInternet: "todos" as string,
     viewMode: "kanban" as "lista" | "kanban",
+    ownerFilter: "all" as "all" | "mine" | "unassigned",
     sortField: "score" as SortField,
     sortDir: "desc" as SortDir,
   });
-  const { scoreMin, bucket, plano, cidade, bairro, periodo, statusInternet, viewMode, sortField, sortDir } = filters;
+  const { scoreMin, bucket, plano, cidade, bairro, periodo, statusInternet, viewMode, ownerFilter, sortField, sortDir } = filters;
 
   const [selectedCliente, setSelectedCliente] = useState<ChurnStatus | null>(null);
 
@@ -182,6 +186,14 @@ const ClientesEmRisco = () => {
       f = f.filter((c) => codes.includes(c.status_internet ?? ""));
     }
 
+    // Owner filter
+    if (ownerFilter === "mine") {
+      f = f.filter(c => workflowMap.get(c.cliente_id)?.owner_user_id === user?.id);
+    }
+    if (ownerFilter === "unassigned") {
+      f = f.filter(c => !workflowMap.get(c.cliente_id)?.owner_user_id);
+    }
+
     // Apply sort
     const dir = sortDir === "desc" ? -1 : 1;
     const getNpsOrder = (c: ChurnStatus) => {
@@ -219,7 +231,7 @@ const ClientesEmRisco = () => {
     });
 
     return f;
-  }, [clientesRisco, scoreMin, bucket, plano, cidade, bairro, periodo, statusInternet, dataMaxDataset, getScoreTotalReal, getBucket, sortField, sortDir, chamadosPorClienteMap]);
+  }, [clientesRisco, scoreMin, bucket, plano, cidade, bairro, periodo, statusInternet, ownerFilter, dataMaxDataset, getScoreTotalReal, getBucket, sortField, sortDir, chamadosPorClienteMap, workflowMap, user]);
 
   const kpis = useMemo(() => {
     const totalRisco = filtered.length;
@@ -231,7 +243,7 @@ const ClientesEmRisco = () => {
     return { totalRisco, mrrRisco, ltvRisco, scoreMedio, bloqueadosCobranca };
   }, [filtered, getScoreTotalReal]);
 
-  const hasActiveFilters = scoreMin > 0 || bucket !== "todos" || plano !== "todos" || cidade !== "todos" || bairro !== "todos" || periodo !== "todos" || statusInternet !== "todos";
+  const hasActiveFilters = scoreMin > 0 || bucket !== "todos" || plano !== "todos" || cidade !== "todos" || bairro !== "todos" || periodo !== "todos" || statusInternet !== "todos" || ownerFilter !== "all";
 
   // Chamados for selected client
   const selectedClienteChamados = useMemo(() => {
@@ -338,19 +350,9 @@ const ClientesEmRisco = () => {
     toast({ title: "Cliente adicionado ao workflow" });
   }, [getBucket, getScoreTotalReal, npsMap, addToWorkflow, toast]);
 
-  const getEffectiveScore = useCallback((c: ChurnStatus): number => {
-    const wf = workflowMap.get(c.cliente_id);
-    if (wf?.status_workflow !== "resolvido") return getScoreTotalReal(c);
-    if (!wf.status_entered_at) return 0;
-    const enteredAt = new Date(wf.status_entered_at);
-    if (countCalendarDays(enteredAt, new Date()) >= 30) return getScoreTotalReal(c);
-    if (wf.score_snapshot && hasNewSignal(c, wf.score_snapshot)) return getScoreTotalReal(c);
-    return 0;
-  }, [workflowMap, getScoreTotalReal]);
-
   const handleUpdateStatus = useCallback(async (clienteId: number, status: WorkflowStatus) => {
     let snapshot: Record<string, number> | undefined;
-    if (status === "resolvido") {
+    if (status === "resolvido" || status === "perdido") {
       const c = clientesRisco.find((cl) => cl.cliente_id === clienteId);
       if (c) {
         snapshot = {
@@ -369,7 +371,7 @@ const ClientesEmRisco = () => {
 
   // Auto-archive: "resolvido" após 30 dias corridos, "perdido" após 30 dias úteis.
   // Threshold 30 dias para operação semanal/mensal sem perda de contexto.
-  // newSignal é usado APENAS para exibição (getEffectiveScore) — não para archive.
+  // newSignal é usado APENAS para auto-reentry (efeito abaixo) — não para archive.
   //
   // Proteção contra loop optimistic+rollback:
   //   archivingRef  → card já tem chamada async em andamento (ignora)
@@ -425,10 +427,85 @@ const ClientesEmRisco = () => {
     };
   }, [workflowMap, archiveWorkflow]);
 
-  // isLoading = sem cache nenhum (primeiro acesso ou queries pesados excluídos da persistência).
-  // isFetching (background refetch) NÃO bloqueia — página renderiza com cache imediato.
-  // CacheRefreshGuard dispara refetch no F5; dados atualizam in-place sem LoadingScreen.
-  if (isLoading || workflowLoading) return <div className="min-h-screen bg-background"><LoadingScreen /></div>;
+  // Auto-reentry: cards resolvidos/perdidos com novos sinais de churn voltam para "em_tratamento".
+  // Roda APÓS workflowMap carregar. Uma vez por sessão por card (reentryDoneRef).
+  const reentryDoneRef = useRef(new Set<number>());
+
+  useEffect(() => {
+    if (!workflowMap.size || !churnStatus.length) return;
+
+    // Build O(1) lookup map for churnStatus
+    const churnMap = new Map<number, typeof churnStatus[0]>();
+    for (const c of churnStatus) churnMap.set(c.cliente_id, c);
+
+    const eligible: number[] = [];
+    workflowMap.forEach((wf, clienteId) => {
+      if (wf.status_workflow !== "resolvido" && wf.status_workflow !== "perdido") return;
+      if (!wf.score_snapshot) return;
+      if (reentryDoneRef.current.has(clienteId)) return;
+
+      const cliente = churnMap.get(clienteId);
+      if (!cliente) return;
+      if (hasNewSignal(cliente, wf.score_snapshot)) {
+        eligible.push(clienteId);
+      }
+    });
+
+    if (!eligible.length) return;
+
+    let idx = 0;
+    let cancelled = false;
+
+    function processNext() {
+      if (cancelled || idx >= eligible.length) return;
+      const clienteId = eligible[idx++];
+      reentryDoneRef.current.add(clienteId);
+      updateStatus(clienteId, "em_tratamento")
+        .then(() => {
+          // Audit comment (fire-and-forget)
+          callCrmApi({
+            action: "add_comment",
+            isp_id: ispId,
+            cliente_id: clienteId,
+            body: "Novos sinais de churn detectados — card reaberto automaticamente.",
+            type: "status_change",
+            meta: { reentry: true, previous_status: workflowMap.get(clienteId)?.status_workflow },
+          }).catch(console.error);
+        })
+        .catch((err) => {
+          console.error("auto-reentry failed for", clienteId, err);
+        })
+        .finally(() => {
+          if (typeof requestIdleCallback === "function") {
+            requestIdleCallback(processNext, { timeout: 500 });
+          } else {
+            setTimeout(processNext, 200);
+          }
+        });
+    }
+
+    const timerId = setTimeout(processNext, 500);
+    return () => { cancelled = true; clearTimeout(timerId); };
+  }, [workflowMap, churnStatus, updateStatus, ispId]);
+
+  // Delayed loading: avoid flash when data loads from cache in <300ms.
+  const [showFullLoading, setShowFullLoading] = useState(false);
+  const loadingTimerRef = useRef<ReturnType<typeof setTimeout>>();
+
+  useEffect(() => {
+    if (isLoading || workflowLoading) {
+      loadingTimerRef.current = setTimeout(() => setShowFullLoading(true), 300);
+    } else {
+      clearTimeout(loadingTimerRef.current);
+      setShowFullLoading(false);
+    }
+    return () => clearTimeout(loadingTimerRef.current);
+  }, [isLoading, workflowLoading]);
+
+  if (isLoading || workflowLoading) {
+    if (!showFullLoading) return <div className="min-h-screen bg-background" />;
+    return <div className="min-h-screen bg-background"><LoadingScreen /></div>;
+  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -489,14 +566,24 @@ const ClientesEmRisco = () => {
                 </div>
               )}
 
-              {/* View toggle (right side) */}
-              <div className="flex items-center gap-1.5 ml-auto">
-                <Button variant={viewMode === "kanban" ? "default" : "outline"} size="sm" className="h-7 text-xs gap-1" onClick={() => setFilter("viewMode", "kanban")}>
-                  <Columns className="h-3.5 w-3.5" />Kanban
-                </Button>
-                <Button variant={viewMode === "lista" ? "default" : "outline"} size="sm" className="h-7 text-xs gap-1" onClick={() => setFilter("viewMode", "lista")}>
-                  <LayoutList className="h-3.5 w-3.5" />Lista
-                </Button>
+              {/* Owner filter + View toggle (right side) */}
+              <div className="flex items-center gap-3 ml-auto">
+                <div className="flex items-center gap-1 bg-muted rounded-md p-0.5">
+                  <Button size="sm" variant={ownerFilter === "all" ? "secondary" : "ghost"} className="h-6 text-[10px] px-2"
+                    onClick={() => setFilter("ownerFilter", "all")}>Todos</Button>
+                  <Button size="sm" variant={ownerFilter === "mine" ? "secondary" : "ghost"} className="h-6 text-[10px] px-2"
+                    onClick={() => setFilter("ownerFilter", "mine")}>Meus</Button>
+                  <Button size="sm" variant={ownerFilter === "unassigned" ? "secondary" : "ghost"} className="h-6 text-[10px] px-2"
+                    onClick={() => setFilter("ownerFilter", "unassigned")}>Sem dono</Button>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <Button variant={viewMode === "kanban" ? "default" : "outline"} size="sm" className="h-7 text-xs gap-1" onClick={() => setFilter("viewMode", "kanban")}>
+                    <Columns className="h-3.5 w-3.5" />Kanban
+                  </Button>
+                  <Button variant={viewMode === "lista" ? "default" : "outline"} size="sm" className="h-7 text-xs gap-1" onClick={() => setFilter("viewMode", "lista")}>
+                    <LayoutList className="h-3.5 w-3.5" />Lista
+                  </Button>
+                </div>
               </div>
             </div>
 
@@ -609,7 +696,7 @@ const ClientesEmRisco = () => {
         {viewMode === "kanban" ? (
           <KanbanBoard
             clientes={filtered}
-            getScore={getEffectiveScore}
+            getScore={getScoreTotalReal}
             getBucket={getBucket}
             workflowMap={workflowMap}
             onSelectCliente={setSelectedCliente}

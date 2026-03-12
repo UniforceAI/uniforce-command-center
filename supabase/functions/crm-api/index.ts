@@ -155,7 +155,7 @@ Deno.serve(async (req) => {
           }
           if (tags !== undefined) updates.tags = tags;
           if (owner_user_id !== undefined) updates.owner_user_id = owner_user_id;
-          if (status_workflow === "resolvido") {
+          if (status_workflow === "resolvido" || status_workflow === "perdido") {
             updates.score_snapshot = score_snapshot ?? null;
           } else if (status_workflow !== undefined) {
             updates.score_snapshot = null;
