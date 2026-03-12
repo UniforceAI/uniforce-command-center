@@ -164,6 +164,7 @@ export function useChurnData() {
     churnStatus: statusQuery.data ?? [],
     churnEvents: eventsQuery.data ?? [],
     isLoading: statusQuery.isLoading || eventsQuery.isLoading,
+    isFetching: statusQuery.isFetching || eventsQuery.isFetching,
     error: statusQuery.error?.message ?? eventsQuery.error?.message ?? null,
   };
 }

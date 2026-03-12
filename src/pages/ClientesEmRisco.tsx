@@ -66,10 +66,10 @@ function NPSBadge({ classificacao, nota }: { classificacao?: string; nota?: numb
 }
 
 const ClientesEmRisco = () => {
-  const { churnStatus, churnEvents, isLoading, error, chamadosPorClienteMap, npsMap, getScoreSuporteReal, getScoreNPSReal, getScoreTotalReal, config, getBucket } = useChurnScore();
+  const { churnStatus, churnEvents, isLoading, isFetching, error, chamadosPorClienteMap, npsMap, getScoreSuporteReal, getScoreNPSReal, getScoreTotalReal, config, getBucket } = useChurnScore();
   const { chamados, getChamadosPorCliente } = useChamados();
   const { ispId } = useActiveIsp();
-  const { workflowMap, records, isLoading: workflowLoading, addToWorkflow, updateStatus, updateTags, updateOwner, archiveWorkflow } = useCrmWorkflow();
+  const { workflowMap, records, isLoading: workflowLoading, isFetching: workflowFetching, addToWorkflow, updateStatus, updateTags, updateOwner, archiveWorkflow } = useCrmWorkflow();
   const { toast } = useToast();
 
   // Guards para o auto-archive: evita re-entrada e loop optimistic+rollback
@@ -406,7 +406,9 @@ const ClientesEmRisco = () => {
   // workflowMap (colunas), churnStatus+chamados+buckets (scores e filtros).
   // Isso garante que o kanban aparece uma única vez com estado estável,
   // eliminando a oscilação de cards durante o carregamento inicial.
-  if (isLoading || workflowLoading) return <div className="min-h-screen bg-background"><LoadingScreen /></div>;
+  // isLoading: sem cache (primeiro load) — isFetching: refetch background (F5 com cache / CacheRefreshGuard).
+  // Aguardar AMBOS garante que o kanban aparece sempre com estado 100% estável.
+  if (isLoading || isFetching || workflowLoading || workflowFetching) return <div className="min-h-screen bg-background"><LoadingScreen /></div>;
 
   return (
     <div className="min-h-screen bg-background">

@@ -35,7 +35,7 @@ export function useCrmWorkflow() {
   // o que causaria o useEffect de auto-archive disparar em todo re-render do componente.
   const queryKey = useMemo(() => ["crm-workflow", ispId], [ispId]);
 
-  const { data: records = [], isLoading } = useQuery({
+  const { data: records = [], isLoading, isFetching } = useQuery({
     queryKey,
     queryFn: async () => {
       const data = await callCrmApi({ action: "fetch_workflow", isp_id: ispId });
@@ -174,6 +174,7 @@ export function useCrmWorkflow() {
   return {
     records,
     isLoading,
+    isFetching,
     addToWorkflow,
     updateStatus,
     updateTags,

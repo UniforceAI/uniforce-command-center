@@ -26,7 +26,7 @@ export function useRiskBucketConfig() {
   const queryClient = useQueryClient();
   const queryKey = ["risk-bucket-config", ispId];
 
-  const { data: config, isLoading } = useQuery({
+  const { data: config, isLoading, isFetching } = useQuery({
     queryKey,
     queryFn: async () => {
       try {
@@ -76,5 +76,5 @@ export function useRiskBucketConfig() {
     return "OK";
   }, [currentConfig]);
 
-  return { config: currentConfig, isLoading, saveConfig, getBucket };
+  return { config: currentConfig, isLoading, isFetching, saveConfig, getBucket };
 }

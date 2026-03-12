@@ -123,7 +123,7 @@ async function fetchChamadosSequential(ispId: string): Promise<ChamadoData[]> {
 export function useChamados() {
   const { ispId } = useActiveIsp();
 
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading, isFetching, error } = useQuery({
     queryKey: ["chamados", ispId],
     queryFn: () => fetchChamados(ispId),
     enabled: !!ispId,
@@ -232,5 +232,5 @@ export function useChamados() {
     );
   };
 
-  return { chamados, isLoading, error: error?.message ?? null, getChamadosPorCliente, getChamadosPorPlano };
+  return { chamados, isLoading, isFetching, error: error?.message ?? null, getChamadosPorCliente, getChamadosPorPlano };
 }

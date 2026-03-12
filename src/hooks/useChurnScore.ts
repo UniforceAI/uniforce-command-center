@@ -9,10 +9,10 @@ import { useRiskBucketConfig, RiskBucket } from "@/hooks/useRiskBucketConfig";
  * TODAS as páginas devem usar este hook para garantir score consistente.
  */
 export function useChurnScore() {
-  const { churnStatus, churnEvents, isLoading, error } = useChurnData();
-  const { chamados, getChamadosPorCliente, isLoading: chamadosLoading } = useChamados();
+  const { churnStatus, churnEvents, isLoading, isFetching: churnFetching, error } = useChurnData();
+  const { chamados, getChamadosPorCliente, isLoading: chamadosLoading, isFetching: chamadosFetching } = useChamados();
   const { config } = useChurnScoreConfig();
-  const { getBucket, config: bucketConfig, isLoading: bucketLoading } = useRiskBucketConfig();
+  const { getBucket, config: bucketConfig, isLoading: bucketLoading, isFetching: bucketFetching } = useRiskBucketConfig();
 
   const chamadosPorClienteMap = useMemo(() => ({
     d30: getChamadosPorCliente(30),
@@ -76,6 +76,7 @@ export function useChurnScore() {
     churnStatus,
     churnEvents,
     isLoading: isLoading || bucketLoading || chamadosLoading,
+    isFetching: churnFetching || chamadosFetching || bucketFetching,
     error,
     chamados,
     chamadosPorClienteMap,
