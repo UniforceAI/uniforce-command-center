@@ -1,5 +1,11 @@
 // src/contexts/AuthContext.tsx
-// VERSÃO: session-infra-v1.1
+// VERSÃO: session-infra-v1.2
+// Mudanças v1.2 vs v1.1:
+//   - SIGNED_IN: NÃO sobrescreve SESSION_START_KEY se já existe (fix filtros apagados ao trocar aba)
+//   - SIGNED_IN: return imediato se profileLoadedRef.current (fix tela de loading ao trocar aba)
+//   - Root cause: Supabase re-dispara SIGNED_IN ao retornar de outra aba do browser.
+//     Isso causava: (1) SESSION_START_KEY overwrite → readFromStorage descartava filtros como "stale"
+//     (2) setIsLoading(true) → ProtectedRoute mostrava "Verificando autenticação..." → unmount de tudo
 // Mudanças v1.1 vs versão anterior:
 //   - isBillingBlocked: lê billing_blocked da tabela isps + guard triplo
 //   - uf_session_start: gravado no SIGNED_IN; verificação de 8h no TOKEN_REFRESHED
@@ -359,8 +365,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (event === "PASSWORD_RECOVERY") { setIsLoading(false); return; }
 
         if (event === "SIGNED_IN") {
-          lsSet(SESSION_START_KEY, String(Date.now()));
+          // Gravar sessionStart APENAS no primeiro sign-in desta sessão.
+          // Re-fires do Supabase (tab return, token refresh disfarçado de SIGNED_IN)
+          // NÃO devem sobrescrever — senão _session_ts dos filtros salvos fica < novo sessionStart
+          // e readFromStorage() descarta tudo como "sessão anterior".
+          // O caso F5/reload é tratado pelo initSession() em usePageFilters.ts (module-level IIFE).
+          if (!lsGet(SESSION_START_KEY)) {
+            lsSet(SESSION_START_KEY, String(Date.now()));
+          }
           signingOutRef.current = false;
+
+          // Se profile já carregado → tab return / re-fire, não recarregar.
+          // Sem este guard, ProtectedRoute mostra tela de loading ao voltar de outra aba.
+          if (profileLoadedRef.current) return;
         }
 
         if (event === "TOKEN_REFRESHED") {
@@ -389,7 +406,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           return;
         }
 
-        // SIGNED_IN após carga inicial
+        // SIGNED_IN após carga inicial — só chega aqui se profileLoadedRef é false
+        // (login genuíno de novo user, não tab return)
         if (initialLoadDone.current) {
           setIsLoading(true);
           setTimeout(() => {
