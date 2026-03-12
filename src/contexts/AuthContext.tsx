@@ -1,12 +1,15 @@
 // src/contexts/AuthContext.tsx
-// VERSÃO: session-infra-v1.1 (pós-auditoria)
-// Correções v1.1:
-//   - localStorage com try-catch (fallback gracioso em Incognito mode)
-//   - TOKEN_REFRESHED race condition: usa flag para evitar signOut duplo
-//   - isBillingBlocked inclui guard de isp_id presente
-//   - isSuperAdminEmail movido para antes de loadFullProfile (hoisting explícito)
-//   - Fallback de domínio usa get_isp_by_email_domain() RPC (SECURITY DEFINER, bypassa RLS)
-//   - Mensagem de erro diferenciada para "domínio não cadastrado" vs erro genérico
+// VERSÃO: session-infra-v1.1
+// Mudanças v1.1 vs versão anterior:
+//   - isBillingBlocked: lê billing_blocked da tabela isps + guard triplo
+//   - uf_session_start: gravado no SIGNED_IN; verificação de 8h no TOKEN_REFRESHED
+//   - signingOutRef: previne double-signOut em race condition TOKEN_REFRESHED
+//   - localStorage para ISP selecionado (chave uf_selected_isp_v2) — não mais sessionStorage
+//   - localStorage helpers com try-catch (Incognito mode safe)
+//   - Domain fallback usa get_isp_by_email_domain() RPC SECURITY DEFINER
+//     CRÍTICO: query direta em isp_email_domains falha para novos users (RLS por isp_id)
+//   - Mensagens de erro diferenciadas por tipo
+//   - Static fallback mantido como safety net (inclui igpfibra.com)
 
 import {
   createContext,
@@ -17,7 +20,7 @@ import {
   useCallback,
   useRef,
 } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { externalSupabase } from "@/integrations/supabase/external-client";
 import type { User, Session } from "@supabase/supabase-js";
 
 // ─────────────────────────────────────────────────────────────
@@ -83,6 +86,20 @@ const SESSION_DURATION_MS = 8 * 60 * 60 * 1000; // 8 horas
 const SELECTED_ISP_KEY    = "uf_selected_isp_v2";
 const SESSION_START_KEY   = "uf_session_start";
 
+// Static fallback — usado APENAS se a RPC falhar (outage / cold start)
+const DOMAIN_ISP_FALLBACK: Record<string, { isp_id: string; isp_nome: string; instancia_isp: string }> = {
+  "agytelecom.com.br":  { isp_id: "agy-telecom", isp_nome: "AGY Telecom", instancia_isp: "ispbox" },
+  "agy-telecom.com.br": { isp_id: "agy-telecom", isp_nome: "AGY Telecom", instancia_isp: "ispbox" },
+  "d-kiros.com.br":     { isp_id: "d-kiros",     isp_nome: "D-Kiros",     instancia_isp: "ixc"    },
+  "dkiros.com.br":      { isp_id: "d-kiros",     isp_nome: "D-Kiros",     instancia_isp: "ixc"    },
+  "zentelecom.com.br":  { isp_id: "zen-telecom", isp_nome: "Zen Telecom", instancia_isp: "ixc"    },
+  "zen-telecom.com.br": { isp_id: "zen-telecom", isp_nome: "Zen Telecom", instancia_isp: "ixc"    },
+  "igpfibra.com.br":    { isp_id: "igp-fibra",   isp_nome: "IGP Fibra",   instancia_isp: "ixc"    },
+  "igp-fibra.com.br":   { isp_id: "igp-fibra",   isp_nome: "IGP Fibra",   instancia_isp: "ixc"    },
+  "igpfibra.com":       { isp_id: "igp-fibra",   isp_nome: "IGP Fibra",   instancia_isp: "ixc"    },
+  "uniforce.com.br":    { isp_id: "uniforce",    isp_nome: "Uniforce",    instancia_isp: "uniforce" },
+};
+
 // ─────────────────────────────────────────────────────────────
 // localStorage helpers (com try-catch para Incognito mode)
 // ─────────────────────────────────────────────────────────────
@@ -98,49 +115,39 @@ function lsRemove(key: string): void {
 }
 
 // ─────────────────────────────────────────────────────────────
-// Super admin check (uniforce.com.br — intencionalmente separado do DB
-// para evitar network round-trip durante renderização de UI básica)
+// Helpers
 // ─────────────────────────────────────────────────────────────
+
+function emailDomain(email: string): string {
+  return email.split("@")[1]?.toLowerCase() || "";
+}
 
 function isSuperAdminEmail(email: string): boolean {
   return email.toLowerCase().endsWith("@uniforce.com.br");
 }
 
-// ─────────────────────────────────────────────────────────────
-// Domain lookup via RPC SECURITY DEFINER (bypassa RLS)
-// Chamado apenas quando profiles.isp_id é NULL
-// ─────────────────────────────────────────────────────────────
-
+// Domain lookup via RPC SECURITY DEFINER (bypassa RLS).
+// CRÍTICO: query direta em isp_email_domains falha para novos usuários cujo
+// isp_id ainda não está no profile — RLS bloqueia. RPC é obrigatório.
 async function lookupIspByDomainRpc(email: string): Promise<{
-  isp_id: string;
-  isp_nome: string;
-  instancia_isp: string;
+  isp_id: string; isp_nome: string; instancia_isp: string;
 } | null> {
-  const domain = email.split("@")[1]?.toLowerCase();
+  const domain = emailDomain(email);
   if (!domain) return null;
-
-  const { data, error } = await supabase.rpc("get_isp_by_email_domain", { p_domain: domain });
-  if (error) {
-    console.warn("⚠️ get_isp_by_email_domain error:", error.message);
+  try {
+    const { data, error } = await externalSupabase.rpc("get_isp_by_email_domain", { p_domain: domain });
+    if (error || !data?.length) return null;
+    const row = data[0] as { isp_id: string; isp_nome: string; instancia_isp: string };
+    return row;
+  } catch {
     return null;
   }
-  if (!data || data.length === 0) return null;
-
-  const row = data[0] as { isp_id: string; isp_nome: string; instancia_isp: string };
-  return row;
 }
-
-// ─────────────────────────────────────────────────────────────
-// ISP list loader
-// ─────────────────────────────────────────────────────────────
 
 async function loadAvailableIsps(): Promise<IspOption[]> {
   try {
-    const { data, error } = await supabase
-      .from("isps")
-      .select("isp_id, isp_nome, instancia_isp")
-      .eq("ativo", true)
-      .order("isp_nome");
+    const { data, error } = await externalSupabase
+      .from("isps").select("isp_id, isp_nome, instancia_isp").eq("ativo", true).order("isp_nome");
     if (error || !data?.length) return [];
     return data as IspOption[];
   } catch {
@@ -149,7 +156,7 @@ async function loadAvailableIsps(): Promise<IspOption[]> {
 }
 
 // ─────────────────────────────────────────────────────────────
-// Profile loader
+// Profile loader — retorna profile + billing_blocked
 // ─────────────────────────────────────────────────────────────
 
 interface ProfileResult {
@@ -158,60 +165,50 @@ interface ProfileResult {
   errorType: "no_isp" | "domain_not_registered" | "incomplete_config" | null;
 }
 
-async function loadUserProfile(
-  userId: string,
-  email: string
-): Promise<ProfileResult> {
+async function loadUserProfile(userId: string, email: string): Promise<ProfileResult> {
   try {
-    const { data: profileRow, error: profileErr } = await supabase
-      .from("profiles")
-      .select("id, isp_id, instancia_isp, full_name, email")
-      .eq("id", userId)
-      .maybeSingle();
+    const { data: profileRow, error: profileErr } = await externalSupabase
+      .from("profiles").select("id, isp_id, instancia_isp, full_name, email").eq("id", userId).maybeSingle();
 
     if (profileErr) throw profileErr;
 
     let ispId: string | null = profileRow?.isp_id ?? null;
     let instanciaIsp: string  = profileRow?.instancia_isp ?? "";
 
-    // Se isp_id vazio: tentar lookup dinâmico via função SECURITY DEFINER
+    // Se isp_id vazio: RPC primeiro, static fallback como safety net
     if (!ispId) {
-      const domainMatch = await lookupIspByDomainRpc(email);
-      if (domainMatch) {
-        ispId = domainMatch.isp_id;
-        instanciaIsp = domainMatch.instancia_isp;
+      const rpcMatch = await lookupIspByDomainRpc(email);
+      if (rpcMatch) {
+        ispId = rpcMatch.isp_id;
+        instanciaIsp = rpcMatch.instancia_isp;
       } else {
-        // Domínio não cadastrado em isp_email_domains
-        return { profile: null, billingBlocked: false, errorType: "domain_not_registered" };
+        // Safety net: fallback estático (outage / cold start)
+        const domain = emailDomain(email);
+        const staticMatch = DOMAIN_ISP_FALLBACK[domain];
+        if (staticMatch) {
+          ispId = staticMatch.isp_id;
+          instanciaIsp = staticMatch.instancia_isp;
+        } else {
+          return { profile: null, billingBlocked: false, errorType: "domain_not_registered" };
+        }
       }
     }
 
-    if (!ispId) {
-      return { profile: null, billingBlocked: false, errorType: "no_isp" };
-    }
+    if (!ispId) return { profile: null, billingBlocked: false, errorType: "no_isp" };
 
     const [ispResult, roleResult] = await Promise.all([
-      supabase
-        .from("isps")
+      externalSupabase.from("isps")
         .select("isp_id, isp_nome, instancia_isp, billing_blocked")
-        .eq("isp_id", ispId)
-        .maybeSingle(),
-      supabase
-        .from("user_roles")
-        .select("role")
-        .eq("user_id", userId)
-        .eq("isp_id", ispId)
-        .order("role")
-        .limit(1)
-        .maybeSingle(),
+        .eq("isp_id", ispId).maybeSingle(),
+      externalSupabase.from("user_roles")
+        .select("role").eq("user_id", userId).eq("isp_id", ispId)
+        .order("role").limit(1).maybeSingle(),
     ]);
 
     const isp  = ispResult.data;
     const role = roleResult.data?.role ?? (isSuperAdminEmail(email) ? "super_admin" : "viewer");
 
-    if (!instanciaIsp && isp?.instancia_isp) {
-      instanciaIsp = isp.instancia_isp;
-    }
+    if (!instanciaIsp && isp?.instancia_isp) instanciaIsp = isp.instancia_isp;
 
     if (!instanciaIsp) {
       return {
@@ -228,19 +225,28 @@ async function loadUserProfile(
 
     return {
       profile: {
-        user_id: userId,
-        isp_id: ispId,
-        isp_nome: isp?.isp_nome ?? ispId,
+        user_id: userId, isp_id: ispId, isp_nome: isp?.isp_nome ?? ispId,
         instancia_isp: instanciaIsp,
         full_name: profileRow?.full_name ?? email.split("@")[0],
-        email: profileRow?.email ?? email,
-        role,
+        email: profileRow?.email ?? email, role,
       },
       billingBlocked,
       errorType: null,
     };
   } catch (err) {
     console.warn("⚠️ Profile DB error:", err);
+    // Last resort: static domain fallback
+    const domain = emailDomain(email);
+    const fallback = DOMAIN_ISP_FALLBACK[domain];
+    if (fallback) {
+      return {
+        profile: { user_id: userId, ...fallback,
+          full_name: email.split("@")[0], email,
+          role: isSuperAdminEmail(email) ? "super_admin" : "viewer" },
+        billingBlocked: false,
+        errorType: null,
+      };
+    }
     return { profile: null, billingBlocked: false, errorType: "no_isp" };
   }
 }
@@ -250,25 +256,25 @@ async function loadUserProfile(
 // ─────────────────────────────────────────────────────────────
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser]                   = useState<User | null>(null);
-  const [session, setSession]             = useState<Session | null>(null);
-  const [profile, setProfile]             = useState<AuthProfile | null>(null);
-  const [isLoading, setIsLoading]         = useState(true);
-  const [error, setError]                 = useState<string | null>(null);
+  const [user, setUser]                     = useState<User | null>(null);
+  const [session, setSession]               = useState<Session | null>(null);
+  const [profile, setProfile]               = useState<AuthProfile | null>(null);
+  const [isLoading, setIsLoading]           = useState(true);
+  const [error, setError]                   = useState<string | null>(null);
   const [billingBlocked, setBillingBlocked] = useState(false);
-  const [selectedIsp, setSelectedIsp]     = useState<IspOption | null>(null);
-  const [availableIsps, setAvailableIsps] = useState<IspOption[]>([]);
+  const [selectedIsp, setSelectedIsp]       = useState<IspOption | null>(null);
+  const [availableIsps, setAvailableIsps]   = useState<IspOption[]>([]);
 
-  const mountedRef       = useRef(true);
-  const profileLoadedRef = useRef(false);
-  const initialLoadDone  = useRef(false);
-  const signingOutRef    = useRef(false);   // previne signOut duplo no TOKEN_REFRESHED
+  const mountedRef         = useRef(true);
+  const profileLoadedRef   = useRef(false);
+  const initialLoadDone    = useRef(false);
+  const signingOutRef      = useRef(false);   // previne signOut duplo no TOKEN_REFRESHED
 
-  const isSuperAdmin    = profile?.role === "super_admin";
-  // Guard triplo: billingBlocked state + não é super_admin + isp_id está presente
+  const isSuperAdmin     = profile?.role === "super_admin";
+  // Guard triplo: billingBlocked state + não é super_admin + isp_id presente
   const isBillingBlocked = billingBlocked && !isSuperAdmin && !!profile?.isp_id;
 
-  // ── ISP selection (localStorage → cross-tab) ────────────────
+  // ── ISP selection (localStorage — persiste cross-tab e após freeze) ─
   const selectIsp = useCallback((isp: IspOption) => {
     setSelectedIsp(isp);
     lsSet(SELECTED_ISP_KEY, JSON.stringify(isp));
@@ -279,7 +285,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     lsRemove(SELECTED_ISP_KEY);
   }, []);
 
-  // ── Profile loader ──────────────────────────────────────────
+  // ── Profile loader ────────────────────────────────────────
   const loadFullProfile = useCallback(async (targetUser: User) => {
     const email = targetUser.email ?? "";
     try {
@@ -295,16 +301,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setAvailableIsps(isps);
       profileLoadedRef.current = true;
 
-      // Mensagens de erro diferenciadas por tipo
       switch (profileResult.errorType) {
         case "domain_not_registered":
           setError("Domínio de email não cadastrado. Contate o administrador para associar seu email ao provedor.");
           break;
         case "no_isp":
-          setError("Usuário não vinculado a um provedor. Contate o administrador.");
+          setError("Usuário não vinculado a um ISP. Entre em contato com o administrador.");
           break;
         case "incomplete_config":
-          // instancia_isp vazia: perfil existe mas configuração incompleta — não deixar navegar
           setError("Configuração de perfil incompleta. Saia e entre novamente ou contate o suporte.");
           break;
         default:
@@ -330,49 +334,43 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.error("❌ Profile load failed:", err);
       setError("Erro ao carregar perfil. Tente recarregar a página.");
     }
-  }, []); // sem deps: usa closures de funções puras ou refs
+  }, []);
 
-  // ── Refresh público ─────────────────────────────────────────
+  // ── Refresh público ───────────────────────────────────────
   const refreshProfile = useCallback(async () => {
     if (!user) return;
     await loadFullProfile(user);
   }, [user, loadFullProfile]);
 
-  // ── Auth lifecycle ─────────────────────────────────────────
+  // ── Auth lifecycle ────────────────────────────────────────
   useEffect(() => {
-    mountedRef.current     = true;
+    mountedRef.current       = true;
     profileLoadedRef.current = false;
     initialLoadDone.current  = false;
     signingOutRef.current    = false;
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+    const { data: { subscription } } = externalSupabase.auth.onAuthStateChange(
       (event, newSession) => {
         if (!mountedRef.current) return;
 
         setSession(newSession);
         setUser(newSession?.user ?? null);
 
-        if (event === "PASSWORD_RECOVERY") {
-          setIsLoading(false);
-          return;
-        }
+        if (event === "PASSWORD_RECOVERY") { setIsLoading(false); return; }
 
         if (event === "SIGNED_IN") {
-          // Gravar início de sessão (used by usePageFilters for filter expiry)
           lsSet(SESSION_START_KEY, String(Date.now()));
           signingOutRef.current = false;
         }
 
         if (event === "TOKEN_REFRESHED") {
-          // Verificar expiração de 8h (Supabase timebox já cuida disso server-side,
-          // mas verificamos client-side como defense-in-depth)
-          if (signingOutRef.current) return; // signOut já em progresso
+          // Guard de 8h client-side (Supabase timebox cuida server-side — defense-in-depth)
+          if (signingOutRef.current) return;
           const sessionStart = parseInt(lsGet(SESSION_START_KEY) ?? "0", 10);
           if (sessionStart && Date.now() - sessionStart > SESSION_DURATION_MS) {
             signingOutRef.current = true;
             console.warn("⏰ Sessão expirada (8h) — forçando logout");
-            // Não await aqui (callback não pode ser async) — usar setTimeout(0) para executar depois
-            setTimeout(() => { supabase.auth.signOut().catch(() => {}); }, 0);
+            setTimeout(() => { externalSupabase.auth.signOut().catch(() => {}); }, 0);
           }
           return;
         }
@@ -384,14 +382,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setSelectedIsp(null);
           setAvailableIsps([]);
           lsRemove(SESSION_START_KEY);
-          lsRemove(SELECTED_ISP_KEY); // limpar ISP selecionado em logout forçado (token expiry)
+          lsRemove(SELECTED_ISP_KEY);
           profileLoadedRef.current = false;
-          signingOutRef.current = false;
+          signingOutRef.current    = false;
           setIsLoading(false);
           return;
         }
 
-        // SIGNED_IN ou USER_UPDATED após carga inicial
+        // SIGNED_IN após carga inicial
         if (initialLoadDone.current) {
           setIsLoading(true);
           setTimeout(() => {
@@ -405,7 +403,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     );
 
     // Carga inicial
-    supabase.auth.getSession().then(({ data: { session: s } }) => {
+    externalSupabase.auth.getSession().then(({ data: { session: s } }) => {
       if (!mountedRef.current) return;
       setSession(s);
       setUser(s?.user ?? null);
@@ -424,13 +422,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
     });
 
-    // Safety timeout
     const safetyTimer = setTimeout(() => {
       if (mountedRef.current) {
-        setIsLoading((c) => {
-          if (c) console.warn("⚠️ Auth safety timeout");
-          return false;
-        });
+        setIsLoading((c) => { if (c) console.warn("⚠️ Auth safety timeout"); return false; });
       }
     }, 20_000);
 
@@ -441,9 +435,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, [loadFullProfile]);
 
-  // ── Sign out ───────────────────────────────────────────────
+  // ── Sign out ──────────────────────────────────────────────
   const signOut = async () => {
-    await supabase.auth.signOut();
+    await externalSupabase.auth.signOut();
     setUser(null);
     setSession(null);
     setProfile(null);
@@ -459,19 +453,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   return (
     <AuthContext.Provider
       value={{
-        user,
-        session,
-        profile,
-        isLoading,
-        error,
-        isSuperAdmin,
-        isBillingBlocked,
-        selectedIsp,
-        availableIsps,
-        selectIsp,
-        clearSelectedIsp,
-        signOut,
-        refreshProfile,
+        user, session, profile, isLoading, error,
+        isSuperAdmin, isBillingBlocked,
+        selectedIsp, availableIsps,
+        selectIsp, clearSelectedIsp,
+        signOut, refreshProfile,
       }}
     >
       {children}

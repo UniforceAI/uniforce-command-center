@@ -1,153 +1,170 @@
-// src/lib/authUtils.ts
-// VERSÃO: session-infra-v1.2 (revisão final)
-// Correções v1.1:
-//   - getIspByEmailDomain: usa RPC get_isp_by_email_domain() (SECURITY DEFINER)
-//     em vez de query direta em isp_email_domains — necessário pois RLS restringe
-//     à própria ISP; usuário recém-autenticado sem isp_id no profile ainda não passa no RLS
-//   - ensureUserProfile: user_roles usa upsert+ignoreDuplicates (não insert que lança em conflito)
-//   - profiles sem ISP: usa upsert (evita duplicate key se perfil base já foi criado pelo trigger)
-// Correções v1.2:
-//   - ensureUserProfile: verifica role existente antes de inserir 'viewer'
-//     onConflict em (user_id,isp_id,role) NÃO previne inserção de role diferente —
-//     admin pode ter atribuído 'admin' manualmente antes; check explícito evita duplicação
-
-import { supabase } from "@/integrations/supabase/client";
+import { externalSupabase } from "@/integrations/supabase/external-client";
 
 // ─────────────────────────────────────────────────────────────
-// Tipos
+// Types
 // ─────────────────────────────────────────────────────────────
 
-export interface DomainIspMapping {
-  isp_id: string;
-  isp_nome: string;
-  instancia_isp: string;
+export interface DomainValidationResult {
+  valid: boolean;
+  isp_id?: string;
+  isp_nome?: string;
+  instancia_isp?: string;
+  error?: string;
 }
 
 // ─────────────────────────────────────────────────────────────
-// Domain lookup (via RPC SECURITY DEFINER — bypassa RLS)
+// Constants
+// ─────────────────────────────────────────────────────────────
+
+const SUPER_ADMIN_DOMAINS = ["uniforce.com.br"];
+
+const UNIFORCE_SENTINEL: DomainValidationResult = {
+  valid: true,
+  isp_id: "uniforce",
+  isp_nome: "Uniforce",
+  instancia_isp: "uniforce",
+};
+
+// ─────────────────────────────────────────────────────────────
+// Public API
 // ─────────────────────────────────────────────────────────────
 
 /**
- * Dado o domínio do email (ex: "igpfibra.com"), retorna os dados do ISP.
- * Usa RPC get_isp_by_email_domain() com SECURITY DEFINER para contornar RLS
- * — necessário quando o perfil do usuário ainda não tem isp_id (recém autenticado).
- * Para adicionar novos domínios: INSERT em isp_email_domains (sem alterar código).
- */
-export async function getIspByEmailDomain(
-  email: string
-): Promise<DomainIspMapping | null> {
-  const domain = email.split("@")[1]?.toLowerCase();
-  if (!domain) return null;
-
-  const { data, error } = await supabase.rpc("get_isp_by_email_domain", {
-    p_domain: domain,
-  });
-
-  if (error) {
-    console.warn("getIspByEmailDomain RPC error:", error.message);
-    return null;
-  }
-
-  if (!data || data.length === 0) return null;
-
-  const row = data[0] as {
-    isp_id: string;
-    isp_nome: string;
-    instancia_isp: string;
-  };
-  return {
-    isp_id: row.isp_id,
-    isp_nome: row.isp_nome ?? row.isp_id,
-    instancia_isp: row.instancia_isp ?? "",
-  };
-}
-
-// ─────────────────────────────────────────────────────────────
-// Helpers
-// ─────────────────────────────────────────────────────────────
-
-/**
- * Verifica se o email pertence ao domínio do Uniforce (super admin).
- * Verificação rápida de UI sem hit no DB.
- */
-export function isUniforceEmail(email: string): boolean {
-  return email.toLowerCase().endsWith("@uniforce.com.br");
-}
-
-// ─────────────────────────────────────────────────────────────
-// Profile bootstrap
-// ─────────────────────────────────────────────────────────────
-
-/**
- * Cria ou atualiza o profile do usuário quando o trigger handle_new_user()
- * não criou automaticamente (ex: domínio cadastrado DEPOIS do signup do usuário).
+ * Validates whether an email is authorized to access the system.
  *
- * Retorna true se profile está completo (com isp_id), false se domínio não reconhecido.
+ * POLICY: Any email domain is accepted. What matters is whether the
+ * user was pre-registered by a Uniforce admin — not the email domain.
+ * Gmail, corporate domains, subdomains — all are valid if registered.
+ *
+ * Strategy:
+ * 1. @uniforce.com.br  → always authorized as super_admin (internal team)
+ * 2. All other emails  → check if pre-registered via SECURITY DEFINER RPC
+ *                        (bypasses RLS, works with anon key before sign-in)
+ * 3. Fallback          → if RPC is unreachable, try static domain map so
+ *                        existing ISP corporate emails are never locked out
  */
-export async function ensureUserProfile(
-  userId: string,
+export async function validateEmailDomain(
   email: string
-): Promise<boolean> {
-  // Verificar se profile já existe e está completo
-  const { data: existing } = await supabase
-    .from("profiles")
-    .select("id, isp_id")
-    .eq("id", userId)
-    .maybeSingle();
+): Promise<DomainValidationResult> {
+  const lower = email.toLowerCase().trim();
+  const domain = lower.split("@")[1];
 
-  if (existing?.isp_id) return true; // Profile completo — sem ação necessária
-
-  // Tentar resolver ISP pelo domínio via RPC (bypassa RLS)
-  const ispMapping = await getIspByEmailDomain(email);
-
-  if (!ispMapping) {
-    // Domínio não cadastrado — garantir ao menos o profile base
-    // Usar upsert para evitar duplicate key se profile base já foi criado pelo trigger
-    await supabase.from("profiles").upsert(
-      {
-        id: userId,
-        isp_id: null,
-        instancia_isp: "",
-        full_name: email.split("@")[0],
-        email,
-      },
-      { onConflict: "id", ignoreDuplicates: true }
-    );
-    return false;
+  if (!domain) {
+    return { valid: false, error: "Email inválido." };
   }
 
-  // Upsert profile com ISP resolvido
-  await supabase.from("profiles").upsert(
-    {
-      id: userId,
-      isp_id: ispMapping.isp_id,
-      instancia_isp: ispMapping.instancia_isp,
-      full_name: existing?.isp_id === undefined ? email.split("@")[0] : undefined,
-      email,
-    },
-    { onConflict: "id" }
-  );
+  // ── 1. Uniforce internal team ──────────────────────────────
+  if (SUPER_ADMIN_DOMAINS.includes(domain)) {
+    return UNIFORCE_SENTINEL;
+  }
 
-  // Verificar se o usuário já tem QUALQUER role neste ISP.
-  // upsert(ignoreDuplicates) com onConflict em (user_id,isp_id,role) NÃO previne inserção de
-  // role diferente — ex: admin já atribuiu 'admin', mas aqui inseriria 'viewer' em row separada.
-  const { data: existingRole } = await supabase
+  // ── 2. Registered user lookup (primary gate) ──────────────
+  // Any email is allowed if the user was pre-created by an admin.
+  // Domain is irrelevant — registration is the only requirement.
+  try {
+    const { data, error } = await externalSupabase
+      .rpc("get_isp_for_registered_email", { p_email: lower });
+
+    if (!error && data && data.length > 0) {
+      const { isp_id, isp_nome, instancia_isp } = data[0];
+      return { valid: true, isp_id, isp_nome, instancia_isp };
+    }
+  } catch (err) {
+    // RPC unreachable — fall through to static fallback below
+    console.warn("⚠️ get_isp_for_registered_email failed, trying fallback:", err);
+  }
+
+  // ── 3. Static domain fallback (safety net only) ───────────
+  // Only reached if the RPC above failed (network error, cold start, etc.).
+  // Prevents locking out existing ISP corporate-email users during outages.
+  const STATIC_FALLBACK: Record<string, DomainValidationResult> = {
+    "agytelecom.com.br":  { valid: true, isp_id: "agy-telecom", isp_nome: "AGY Telecom",  instancia_isp: "ispbox" },
+    "agy-telecom.com.br": { valid: true, isp_id: "agy-telecom", isp_nome: "AGY Telecom",  instancia_isp: "ispbox" },
+    "d-kiros.com.br":     { valid: true, isp_id: "d-kiros",     isp_nome: "D-Kiros",      instancia_isp: "ixc"    },
+    "dkiros.com.br":      { valid: true, isp_id: "d-kiros",     isp_nome: "D-Kiros",      instancia_isp: "ixc"    },
+    "zentelecom.com.br":  { valid: true, isp_id: "zen-telecom", isp_nome: "Zen Telecom",  instancia_isp: "ixc"    },
+    "zen-telecom.com.br": { valid: true, isp_id: "zen-telecom", isp_nome: "Zen Telecom",  instancia_isp: "ixc"    },
+    "igpfibra.com.br":    { valid: true, isp_id: "igp-fibra",   isp_nome: "IGP Fibra",    instancia_isp: "ixc"    },
+    "igp-fibra.com.br":   { valid: true, isp_id: "igp-fibra",   isp_nome: "IGP Fibra",    instancia_isp: "ixc"    },
+    "igpfibra.com":       { valid: true, isp_id: "igp-fibra",   isp_nome: "IGP Fibra",    instancia_isp: "ixc"    },
+  };
+  if (STATIC_FALLBACK[domain]) return STATIC_FALLBACK[domain];
+
+  // ── 4. Not found ──────────────────────────────────────────
+  return {
+    valid: false,
+    error: "Acesso não encontrado. Verifique com o administrador se seu cadastro foi criado.",
+  };
+}
+
+// ─────────────────────────────────────────────────────────────
+// Profile bootstrap (called after first sign-in)
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Ensures a user profile exists in the external Supabase DB.
+ *
+ * Called by Auth.tsx as a safety net after sign-in, in case the
+ * `handle_new_user` trigger didn't run (e.g., legacy accounts).
+ * The trigger is the primary mechanism; this is just a fallback.
+ */
+export async function createUserProfileInExternal(
+  userId: string,
+  email: string,
+  fullName: string,
+  ispId: string
+): Promise<{ success: boolean; error?: string }> {
+  let instanciaIsp = "";
+  let ispNome = ispId;
+
+  try {
+    const { data: isp } = await externalSupabase
+      .from("isps")
+      .select("isp_nome, instancia_isp")
+      .eq("isp_id", ispId)
+      .maybeSingle();
+
+    if (isp) {
+      instanciaIsp = isp.instancia_isp || "";
+      ispNome = isp.isp_nome || ispId;
+    }
+  } catch {
+    // Non-fatal; continue with empty instancia_isp
+  }
+
+  const { error: profileErr } = await externalSupabase
+    .from("profiles")
+    .upsert(
+      { id: userId, isp_id: ispId, instancia_isp: instanciaIsp, full_name: fullName, email },
+      { onConflict: "id" }
+    );
+
+  if (profileErr) {
+    console.error("❌ Erro ao criar profile:", profileErr);
+    return { success: false, error: "Erro ao criar perfil: " + profileErr.message };
+  }
+
+  // Verificar se o usuário já tem QUALQUER role neste ISP antes de inserir.
+  // onConflict em (user_id,isp_id,role) NÃO previne inserção de role diferente:
+  // ex: admin já atribuiu 'admin', mas aqui inseriria 'viewer' em row separada.
+  const { data: existingRole } = await externalSupabase
     .from("user_roles")
     .select("role")
     .eq("user_id", userId)
-    .eq("isp_id", ispMapping.isp_id)
+    .eq("isp_id", ispId)
     .limit(1)
     .maybeSingle();
 
   if (!existingRole) {
-    const initialRole = isUniforceEmail(email) ? "super_admin" : "viewer";
-    await supabase.from("user_roles").insert({
-      user_id: userId,
-      isp_id: ispMapping.isp_id,
-      instancia_isp: ispMapping.instancia_isp,
-      role: initialRole,
-    });
+    const defaultRole = ispId === "uniforce" ? "super_admin" : "viewer";
+    const { error: roleErr } = await externalSupabase
+      .from("user_roles")
+      .insert({ user_id: userId, isp_id: ispId, instancia_isp: instanciaIsp, role: defaultRole });
+
+    if (roleErr) {
+      console.warn("⚠️ Erro ao criar role:", roleErr.message);
+    }
   }
 
-  return true;
+  return { success: true };
 }
