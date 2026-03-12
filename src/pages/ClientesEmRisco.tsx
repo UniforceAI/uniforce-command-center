@@ -66,10 +66,10 @@ function NPSBadge({ classificacao, nota }: { classificacao?: string; nota?: numb
 }
 
 const ClientesEmRisco = () => {
-  const { churnStatus, churnEvents, isLoading, isFetching, error, chamadosPorClienteMap, npsMap, getScoreSuporteReal, getScoreNPSReal, getScoreTotalReal, config, getBucket } = useChurnScore();
+  const { churnStatus, churnEvents, isLoading, error, chamadosPorClienteMap, npsMap, getScoreSuporteReal, getScoreNPSReal, getScoreTotalReal, config, getBucket } = useChurnScore();
   const { chamados, getChamadosPorCliente } = useChamados();
   const { ispId } = useActiveIsp();
-  const { workflowMap, records, isLoading: workflowLoading, isFetching: workflowFetching, addToWorkflow, updateStatus, updateTags, updateOwner, archiveWorkflow } = useCrmWorkflow();
+  const { workflowMap, records, isLoading: workflowLoading, addToWorkflow, updateStatus, updateTags, updateOwner, archiveWorkflow } = useCrmWorkflow();
   const { toast } = useToast();
 
   // Guards para o auto-archive: evita re-entrada e loop optimistic+rollback
@@ -378,37 +378,57 @@ const ClientesEmRisco = () => {
   useEffect(() => {
     if (!workflowMap.size) return;
     const now = new Date();
+
+    // 1. Coleta pura (sem side effects)
+    const eligible: number[] = [];
     workflowMap.forEach((wf, clienteId) => {
-      // GUARD: não arquivar se status_entered_at não está definido (incidente 2026-03-11).
       if (!wf.status_entered_at) return;
-      // GUARD: skip chamadas em-voo ou que já falharam nesta sessão
       if (archivingRef.current.has(clienteId)) return;
       if (archiveFailedRef.current.has(clienteId)) return;
-
       const enteredAt = new Date(wf.status_entered_at);
       const shouldArchive =
         (wf.status_workflow === "resolvido" && countCalendarDays(enteredAt, now) >= 30) ||
         (wf.status_workflow === "perdido"  && countBusinessDays(enteredAt, now) >= 30);
-      if (!shouldArchive) return;
+      if (shouldArchive) eligible.push(clienteId);
+    });
 
+    if (!eligible.length) return;
+
+    // 2. Processa um por vez com breathing room para GC
+    let idx = 0;
+    let cancelled = false;
+
+    function processNext() {
+      if (cancelled || idx >= eligible.length) return;
+      const clienteId = eligible[idx++];
       archivingRef.current.add(clienteId);
       archiveWorkflow(clienteId)
         .catch((err) => {
           console.error("auto-archive failed for", clienteId, err);
-          // Marca como falha permanente nesta sessão para romper loop optimistic+rollback
           archiveFailedRef.current.add(clienteId);
         })
-        .finally(() => archivingRef.current.delete(clienteId));
-    });
+        .finally(() => {
+          archivingRef.current.delete(clienteId);
+          if (typeof requestIdleCallback === "function") {
+            requestIdleCallback(processNext, { timeout: 500 });
+          } else {
+            setTimeout(processNext, 200);
+          }
+        });
+    }
+
+    const timerId = setTimeout(processNext, 300);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timerId);
+    };
   }, [workflowMap, archiveWorkflow]);
 
-  // Aguardar TODOS os dados críticos antes de renderizar o Kanban:
-  // workflowMap (colunas), churnStatus+chamados+buckets (scores e filtros).
-  // Isso garante que o kanban aparece uma única vez com estado estável,
-  // eliminando a oscilação de cards durante o carregamento inicial.
-  // isLoading: sem cache (primeiro load) — isFetching: refetch background (F5 com cache / CacheRefreshGuard).
-  // Aguardar AMBOS garante que o kanban aparece sempre com estado 100% estável.
-  if (isLoading || isFetching || workflowLoading || workflowFetching) return <div className="min-h-screen bg-background"><LoadingScreen /></div>;
+  // isLoading = sem cache nenhum (primeiro acesso ou queries pesados excluídos da persistência).
+  // isFetching (background refetch) NÃO bloqueia — página renderiza com cache imediato.
+  // CacheRefreshGuard dispara refetch no F5; dados atualizam in-place sem LoadingScreen.
+  if (isLoading || workflowLoading) return <div className="min-h-screen bg-background"><LoadingScreen /></div>;
 
   return (
     <div className="min-h-screen bg-background">

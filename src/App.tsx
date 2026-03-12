@@ -51,10 +51,27 @@ const queryClient = new QueryClient({
 
 const persister = createLocalStoragePersister();
 
+// Queries pesados (50K+ registros) são excluídos da serialização localStorage.
+// São re-fetched no F5 pelo CacheRefreshGuard — sem regressão.
+const HEAVY_QUERY_PREFIXES = new Set([
+  "churn-status",
+  "churn-events",
+  "chamados",
+  "eventos",
+]);
+
 const persistOptions = {
   persister,
   maxAge: TEN_HOURS,
   buster: "v9",
+  dehydrateOptions: {
+    shouldDehydrateQuery: (query: { queryKey: readonly unknown[]; state: { status: string } }) => {
+      // Preservar default do TanStack: não persistir queries sem dados (pending)
+      if (query.state.status === "pending") return false;
+      const prefix = query.queryKey[0];
+      return typeof prefix === "string" ? !HEAVY_QUERY_PREFIXES.has(prefix) : true;
+    },
+  },
 };
 
 // BillingGuard redireciona para /configuracoes/perfil?tab=financeiro
