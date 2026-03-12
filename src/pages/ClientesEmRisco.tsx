@@ -338,7 +338,7 @@ const ClientesEmRisco = () => {
     const wf = workflowMap.get(c.cliente_id);
     if (wf?.status_workflow !== "resolvido") return getScoreTotalReal(c);
     const enteredAt = new Date(wf.status_entered_at ?? wf.last_action_at ?? wf.created_at);
-    if (countCalendarDays(enteredAt, new Date()) >= 7) return getScoreTotalReal(c);
+    if (countCalendarDays(enteredAt, new Date()) >= 30) return getScoreTotalReal(c);
     if (wf.score_snapshot && hasNewSignal(c, wf.score_snapshot)) return getScoreTotalReal(c);
     return 0;
   }, [workflowMap, getScoreTotalReal]);
@@ -362,7 +362,8 @@ const ClientesEmRisco = () => {
     toast({ title: `Marcado como ${status}` });
   }, [updateStatus, clientesRisco, toast]);
 
-  // Auto-archive: "resolvido" após 7 dias corridos, "perdido" após 7 dias úteis.
+  // Auto-archive: "resolvido" após 30 dias corridos, "perdido" após 30 dias úteis.
+  // Threshold aumentado de 7 para 30 dias para operação semanal/mensal sem perda de contexto.
   // newSignal é usado APENAS para exibição (getEffectiveScore) — não para archive,
   // pois qualquer variação diária de score dispararia archival no mesmo dia.
   useEffect(() => {
@@ -371,10 +372,10 @@ const ClientesEmRisco = () => {
     workflowMap.forEach((wf, clienteId) => {
       const enteredAt = new Date(wf.status_entered_at ?? wf.last_action_at ?? wf.created_at);
       if (wf.status_workflow === "resolvido") {
-        if (countCalendarDays(enteredAt, now) >= 7) archiveWorkflow(clienteId).catch(console.error);
+        if (countCalendarDays(enteredAt, now) >= 30) archiveWorkflow(clienteId).catch(console.error);
       }
       if (wf.status_workflow === "perdido") {
-        if (countBusinessDays(enteredAt, now) >= 7) archiveWorkflow(clienteId).catch(console.error);
+        if (countBusinessDays(enteredAt, now) >= 30) archiveWorkflow(clienteId).catch(console.error);
       }
     });
   }, [workflowMap, archiveWorkflow]);

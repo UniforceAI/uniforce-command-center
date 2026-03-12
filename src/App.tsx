@@ -11,6 +11,7 @@ import { MainLayout } from "@/components/layout/MainLayout";
 import { ErrorBoundary } from "@/components/shared/ErrorBoundary";
 import { createLocalStoragePersister } from "@/lib/queryPersister";
 import { CacheRefreshGuard } from "@/components/CacheRefreshGuard";
+import { BillingGuard } from "@/components/BillingGuard";
 import { useLocation } from "react-router-dom";
 import Index from "./pages/Index";
 import NPS from "./pages/NPS";
@@ -56,8 +57,10 @@ const persistOptions = {
   buster: "v7",
 };
 
+// BillingGuard redireciona para /configuracoes/perfil?tab=financeiro
+// quando o ISP está com billing_blocked=true. Super admins não são afetados.
 const Protected = ({ children }: { children: React.ReactNode }) => (
-  <ProtectedRoute><MainLayout>{children}</MainLayout></ProtectedRoute>
+  <ProtectedRoute><BillingGuard><MainLayout>{children}</MainLayout></BillingGuard></ProtectedRoute>
 );
 
 // Functional wrapper so ErrorBoundary can react to route changes via resetKey

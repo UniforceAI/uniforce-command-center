@@ -144,16 +144,26 @@ export async function createUserProfileInExternal(
     return { success: false, error: "Erro ao criar perfil: " + profileErr.message };
   }
 
-  const defaultRole = ispId === "uniforce" ? "super_admin" : "viewer";
-  const { error: roleErr } = await externalSupabase
+  // Verificar se o usuário já tem QUALQUER role neste ISP antes de inserir.
+  // onConflict em (user_id,isp_id,role) NÃO previne inserção de role diferente:
+  // ex: admin já atribuiu 'admin', mas aqui inseriria 'viewer' em row separada.
+  const { data: existingRole } = await externalSupabase
     .from("user_roles")
-    .upsert(
-      { user_id: userId, isp_id: ispId, instancia_isp: instanciaIsp, role: defaultRole },
-      { onConflict: "user_id,isp_id,role" }
-    );
+    .select("role")
+    .eq("user_id", userId)
+    .eq("isp_id", ispId)
+    .limit(1)
+    .maybeSingle();
 
-  if (roleErr) {
-    console.warn("⚠️ Erro ao criar role (pode já existir):", roleErr.message);
+  if (!existingRole) {
+    const defaultRole = ispId === "uniforce" ? "super_admin" : "viewer";
+    const { error: roleErr } = await externalSupabase
+      .from("user_roles")
+      .insert({ user_id: userId, isp_id: ispId, instancia_isp: instanciaIsp, role: defaultRole });
+
+    if (roleErr) {
+      console.warn("⚠️ Erro ao criar role:", roleErr.message);
+    }
   }
 
   return { success: true };
