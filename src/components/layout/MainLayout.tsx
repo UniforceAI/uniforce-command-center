@@ -46,7 +46,7 @@ export function MainLayout({ children }: MainLayoutProps) {
           <main className="flex-1">{children}</main>
           <footer className="border-t border-border/50 py-3 px-6 text-center bg-gray-100">
             <p className="text-[11px] text-muted-foreground">
-              2026 © Uniforce - v1.1 Beta
+              2026 © Uniforce — v{__APP_VERSION__}
             </p>
           </footer>
         </div>
