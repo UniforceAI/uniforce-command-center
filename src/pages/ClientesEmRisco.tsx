@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect } from "react";
+import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { usePageFilters } from "@/hooks/usePageFilters";
 import { safeFormatDate } from "@/lib/safeDate";
 import { ChurnStatus } from "@/hooks/useChurnData";
@@ -69,8 +69,12 @@ const ClientesEmRisco = () => {
   const { churnStatus, churnEvents, isLoading, error, chamadosPorClienteMap, npsMap, getScoreSuporteReal, getScoreNPSReal, getScoreTotalReal, config, getBucket } = useChurnScore();
   const { chamados, getChamadosPorCliente } = useChamados();
   const { ispId } = useActiveIsp();
-  const { workflowMap, records, addToWorkflow, updateStatus, updateTags, updateOwner, archiveWorkflow } = useCrmWorkflow();
+  const { workflowMap, records, isLoading: workflowLoading, addToWorkflow, updateStatus, updateTags, updateOwner, archiveWorkflow } = useCrmWorkflow();
   const { toast } = useToast();
+
+  // Guards para o auto-archive: evita re-entrada e loop optimistic+rollback
+  const archivingRef = useRef(new Set<number>());    // em-voo: chamada async em andamento
+  const archiveFailedRef = useRef(new Set<number>()); // falhou nesta sessão: não retentar
 
   // Sort types for lista view
   type SortField = "score" | "cliente_nome" | "dias_atraso" | "chamados_90d" | "nps" | "internet" | "valor_mensalidade" | "motivo" | "crm";
@@ -364,27 +368,45 @@ const ClientesEmRisco = () => {
   }, [updateStatus, clientesRisco, toast]);
 
   // Auto-archive: "resolvido" após 30 dias corridos, "perdido" após 30 dias úteis.
-  // Threshold aumentado de 7 para 30 dias para operação semanal/mensal sem perda de contexto.
-  // newSignal é usado APENAS para exibição (getEffectiveScore) — não para archive,
-  // pois qualquer variação diária de score dispararia archival no mesmo dia.
+  // Threshold 30 dias para operação semanal/mensal sem perda de contexto.
+  // newSignal é usado APENAS para exibição (getEffectiveScore) — não para archive.
+  //
+  // Proteção contra loop optimistic+rollback:
+  //   archivingRef  → card já tem chamada async em andamento (ignora)
+  //   archiveFailedRef → archive falhou nesta sessão (backend guard 400); não retentar
+  //   Sem esses guards, um rollback alteraria workflowMap → re-dispara o effect → loop.
   useEffect(() => {
     if (!workflowMap.size) return;
     const now = new Date();
     workflowMap.forEach((wf, clienteId) => {
-      // GUARD CRÍTICO: não arquivar se status_entered_at não está definido.
-      // Evita usar created_at como fallback e arquivar prematuramente (incidente 2026-03-11).
+      // GUARD: não arquivar se status_entered_at não está definido (incidente 2026-03-11).
       if (!wf.status_entered_at) return;
+      // GUARD: skip chamadas em-voo ou que já falharam nesta sessão
+      if (archivingRef.current.has(clienteId)) return;
+      if (archiveFailedRef.current.has(clienteId)) return;
+
       const enteredAt = new Date(wf.status_entered_at);
-      if (wf.status_workflow === "resolvido") {
-        if (countCalendarDays(enteredAt, now) >= 30) archiveWorkflow(clienteId).catch(console.error);
-      }
-      if (wf.status_workflow === "perdido") {
-        if (countBusinessDays(enteredAt, now) >= 30) archiveWorkflow(clienteId).catch(console.error);
-      }
+      const shouldArchive =
+        (wf.status_workflow === "resolvido" && countCalendarDays(enteredAt, now) >= 30) ||
+        (wf.status_workflow === "perdido"  && countBusinessDays(enteredAt, now) >= 30);
+      if (!shouldArchive) return;
+
+      archivingRef.current.add(clienteId);
+      archiveWorkflow(clienteId)
+        .catch((err) => {
+          console.error("auto-archive failed for", clienteId, err);
+          // Marca como falha permanente nesta sessão para romper loop optimistic+rollback
+          archiveFailedRef.current.add(clienteId);
+        })
+        .finally(() => archivingRef.current.delete(clienteId));
     });
   }, [workflowMap, archiveWorkflow]);
 
-  if (isLoading) return <div className="min-h-screen bg-background"><LoadingScreen /></div>;
+  // Aguardar TODOS os dados críticos antes de renderizar o Kanban:
+  // workflowMap (colunas), churnStatus+chamados+buckets (scores e filtros).
+  // Isso garante que o kanban aparece uma única vez com estado estável,
+  // eliminando a oscilação de cards durante o carregamento inicial.
+  if (isLoading || workflowLoading) return <div className="min-h-screen bg-background"><LoadingScreen /></div>;
 
   return (
     <div className="min-h-screen bg-background">

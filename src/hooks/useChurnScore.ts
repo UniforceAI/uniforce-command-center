@@ -10,7 +10,7 @@ import { useRiskBucketConfig, RiskBucket } from "@/hooks/useRiskBucketConfig";
  */
 export function useChurnScore() {
   const { churnStatus, churnEvents, isLoading, error } = useChurnData();
-  const { chamados, getChamadosPorCliente } = useChamados();
+  const { chamados, getChamadosPorCliente, isLoading: chamadosLoading } = useChamados();
   const { config } = useChurnScoreConfig();
   const { getBucket, config: bucketConfig, isLoading: bucketLoading } = useRiskBucketConfig();
 
@@ -75,7 +75,7 @@ export function useChurnScore() {
   return {
     churnStatus,
     churnEvents,
-    isLoading: isLoading || bucketLoading,
+    isLoading: isLoading || bucketLoading || chamadosLoading,
     error,
     chamados,
     chamadosPorClienteMap,
