@@ -1,12 +1,14 @@
 // src/components/perfil/tabs/MeusServicosTab.tsx
-// Aba "Meus Serviços" — visão de serviços contratados, commitment periods e ações de gerenciamento
+// Aba "Meus Serviços" — visão de serviços contratados, commitment periods, ações de gerenciamento
+// + seção de implementação (absorvida da antiga ImplementacaoTab)
 
 import { useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Progress } from "@/components/ui/progress";
+import { Separator } from "@/components/ui/separator";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -19,7 +21,8 @@ import {
 } from "@/components/ui/alert-dialog";
 import {
   Package, Zap, Crown, Star, Calendar, CheckCircle2,
-  AlertCircle, RefreshCw, ArrowUpCircle, Mail,
+  AlertCircle, RefreshCw, ArrowUpCircle, Mail, ExternalLink,
+  Rocket, Clock, Circle,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useActiveIsp } from "@/hooks/useActiveIsp";
@@ -28,6 +31,10 @@ import { useStripeSubscription } from "@/hooks/useStripeSubscription";
 import { useAsaasSubscription } from "@/hooks/useAsaasSubscription";
 import { useCancelSubscription } from "@/hooks/useCancelSubscription";
 import { useUserRole } from "@/hooks/useUserRole";
+
+// ─── Constantes ──────────────────────────────────────────────────────────────
+
+const STRIPE_BILLING_PORTAL_URL = "https://billing.stripe.com/p/login/3cI28t3Vp4SHfaS4AK93y00";
 
 // ─── Utilitários ──────────────────────────────────────────────────────────────
 
@@ -66,7 +73,6 @@ function CommitmentProgress({ item }: { item: ContractedItem }) {
   const commitmentEnd = new Date(item.commitment_ends_at).getTime();
   const now = Date.now();
   const totalDuration = commitmentEnd - startedAt;
-  // Math.max(0, ...) protege contra clock skew onde startedAt > now
   const elapsed = Math.max(0, Math.min(now - startedAt, totalDuration));
   const progress = totalDuration > 0 ? Math.max(0, Math.min(100, (elapsed / totalDuration) * 100)) : 100;
   const isFulfilled = item.days_until_commitment_free <= 0;
@@ -105,21 +111,32 @@ function planFeatures(name: string): string[] {
   return [];
 }
 
+// ─── Implementação: utilitários ──────────────────────────────────────────────
+
+const IMPL_STEP_LABELS = ["Não iniciado", "Em implantação", "Concluído"];
+const IMPL_STEP_PROGRESS = [0, 50, 100];
+
+function statusToStep(status: string): number {
+  const s = status?.toLowerCase().trim() || "";
+  if (s === "concluído" || s === "concluido") return 2;
+  if (s === "em andamento") return 1;
+  return 0;
+}
+
 // ─── Sub-componente: card de item contratado ──────────────────────────────────
 
 interface ServiceItemCardProps {
   item: ContractedItem;
   canManage: boolean;
-  billingSource: "stripe" | "asaas" | null;
-  ispId: string;
   onCancelRequest: (item: ContractedItem) => void;
   cancelingId: string | null;
 }
 
-function ServiceItemCard({ item, canManage, billingSource, ispId, onCancelRequest, cancelingId }: ServiceItemCardProps) {
+function ServiceItemCard({ item, canManage, onCancelRequest, cancelingId }: ServiceItemCardProps) {
   const features = item.product_type === "plan" ? planFeatures(item.product_name) : [];
-  const isAsaas = item.billing_source === "asaas";
   const isCancelingThis = cancelingId === item.id;
+  const isStripe = item.billing_source === "stripe";
+  const isCommitted = item.days_until_commitment_free > 0;
 
   return (
     <Card className={item.product_type === "plan" ? "border-primary/30" : ""}>
@@ -168,25 +185,57 @@ function ServiceItemCard({ item, canManage, billingSource, ispId, onCancelReques
         {canManage && item.status !== "cancel_scheduled" && (
           <div className="flex flex-wrap gap-2 pt-1">
             {item.product_type === "plan" && (
-              <Button variant="outline" size="sm" className="gap-2" asChild>
-                <a href="?tab=meus-produtos">
-                  <ArrowUpCircle className="h-4 w-4" />
-                  Alterar Plano
-                </a>
+              isStripe ? (
+                <>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-2"
+                    disabled={isCommitted}
+                    onClick={() => window.open(STRIPE_BILLING_PORTAL_URL, "_blank", "noopener,noreferrer")}
+                  >
+                    <ExternalLink className="h-4 w-4" />
+                    Alterar Plano
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="gap-2 text-destructive hover:text-destructive hover:bg-destructive/10"
+                    disabled={isCommitted || isCancelingThis}
+                    onClick={() => window.open(STRIPE_BILLING_PORTAL_URL, "_blank", "noopener,noreferrer")}
+                  >
+                    Cancelar Assinatura
+                  </Button>
+                  {isCommitted && (
+                    <p className="text-[11px] text-muted-foreground w-full">
+                      Disponível após período de carência
+                    </p>
+                  )}
+                </>
+              ) : (
+                <Button variant="outline" size="sm" className="gap-2" asChild>
+                  <a href="?tab=meus-produtos">
+                    <ArrowUpCircle className="h-4 w-4" />
+                    Alterar Plano
+                  </a>
+                </Button>
+              )
+            )}
+            {/* Cancel button for non-plan items (agentes) */}
+            {item.product_type !== "plan" && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="gap-2 text-destructive hover:text-destructive hover:bg-destructive/10"
+                disabled={isCancelingThis}
+                onClick={() => {
+                  if (!isCancelingThis) onCancelRequest(item);
+                }}
+              >
+                {isCancelingThis && <RefreshCw className="h-3.5 w-3.5 animate-spin" />}
+                Cancelar Agente
               </Button>
             )}
-            <Button
-              variant="ghost"
-              size="sm"
-              className="gap-2 text-destructive hover:text-destructive hover:bg-destructive/10"
-              disabled={isCancelingThis}
-              onClick={() => {
-                if (!isCancelingThis) onCancelRequest(item);
-              }}
-            >
-              {isCancelingThis && <RefreshCw className="h-3.5 w-3.5 animate-spin" />}
-              Cancelar {item.product_type === "plan" ? "Assinatura" : "Add-on"}
-            </Button>
           </div>
         )}
       </CardContent>
@@ -196,7 +245,12 @@ function ServiceItemCard({ item, canManage, billingSource, ispId, onCancelReques
 
 // ─── Componente principal ─────────────────────────────────────────────────────
 
-export function MeusServicosTab() {
+interface MeusServicosTabProps {
+  leadStatus?: string;
+  profileLoading?: boolean;
+}
+
+export function MeusServicosTab({ leadStatus = "", profileLoading = true }: MeusServicosTabProps) {
   const { toast } = useToast();
   const { ispId } = useActiveIsp();
   const { data: servicesData, isLoading: servicesLoading } = useIspServices(ispId);
@@ -212,14 +266,13 @@ export function MeusServicosTab() {
 
   const [cancelTarget, setCancelTarget] = useState<ContractedItem | null>(null);
   const [asaasCancelOpen, setAsaasCancelOpen] = useState(false);
-  const [cancelingId, setCancelingId] = useState<string | null>(null); // para proteger contra double-click
+  const [cancelingId, setCancelingId] = useState<string | null>(null);
 
   const canManage = userRole === "admin" || userRole === "super_admin";
-  const billingSource = servicesData?.billing_source ?? null;
 
   // ─── Handlers ──────────────────────────────────────────────────────────────
   const handleCancelRequest = (item: ContractedItem) => {
-    setCancelingId(item.id); // bloqueia re-clicks imediatos
+    setCancelingId(item.id);
     if (item.billing_source === "asaas") {
       setAsaasCancelOpen(true);
     } else {
@@ -251,7 +304,6 @@ export function MeusServicosTab() {
   };
 
   // ─── Loading ────────────────────────────────────────────────────────────────
-  // manter skeleton até ter ispId E todos os dados carregados
   if (isLoading || (!!ispId && servicesData === undefined) || (isAsaasLegacy && asaasLoading)) {
     return (
       <div className="space-y-4">
@@ -265,6 +317,16 @@ export function MeusServicosTab() {
   const addons = servicesData?.addons ?? [];
   const asaasSub = asaasData?.subscription ?? null;
   const hasServices = !!plan || addons.length > 0 || !!asaasSub;
+
+  // ─── Implementação ─────────────────────────────────────────────────────────
+  const implStep = statusToStep(leadStatus);
+  const implMilestones = [
+    { label: "Onboarding inicial", done: implStep >= 1 },
+    { label: "Configuração de integrações ERP", done: implStep >= 1 },
+    { label: "Implantação dos workflows", done: implStep >= 1 },
+    { label: "Treinamento da equipe", done: implStep >= 2 },
+    { label: "Go-live e suporte ativo", done: implStep >= 2 },
+  ];
 
   // ─── Dialog de cancelamento Stripe ────────────────────────────────────────
   const isFutureCommitment = cancelTarget ? cancelTarget.days_until_commitment_free > 0 : false;
@@ -338,7 +400,7 @@ export function MeusServicosTab() {
             <Package className="h-10 w-10 text-primary/60 mx-auto" />
             <p className="text-base font-semibold text-foreground">Nenhum produto contratado</p>
             <p className="text-sm text-muted-foreground max-w-xs mx-auto">
-              Escolha um plano ou add-on para começar a usar a plataforma Uniforce.
+              Escolha um plano ou agente para começar a usar a plataforma Uniforce.
             </p>
             <Button variant="outline" asChild>
               <a href="?tab=meus-produtos">Ver planos disponíveis →</a>
@@ -347,7 +409,7 @@ export function MeusServicosTab() {
         </Card>
       )}
 
-      {/* ─── Plano base ─── */}
+      {/* ─── Plano base (Stripe) ─── */}
       {plan && (
         <div>
           <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
@@ -357,8 +419,6 @@ export function MeusServicosTab() {
           <ServiceItemCard
             item={plan}
             canManage={canManage}
-            billingSource={billingSource}
-            ispId={ispId ?? ""}
             onCancelRequest={handleCancelRequest}
             cancelingId={cancelingId}
           />
@@ -444,12 +504,12 @@ export function MeusServicosTab() {
         </div>
       )}
 
-      {/* ─── Add-ons ativos ─── */}
-      {addons.length > 0 && (
+      {/* ─── Meus Agentes (ativos) ─── */}
+      {addons.length > 0 ? (
         <div>
           <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
             <Zap className="h-4 w-4 text-primary" />
-            Add-ons Ativos ({addons.length})
+            Meus Agentes ({addons.length})
           </h3>
           <div className="space-y-4">
             {addons.map((addon) => (
@@ -457,15 +517,32 @@ export function MeusServicosTab() {
                 key={addon.id}
                 item={addon}
                 canManage={canManage}
-                billingSource={billingSource}
-                ispId={ispId ?? ""}
                 onCancelRequest={handleCancelRequest}
                 cancelingId={cancelingId}
               />
             ))}
           </div>
         </div>
-      )}
+      ) : hasServices ? (
+        <div>
+          <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
+            <Zap className="h-4 w-4 text-primary" />
+            Meus Agentes
+          </h3>
+          <Card className="border-dashed">
+            <CardContent className="py-8 text-center space-y-3">
+              <Zap className="h-8 w-8 text-muted-foreground/40 mx-auto" />
+              <p className="text-sm font-medium text-foreground">Nenhum agente contratado</p>
+              <p className="text-xs text-muted-foreground max-w-xs mx-auto">
+                Expanda as funcionalidades da plataforma com agentes de automação.
+              </p>
+              <Button variant="outline" size="sm" asChild>
+                <a href="?tab=meus-produtos">Ver agentes disponíveis →</a>
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+      ) : null}
 
       {/* ─── Info de vigência ─── */}
       {servicesData?.subscription_started_at && (
@@ -476,6 +553,98 @@ export function MeusServicosTab() {
           </span>
         </div>
       )}
+
+      {/* ─── Seção: Implementação ─── */}
+      <Separator />
+
+      <div className="space-y-6 max-w-2xl">
+        {/* Status principal */}
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Rocket className="h-4 w-4 text-primary" />
+                Status de Implementação
+              </CardTitle>
+              {!profileLoading && (
+                <Badge
+                  variant="outline"
+                  className={
+                    implStep === 2
+                      ? "bg-green-500/15 text-green-700 border-green-200"
+                      : implStep === 1
+                      ? "bg-blue-500/15 text-blue-700 border-blue-200"
+                      : "bg-gray-500/15 text-gray-600 border-gray-200"
+                  }
+                >
+                  {IMPL_STEP_LABELS[implStep]}
+                </Badge>
+              )}
+            </div>
+            <CardDescription>
+              Acompanhe o progresso da sua implementação com a equipe Uniforce.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {profileLoading ? (
+              <Skeleton className="h-10 w-full" />
+            ) : (
+              <>
+                <div className="flex justify-between text-xs text-muted-foreground">
+                  {IMPL_STEP_LABELS.map((label, i) => (
+                    <span key={label} className={i <= implStep ? "text-primary font-semibold" : ""}>
+                      {label}
+                    </span>
+                  ))}
+                </div>
+                <Progress value={IMPL_STEP_PROGRESS[implStep]} className="h-2.5" />
+                <p className="text-sm text-muted-foreground">
+                  {implStep === 0 && "A implementação ainda não foi iniciada. Entre em contato com seu gerente de sucesso."}
+                  {implStep === 1 && "Implementação em andamento — acompanhe o progresso com seu gerente de sucesso."}
+                  {implStep === 2 && "Implementação concluída — serviço entregue e estável."}
+                </p>
+              </>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Milestones */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">Etapas do Processo</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {profileLoading ? (
+              <div className="space-y-3">
+                {[1, 2, 3, 4, 5].map((i) => <Skeleton key={i} className="h-8 w-full" />)}
+              </div>
+            ) : (
+              <ul className="space-y-3">
+                {implMilestones.map((milestone, i) => (
+                  <li key={i} className="flex items-center gap-3">
+                    {milestone.done ? (
+                      <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
+                    ) : implStep === 1 && i < 3 ? (
+                      <Clock className="h-4 w-4 text-blue-400 shrink-0 animate-pulse" />
+                    ) : (
+                      <Circle className="h-4 w-4 text-muted-foreground/40 shrink-0" />
+                    )}
+                    <span
+                      className={`text-sm ${
+                        milestone.done
+                          ? "text-foreground"
+                          : "text-muted-foreground"
+                      }`}
+                    >
+                      {milestone.label}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }

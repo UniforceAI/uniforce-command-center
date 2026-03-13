@@ -1,5 +1,5 @@
 // src/pages/PerfilISP.tsx
-// Página "Meu Provedor" — hub com 6 abas
+// Página "Meu Provedor" — hub com 5 abas
 // Inclui gate de ToS e prompt de perfil financeiro para novos usuários
 //
 // INSTALAÇÃO:
@@ -27,7 +27,6 @@ import { ContasTab } from "@/components/perfil/tabs/ContasTab";
 import { MeusProdutosTab } from "@/components/perfil/tabs/MeusProdutosTab";
 import { MeusServicosTab } from "@/components/perfil/tabs/MeusServicosTab";
 import { FinanceiroBillingTab } from "@/components/perfil/tabs/FinanceiroBillingTab";
-import { ImplementacaoTab } from "@/components/perfil/tabs/ImplementacaoTab";
 
 function erpDisplayName(instancia: string): string {
   const map: Record<string, string> = {
@@ -39,7 +38,7 @@ function erpDisplayName(instancia: string): string {
   return map[instancia?.toLowerCase()] || instancia || "—";
 }
 
-const VALID_TABS = ["meu-provedor", "contas", "meus-produtos", "meus-servicos", "financeiro", "implementacao"];
+const VALID_TABS = ["meu-provedor", "contas", "meus-produtos", "meus-servicos", "meus-pagamentos"];
 
 export default function PerfilISP() {
   const { ispId, ispNome, instanciaIsp } = useActiveIsp();
@@ -156,7 +155,7 @@ export default function PerfilISP() {
           )}
 
           <Tabs value={activeTab} onValueChange={handleTabChange}>
-            <TabsList className="flex w-full overflow-x-auto sm:grid sm:grid-cols-6 mb-6 gap-1">
+            <TabsList className="flex w-full overflow-x-auto sm:grid sm:grid-cols-5 mb-6 gap-1">
               <TabsTrigger value="meu-provedor" className="text-xs sm:text-sm whitespace-nowrap">
                 Meu Provedor
               </TabsTrigger>
@@ -169,11 +168,8 @@ export default function PerfilISP() {
               <TabsTrigger value="meus-servicos" className="text-xs sm:text-sm whitespace-nowrap">
                 Meus Serviços
               </TabsTrigger>
-              <TabsTrigger value="financeiro" className="text-xs sm:text-sm whitespace-nowrap">
-                Financeiro
-              </TabsTrigger>
-              <TabsTrigger value="implementacao" className="text-xs sm:text-sm whitespace-nowrap">
-                Implementação
+              <TabsTrigger value="meus-pagamentos" className="text-xs sm:text-sm whitespace-nowrap">
+                Meus Pagamentos
               </TabsTrigger>
             </TabsList>
 
@@ -195,15 +191,11 @@ export default function PerfilISP() {
             </TabsContent>
 
             <TabsContent value="meus-servicos">
-              <MeusServicosTab />
+              <MeusServicosTab leadStatus={leadStatus} profileLoading={profileLoading} />
             </TabsContent>
 
-            <TabsContent value="financeiro">
+            <TabsContent value="meus-pagamentos">
               <FinanceiroBillingTab />
-            </TabsContent>
-
-            <TabsContent value="implementacao">
-              <ImplementacaoTab leadStatus={leadStatus} loading={profileLoading} />
             </TabsContent>
           </Tabs>
         </main>

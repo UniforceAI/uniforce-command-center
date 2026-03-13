@@ -1,5 +1,5 @@
 // src/components/perfil/tabs/FinanceiroBillingTab.tsx
-// Aba "Financeiro" — histórico de faturas da assinatura Uniforce do ISP
+// Aba "Meus Pagamentos" — histórico de faturas da assinatura Uniforce do ISP
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -127,7 +127,7 @@ export function FinanceiroBillingTab() {
   const handlePortal = async () => {
     try {
       await portal.mutateAsync(
-        `${window.location.origin}/configuracoes/perfil?tab=financeiro`
+        `${window.location.origin}/configuracoes/perfil?tab=meus-pagamentos`
       );
     } catch {
       toast({
