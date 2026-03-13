@@ -30,7 +30,7 @@ const ALLOWED_PATHS = [
 ];
 
 // Página de destino quando bloqueado (aba financeira do perfil)
-const BILLING_REDIRECT = "/configuracoes/perfil?tab=financeiro";
+const BILLING_REDIRECT = "/configuracoes/perfil?tab=meus-pagamentos";
 
 // Intervalo de polling quando está bloqueado e tab visível
 const POLL_INTERVAL_MS = 60_000;

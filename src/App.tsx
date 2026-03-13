@@ -74,7 +74,7 @@ const persistOptions = {
   },
 };
 
-// BillingGuard redireciona para /configuracoes/perfil?tab=financeiro
+// BillingGuard redireciona para /configuracoes/perfil?tab=meus-pagamentos
 // quando o ISP está com billing_blocked=true. Super admins não são afetados.
 const Protected = ({ children }: { children: React.ReactNode }) => (
   <ProtectedRoute><BillingGuard><MainLayout>{children}</MainLayout></BillingGuard></ProtectedRoute>

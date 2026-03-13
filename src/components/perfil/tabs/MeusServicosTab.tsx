@@ -1,12 +1,14 @@
 // src/components/perfil/tabs/MeusServicosTab.tsx
-// Aba "Meus Serviços" — visão de serviços contratados, commitment periods e ações de gerenciamento
+// Aba "Meus Serviços" — visão de serviços contratados, commitment periods, ações de gerenciamento
+// e status de implementação (absorvido da antiga aba Implementação)
 
 import { useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Progress } from "@/components/ui/progress";
+import { Separator } from "@/components/ui/separator";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -19,13 +21,16 @@ import {
 } from "@/components/ui/alert-dialog";
 import {
   Package, Zap, Crown, Star, Calendar, CheckCircle2,
-  AlertCircle, RefreshCw, ArrowUpCircle, Mail,
+  AlertCircle, RefreshCw, ArrowUpCircle, Mail, ExternalLink,
+  Rocket, Clock, Circle,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useActiveIsp } from "@/hooks/useActiveIsp";
 import { useIspServices, ContractedItem } from "@/hooks/useIspServices";
 import { useCancelSubscription } from "@/hooks/useCancelSubscription";
 import { useUserRole } from "@/hooks/useUserRole";
+
+const STRIPE_BILLING_PORTAL_URL = "https://billing.stripe.com/p/login/3cI28t3Vp4SHfaS4AK93y00";
 
 // ─── Utilitários ──────────────────────────────────────────────────────────────
 
@@ -64,7 +69,6 @@ function CommitmentProgress({ item }: { item: ContractedItem }) {
   const commitmentEnd = new Date(item.commitment_ends_at).getTime();
   const now = Date.now();
   const totalDuration = commitmentEnd - startedAt;
-  // Math.max(0, ...) protege contra clock skew onde startedAt > now
   const elapsed = Math.max(0, Math.min(now - startedAt, totalDuration));
   const progress = totalDuration > 0 ? Math.max(0, Math.min(100, (elapsed / totalDuration) * 100)) : 100;
   const isFulfilled = item.days_until_commitment_free <= 0;
@@ -103,21 +107,32 @@ function planFeatures(name: string): string[] {
   return [];
 }
 
+// ─── Implementação: utilitários ─────────────────────────────────────────────
+
+const IMPL_STEP_LABELS = ["Não iniciado", "Em implantação", "Concluído"];
+const IMPL_STEP_PROGRESS = [0, 50, 100];
+
+function statusToStep(status: string): number {
+  const s = status?.toLowerCase().trim() || "";
+  if (s === "concluído" || s === "concluido") return 2;
+  if (s === "em andamento") return 1;
+  return 0;
+}
+
 // ─── Sub-componente: card de item contratado ──────────────────────────────────
 
 interface ServiceItemCardProps {
   item: ContractedItem;
   canManage: boolean;
-  billingSource: "stripe" | "asaas" | null;
-  ispId: string;
   onCancelRequest: (item: ContractedItem) => void;
   cancelingId: string | null;
 }
 
-function ServiceItemCard({ item, canManage, billingSource, ispId, onCancelRequest, cancelingId }: ServiceItemCardProps) {
+function ServiceItemCard({ item, canManage, onCancelRequest, cancelingId }: ServiceItemCardProps) {
   const features = item.product_type === "plan" ? planFeatures(item.product_name) : [];
   const isAsaas = item.billing_source === "asaas";
   const isCancelingThis = cancelingId === item.id;
+  const isInCommitment = item.days_until_commitment_free > 0;
 
   return (
     <Card className={item.product_type === "plan" ? "border-primary/30" : ""}>
@@ -165,26 +180,90 @@ function ServiceItemCard({ item, canManage, billingSource, ispId, onCancelReques
         {/* Ações */}
         {canManage && item.status !== "cancel_scheduled" && (
           <div className="flex flex-wrap gap-2 pt-1">
-            {item.product_type === "plan" && (
-              <Button variant="outline" size="sm" className="gap-2" asChild>
-                <a href="?tab=meus-produtos">
-                  <ArrowUpCircle className="h-4 w-4" />
-                  Alterar Plano
-                </a>
+            {item.product_type === "plan" && !isAsaas && (
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-2"
+                  disabled={isInCommitment}
+                  asChild={!isInCommitment}
+                  title={isInCommitment ? "Disponível após período de carência" : undefined}
+                >
+                  {isInCommitment ? (
+                    <span>
+                      <ExternalLink className="h-4 w-4" />
+                      Alterar Plano
+                    </span>
+                  ) : (
+                    <a href={STRIPE_BILLING_PORTAL_URL} target="_blank" rel="noopener noreferrer">
+                      <ExternalLink className="h-4 w-4" />
+                      Alterar Plano
+                    </a>
+                  )}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="gap-2 text-destructive hover:text-destructive hover:bg-destructive/10"
+                  disabled={isInCommitment || isCancelingThis}
+                  title={isInCommitment ? "Disponível após período de carência" : undefined}
+                  asChild={!isInCommitment && !isCancelingThis}
+                >
+                  {isInCommitment ? (
+                    <span>
+                      {isCancelingThis && <RefreshCw className="h-3.5 w-3.5 animate-spin" />}
+                      Cancelar Assinatura
+                    </span>
+                  ) : (
+                    <a href={STRIPE_BILLING_PORTAL_URL} target="_blank" rel="noopener noreferrer">
+                      Cancelar Assinatura
+                    </a>
+                  )}
+                </Button>
+              </>
+            )}
+            {item.product_type === "plan" && isAsaas && (
+              <>
+                <Button variant="outline" size="sm" className="gap-2" asChild>
+                  <a href="?tab=meus-produtos">
+                    <ArrowUpCircle className="h-4 w-4" />
+                    Alterar Plano
+                  </a>
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="gap-2 text-destructive hover:text-destructive hover:bg-destructive/10"
+                  disabled={isCancelingThis}
+                  onClick={() => {
+                    if (!isCancelingThis) onCancelRequest(item);
+                  }}
+                >
+                  {isCancelingThis && <RefreshCw className="h-3.5 w-3.5 animate-spin" />}
+                  Cancelar Assinatura
+                </Button>
+              </>
+            )}
+            {item.product_type !== "plan" && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="gap-2 text-destructive hover:text-destructive hover:bg-destructive/10"
+                disabled={isCancelingThis}
+                onClick={() => {
+                  if (!isCancelingThis) onCancelRequest(item);
+                }}
+              >
+                {isCancelingThis && <RefreshCw className="h-3.5 w-3.5 animate-spin" />}
+                Cancelar Agente
               </Button>
             )}
-            <Button
-              variant="ghost"
-              size="sm"
-              className="gap-2 text-destructive hover:text-destructive hover:bg-destructive/10"
-              disabled={isCancelingThis}
-              onClick={() => {
-                if (!isCancelingThis) onCancelRequest(item);
-              }}
-            >
-              {isCancelingThis && <RefreshCw className="h-3.5 w-3.5 animate-spin" />}
-              Cancelar {item.product_type === "plan" ? "Assinatura" : "Add-on"}
-            </Button>
+            {isInCommitment && item.product_type === "plan" && !isAsaas && (
+              <p className="text-xs text-muted-foreground w-full">
+                Disponível após período de carência ({item.days_until_commitment_free} dias restantes).
+              </p>
+            )}
           </div>
         )}
       </CardContent>
@@ -192,9 +271,119 @@ function ServiceItemCard({ item, canManage, billingSource, ispId, onCancelReques
   );
 }
 
+// ─── Seção de implementação (absorvida da antiga aba) ────────────────────────
+
+function ImplementationSection({ leadStatus, loading }: { leadStatus: string; loading: boolean }) {
+  const step = statusToStep(leadStatus);
+
+  const milestones = [
+    { label: "Onboarding inicial", done: step >= 1 },
+    { label: "Configuração de integrações ERP", done: step >= 1 },
+    { label: "Implantação dos workflows", done: step >= 1 },
+    { label: "Treinamento da equipe", done: step >= 2 },
+    { label: "Go-live e suporte ativo", done: step >= 2 },
+  ];
+
+  return (
+    <div className="space-y-6">
+      {/* Status principal */}
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Rocket className="h-4 w-4 text-primary" />
+              Status de Implementação
+            </CardTitle>
+            {!loading && (
+              <Badge
+                variant="outline"
+                className={
+                  step === 2
+                    ? "bg-green-500/15 text-green-700 border-green-200"
+                    : step === 1
+                    ? "bg-blue-500/15 text-blue-700 border-blue-200"
+                    : "bg-gray-500/15 text-gray-600 border-gray-200"
+                }
+              >
+                {IMPL_STEP_LABELS[step]}
+              </Badge>
+            )}
+          </div>
+          <CardDescription>
+            Acompanhe o progresso da sua implementação com a equipe Uniforce.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {loading ? (
+            <Skeleton className="h-10 w-full" />
+          ) : (
+            <>
+              <div className="flex justify-between text-xs text-muted-foreground">
+                {IMPL_STEP_LABELS.map((label, i) => (
+                  <span key={label} className={i <= step ? "text-primary font-semibold" : ""}>
+                    {label}
+                  </span>
+                ))}
+              </div>
+              <Progress value={IMPL_STEP_PROGRESS[step]} className="h-2.5" />
+              <p className="text-sm text-muted-foreground">
+                {step === 0 && "A implementação ainda não foi iniciada. Entre em contato com seu gerente de sucesso."}
+                {step === 1 && "Implementação em andamento — acompanhe o progresso com seu gerente de sucesso."}
+                {step === 2 && "Implementação concluída — serviço entregue e estável."}
+              </p>
+            </>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Milestones */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base">Etapas do Processo</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {loading ? (
+            <div className="space-y-3">
+              {[1, 2, 3, 4, 5].map((i) => <Skeleton key={i} className="h-8 w-full" />)}
+            </div>
+          ) : (
+            <ul className="space-y-3">
+              {milestones.map((milestone, i) => (
+                <li key={i} className="flex items-center gap-3">
+                  {milestone.done ? (
+                    <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
+                  ) : step === 1 && i < 3 ? (
+                    <Clock className="h-4 w-4 text-blue-400 shrink-0 animate-pulse" />
+                  ) : (
+                    <Circle className="h-4 w-4 text-muted-foreground/40 shrink-0" />
+                  )}
+                  <span
+                    className={`text-sm ${
+                      milestone.done
+                        ? "text-foreground"
+                        : "text-muted-foreground"
+                    }`}
+                  >
+                    {milestone.label}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 // ─── Componente principal ─────────────────────────────────────────────────────
 
-export function MeusServicosTab() {
+interface MeusServicosTabProps {
+  leadStatus?: string;
+  profileLoading?: boolean;
+}
+
+export function MeusServicosTab({ leadStatus = "", profileLoading = true }: MeusServicosTabProps) {
   const { toast } = useToast();
   const { ispId } = useActiveIsp();
   const { data: servicesData, isLoading } = useIspServices(ispId);
@@ -203,14 +392,13 @@ export function MeusServicosTab() {
 
   const [cancelTarget, setCancelTarget] = useState<ContractedItem | null>(null);
   const [asaasCancelOpen, setAsaasCancelOpen] = useState(false);
-  const [cancelingId, setCancelingId] = useState<string | null>(null); // para proteger contra double-click
+  const [cancelingId, setCancelingId] = useState<string | null>(null);
 
   const canManage = userRole === "admin" || userRole === "super_admin";
-  const billingSource = servicesData?.billing_source ?? null;
 
   // ─── Handlers ──────────────────────────────────────────────────────────────
   const handleCancelRequest = (item: ContractedItem) => {
-    setCancelingId(item.id); // bloqueia re-clicks imediatos
+    setCancelingId(item.id);
     if (item.billing_source === "asaas") {
       setAsaasCancelOpen(true);
     } else {
@@ -242,8 +430,6 @@ export function MeusServicosTab() {
   };
 
   // ─── Loading ────────────────────────────────────────────────────────────────
-  // isLoading=false quando ispId=null (query desabilitada), mas servicesData=undefined
-  // → manter skeleton até ter ispId E dados carregados
   if (isLoading || (!!ispId && servicesData === undefined)) {
     return (
       <div className="space-y-4">
@@ -329,7 +515,7 @@ export function MeusServicosTab() {
             <Package className="h-10 w-10 text-primary/60 mx-auto" />
             <p className="text-base font-semibold text-foreground">Nenhum produto contratado</p>
             <p className="text-sm text-muted-foreground max-w-xs mx-auto">
-              Escolha um plano ou add-on para começar a usar a plataforma Uniforce.
+              Escolha um plano ou agente para começar a usar a plataforma Uniforce.
             </p>
             <Button variant="outline" asChild>
               <a href="?tab=meus-produtos">Ver planos disponíveis →</a>
@@ -348,20 +534,18 @@ export function MeusServicosTab() {
           <ServiceItemCard
             item={plan}
             canManage={canManage}
-            billingSource={billingSource}
-            ispId={ispId ?? ""}
             onCancelRequest={handleCancelRequest}
             cancelingId={cancelingId}
           />
         </div>
       )}
 
-      {/* ─── Add-ons ativos ─── */}
-      {addons.length > 0 && (
+      {/* ─── Meus Agentes ─── */}
+      {addons.length > 0 ? (
         <div>
           <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
             <Zap className="h-4 w-4 text-primary" />
-            Add-ons Ativos ({addons.length})
+            Meus Agentes ({addons.length})
           </h3>
           <div className="space-y-4">
             {addons.map((addon) => (
@@ -369,15 +553,26 @@ export function MeusServicosTab() {
                 key={addon.id}
                 item={addon}
                 canManage={canManage}
-                billingSource={billingSource}
-                ispId={ispId ?? ""}
                 onCancelRequest={handleCancelRequest}
                 cancelingId={cancelingId}
               />
             ))}
           </div>
         </div>
-      )}
+      ) : hasServices ? (
+        <Card>
+          <CardContent className="py-8 text-center space-y-3">
+            <Zap className="h-8 w-8 text-muted-foreground/40 mx-auto" />
+            <p className="text-sm font-medium text-foreground">Nenhum agente contratado</p>
+            <p className="text-xs text-muted-foreground max-w-xs mx-auto">
+              Expanda as funcionalidades da sua plataforma adicionando agentes de automação.
+            </p>
+            <Button variant="outline" size="sm" asChild>
+              <a href="?tab=meus-produtos">Ver agentes disponíveis →</a>
+            </Button>
+          </CardContent>
+        </Card>
+      ) : null}
 
       {/* ─── Info de vigência ─── */}
       {servicesData?.subscription_started_at && (
@@ -388,6 +583,10 @@ export function MeusServicosTab() {
           </span>
         </div>
       )}
+
+      {/* ─── Implementação (absorvida da antiga aba) ─── */}
+      <Separator />
+      <ImplementationSection leadStatus={leadStatus} loading={profileLoading} />
     </div>
   );
 }

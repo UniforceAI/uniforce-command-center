@@ -19,15 +19,21 @@ import {
 import {
   Package, CreditCard, CheckCircle2, ExternalLink, AlertCircle,
   RefreshCw, Star, Zap, Crown, ArrowUpCircle, Calendar, FlaskConical,
-  FileText, ArrowRightLeft,
+  FileText, ArrowRightLeft, Download,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { useStripeSubscription, useStripeCheckout, useStripeCustomerPortal } from "@/hooks/useStripeSubscription";
+import { useStripeSubscription, useStripeCheckout } from "@/hooks/useStripeSubscription";
 import { useStripeProducts } from "@/hooks/useStripeProducts";
+import { useStripeInvoices } from "@/hooks/useStripeInvoices";
 import { useAsaasSubscription } from "@/hooks/useAsaasSubscription";
+import { useAsaasInvoices } from "@/hooks/useAsaasInvoices";
 import { useAsaasPlanChange } from "@/hooks/useAsaasPlanChange";
+import { useIspServices } from "@/hooks/useIspServices";
 import { useActiveIsp } from "@/hooks/useActiveIsp";
 import { useState } from "react";
+import { useSearchParams } from "react-router-dom";
+
+const STRIPE_BILLING_PORTAL_URL = "https://billing.stripe.com/p/login/3cI28t3Vp4SHfaS4AK93y00";
 
 // ─── Utilitários ──────────────────────────────────────────────────────────────
 
@@ -60,11 +66,26 @@ function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" });
 }
 
+function paymentMethodLabel(sub: { payment_method?: { type?: string; brand?: string; last4?: string } | null } | null, isAsaas: boolean, asaasBillingType?: string | null): string {
+  if (isAsaas) {
+    if (asaasBillingType === "BOLETO") return "Manual (Boleto)";
+    if (asaasBillingType === "PIX") return "Manual (PIX)";
+    if (asaasBillingType === "CREDIT_CARD") return "Automático (Cartão)";
+    return asaasBillingType ?? "—";
+  }
+  if (!sub?.payment_method) return "—";
+  const pm = sub.payment_method;
+  if (pm.type === "boleto") return "Manual (Boleto)";
+  if (pm.type === "card") return `Automático (Cartão${pm.brand ? ` ${pm.brand}` : ""}${pm.last4 ? ` •••• ${pm.last4}` : ""})`;
+  return pm.type ?? "—";
+}
+
 // ─── Componente principal ─────────────────────────────────────────────────────
 
 export function MeusProdutosTab() {
   const { toast } = useToast();
   const { ispId } = useActiveIsp();
+  const [, setSearchParams] = useSearchParams();
   const [checkoutLoading, setCheckoutLoading] = useState<string | null>(null);
 
   // Plano pendente de confirmação (ISPs Asaas)
@@ -84,21 +105,59 @@ export function MeusProdutosTab() {
   const billingSource = subscriptionData?.stripe_billing_source;
   const isAsaasLegacy = billingSource === "asaas";
 
-  // Só busca dados Asaas após saber o billingSource — evita chamada desnecessária para ISPs Stripe
+  // Só busca dados Asaas após saber o billingSource
   const { data: asaasData, isLoading: asaasLoading } = useAsaasSubscription(
     !subLoading && isAsaasLegacy ? ispId : null
   );
+  // Invoices para boleto dinâmico
+  const { data: stripeInvoicesData } = useStripeInvoices(
+    !subLoading && !isAsaasLegacy ? ispId : null
+  );
+  const { data: asaasInvoicesData } = useAsaasInvoices(
+    !subLoading && isAsaasLegacy ? ispId : null
+  );
+  // Commitment period data
+  const { data: servicesData } = useIspServices(ispId);
+
   const checkout   = useStripeCheckout(ispId);
-  const portal     = useStripeCustomerPortal(ispId);
   const planChange = useAsaasPlanChange(ispId);
   const hasActiveSub  = !!sub && sub.status !== "canceled";
 
   const asaasSub          = asaasData?.subscription ?? null;
   const isAsaasCustomPlan = asaasData?.is_custom_plan ?? false;
 
-  // ISP Asaas sem CNPJ cadastrado: CREATE de assinatura irá falhar.
-  // Mostra aviso e desabilita botões de seleção de plano.
+  // ISP Asaas sem CNPJ cadastrado
   const isSetupPending = isAsaasLegacy && (asaasData?.setup_pending ?? false);
+
+  // Commitment guard: 90 dias
+  const commitmentDaysLeft = servicesData?.plan?.days_until_commitment_free ?? 0;
+  const isInCommitment = commitmentDaysLeft > 0;
+
+  // Boleto URL dinâmico
+  const boletoUrl = (() => {
+    if (isAsaasLegacy) {
+      const inv = asaasInvoicesData?.invoices?.find(
+        (i) => i.status === "open" || i.status === "overdue"
+      );
+      return inv?.bank_slip_url ?? null;
+    }
+    const inv = stripeInvoicesData?.invoices?.find((i) => i.status === "open");
+    return inv?.hosted_invoice_url ?? null;
+  })();
+
+  // Mostrar botão boleto apenas para método boleto
+  const isBoletoPayment = isAsaasLegacy
+    ? asaasSub?.billing_type === "BOLETO"
+    : sub?.payment_method?.type === "boleto";
+
+  // Payment status
+  const paymentStatus = (() => {
+    if (isAsaasLegacy) {
+      const hasOverdue = asaasInvoicesData?.invoices?.some((i) => i.status === "overdue");
+      return hasOverdue ? "Vencido" : "A vencer";
+    }
+    return sub?.status === "past_due" ? "Vencido" : "A vencer";
+  })();
 
   // Detecta se um plano Stripe corresponde ao plano Asaas ativo (tolerância ±R$0,50)
   function isCurrentAsaasPlan(planAmount: number | null): boolean {
@@ -120,7 +179,7 @@ export function MeusProdutosTab() {
       const msg = err instanceof Error ? err.message : "";
       if (msg.includes("já está ativo")) {
         toast({
-          title: "Add-on já contratado",
+          title: "Agente já contratado",
           description: msg,
           variant: "destructive",
         });
@@ -133,18 +192,6 @@ export function MeusProdutosTab() {
       }
     } finally {
       setCheckoutLoading(null);
-    }
-  };
-
-  const handlePortal = async () => {
-    try {
-      await portal.mutateAsync(`${window.location.origin}/configuracoes/perfil?tab=meus-produtos`);
-    } catch {
-      toast({
-        title: "Erro ao abrir portal",
-        description: "Não foi possível abrir o portal de pagamentos.",
-        variant: "destructive",
-      });
     }
   };
 
@@ -298,7 +345,7 @@ export function MeusProdutosTab() {
 
             <Separator />
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               {asaasSub.next_due_date && (
                 <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50 border">
                   <Calendar className="h-4 w-4 text-muted-foreground shrink-0" />
@@ -311,27 +358,40 @@ export function MeusProdutosTab() {
               <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50 border">
                 <CreditCard className="h-4 w-4 text-muted-foreground shrink-0" />
                 <div>
-                  <p className="text-xs text-muted-foreground">Forma de pagamento</p>
+                  <p className="text-xs text-muted-foreground">Meio de pagamento</p>
                   <p className="text-sm font-medium">
-                    {asaasSub.billing_type === "BOLETO" ? "Boleto Bancário" :
-                     asaasSub.billing_type === "PIX"    ? "PIX" :
-                     asaasSub.billing_type ?? "—"}
+                    {paymentMethodLabel(null, true, asaasSub.billing_type)}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50 border">
+                <AlertCircle className="h-4 w-4 text-muted-foreground shrink-0" />
+                <div>
+                  <p className="text-xs text-muted-foreground">Status pagamento</p>
+                  <p className={`text-sm font-medium ${paymentStatus === "Vencido" ? "text-red-600" : "text-green-600"}`}>
+                    {paymentStatus}
                   </p>
                 </div>
               </div>
             </div>
 
             <div className="flex flex-wrap gap-2 pt-1">
-              {asaasSub.billing_type === "BOLETO" && (
-                <Button
-                  variant="outline"
-                  className="gap-2"
-                  onClick={() => window.open("https://app.asaas.com", "_blank", "noopener,noreferrer")}
-                >
-                  <FileText className="h-4 w-4" />
-                  Ver Boleto
+              {isBoletoPayment && boletoUrl && (
+                <Button variant="outline" className="gap-2" asChild>
+                  <a href={boletoUrl} target="_blank" rel="noopener noreferrer">
+                    <Download className="h-4 w-4" />
+                    Baixar Boleto
+                  </a>
                 </Button>
               )}
+              <Button
+                variant="outline"
+                className="gap-2"
+                onClick={() => setSearchParams({ tab: "meus-pagamentos" })}
+              >
+                <FileText className="h-4 w-4" />
+                Meus Pagamentos
+              </Button>
               <Button variant="ghost" size="sm" className="gap-2 text-muted-foreground" asChild>
                 <a href="mailto:suporte@uniforce.com.br">Gerenciar via suporte</a>
               </Button>
@@ -343,7 +403,6 @@ export function MeusProdutosTab() {
       {/* ─── Asaas: sem assinatura ─── */}
       {isAsaasLegacy && !asaasSub && (
         isSetupPending ? (
-          /* Setup incompleto: CNPJ ainda não cadastrado */
           <Card className="border-orange-200 bg-orange-50/50">
             <CardContent className="py-5 flex items-start gap-4">
               <div className="h-10 w-10 rounded-full bg-orange-100 flex items-center justify-center shrink-0">
@@ -365,7 +424,6 @@ export function MeusProdutosTab() {
             </CardContent>
           </Card>
         ) : (
-          /* Pronto: pode selecionar plano */
           <Card className="border-blue-200 bg-blue-50/50">
             <CardContent className="py-5 flex items-start gap-4">
               <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center shrink-0">
@@ -416,7 +474,7 @@ export function MeusProdutosTab() {
 
             <Separator />
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50 border">
                 <Calendar className="h-4 w-4 text-muted-foreground shrink-0" />
                 <div>
@@ -427,14 +485,19 @@ export function MeusProdutosTab() {
               <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50 border">
                 <CreditCard className="h-4 w-4 text-muted-foreground shrink-0" />
                 <div>
-                  <p className="text-xs text-muted-foreground">Forma de pagamento</p>
-                  {sub!.payment_method ? (
-                    <p className="text-sm font-medium capitalize">
-                      {sub!.payment_method.brand} •••• {sub!.payment_method.last4}
-                    </p>
-                  ) : (
-                    <p className="text-sm text-muted-foreground">Não configurado</p>
-                  )}
+                  <p className="text-xs text-muted-foreground">Meio de pagamento</p>
+                  <p className="text-sm font-medium">
+                    {paymentMethodLabel(sub, false)}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50 border">
+                <AlertCircle className="h-4 w-4 text-muted-foreground shrink-0" />
+                <div>
+                  <p className="text-xs text-muted-foreground">Status pagamento</p>
+                  <p className={`text-sm font-medium ${paymentStatus === "Vencido" ? "text-red-600" : "text-green-600"}`}>
+                    {paymentStatus}
+                  </p>
                 </div>
               </div>
             </div>
@@ -467,15 +530,46 @@ export function MeusProdutosTab() {
             )}
 
             <div className="flex flex-wrap gap-2 pt-1">
-              <Button onClick={handlePortal} disabled={portal.isPending} className="gap-2">
-                {portal.isPending ? <RefreshCw className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />}
-                Gerenciar Assinatura
+              <Button
+                className="gap-2"
+                disabled={isInCommitment}
+                asChild={!isInCommitment}
+                title={isInCommitment ? `Disponível após período de carência (${commitmentDaysLeft} dias)` : undefined}
+              >
+                {isInCommitment ? (
+                  <span>
+                    <ExternalLink className="h-4 w-4" />
+                    Gerenciar Assinatura
+                  </span>
+                ) : (
+                  <a href={STRIPE_BILLING_PORTAL_URL} target="_blank" rel="noopener noreferrer">
+                    <ExternalLink className="h-4 w-4" />
+                    Gerenciar Assinatura
+                  </a>
+                )}
               </Button>
-              <Button variant="outline" onClick={handlePortal} disabled={portal.isPending} className="gap-2">
-                <ExternalLink className="h-4 w-4" />
-                Portal de Pagamentos
+              {isBoletoPayment && boletoUrl && (
+                <Button variant="outline" className="gap-2" asChild>
+                  <a href={boletoUrl} target="_blank" rel="noopener noreferrer">
+                    <Download className="h-4 w-4" />
+                    Baixar Boleto
+                  </a>
+                </Button>
+              )}
+              <Button
+                variant="outline"
+                className="gap-2"
+                onClick={() => setSearchParams({ tab: "meus-pagamentos" })}
+              >
+                <FileText className="h-4 w-4" />
+                Meus Pagamentos
               </Button>
             </div>
+            {isInCommitment && (
+              <p className="text-xs text-muted-foreground">
+                Gerenciamento de assinatura disponível após período de carência ({commitmentDaysLeft} dias restantes).
+              </p>
+            )}
           </CardContent>
         </Card>
       )}
@@ -493,24 +587,20 @@ export function MeusProdutosTab() {
         </Card>
       )}
 
-      {/* ─── Asaas: sem add-on Stripe ativo ─── */}
+      {/* ─── Asaas: sem agente Stripe ativo ─── */}
       {isAsaasLegacy && !hasActiveSub && (
         <Card className="border-primary/30 bg-primary/5">
           <CardContent className="py-8 text-center space-y-3">
             <Zap className="h-10 w-10 text-primary/60 mx-auto" />
-            <p className="text-base font-semibold text-foreground">Nenhum Add-on Ativo</p>
+            <p className="text-base font-semibold text-foreground">Nenhum Agente Ativo</p>
             <p className="text-sm text-muted-foreground max-w-xs mx-auto">
-              Explore os add-ons disponíveis abaixo para expandir as funcionalidades da sua plataforma.
+              Explore os agentes disponíveis abaixo para expandir as funcionalidades da sua plataforma.
             </p>
           </CardContent>
         </Card>
       )}
 
-      {/* ─── Catálogo de Planos ─────────────────────────────────────────────────
-           Visível para TODOS os ISPs.
-           • ISPs Stripe  → botão abre Stripe Checkout
-           • ISPs Asaas   → botão abre dialog de confirmação → atualiza assinatura Asaas
-      ─── */}
+      {/* ─── Catálogo de Planos ─── */}
       <div>
         <h3 className="text-sm font-semibold text-foreground mb-1 flex items-center gap-2">
           {isAsaasLegacy ? (
@@ -579,7 +669,6 @@ export function MeusProdutosTab() {
                     )}
 
                     {isAsaasLegacy ? (
-                      /* Asaas ISP: selecionar plano abre dialog de confirmação */
                       <Button
                         className="w-full mt-auto"
                         variant={isCurrent ? "outline" : "default"}
@@ -595,7 +684,6 @@ export function MeusProdutosTab() {
                           : "Selecionar Plano"}
                       </Button>
                     ) : (
-                      /* Stripe ISP: checkout direto */
                       <Button
                         className="w-full mt-auto"
                         variant={isCurrent ? "outline" : "default"}
@@ -619,11 +707,11 @@ export function MeusProdutosTab() {
         )}
       </div>
 
-      {/* ─── Add-ons (todos os ISPs — compra via Stripe Checkout) ─── */}
+      {/* ─── Agentes Disponíveis (todos os ISPs — compra via Stripe Checkout) ─── */}
       {catalog && catalog.addons.length > 0 && (
         <div>
           <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
-            <Zap className="h-4 w-4 text-primary" /> Add-ons Disponíveis
+            <Zap className="h-4 w-4 text-primary" /> Agentes Disponíveis
           </h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {catalog.addons.map((addon) => (
