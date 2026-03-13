@@ -884,9 +884,9 @@ function PostPaymentScreen() {
         </div>
 
         <div>
-          <h2 className="text-xl font-bold text-foreground mb-2">Assinatura confirmada!</h2>
+          <h2 className="text-xl font-bold text-foreground mb-2">Assinatura contratada!</h2>
           <p className="text-muted-foreground text-sm leading-relaxed">
-            Sua assinatura foi ativada com sucesso. Enviamos um e-mail de boas-vindas para{" "}
+            Sua assinatura foi registrada com sucesso. Enviamos um e-mail de boas-vindas para{" "}
             <strong>{email || "seu endereço de e-mail"}</strong> com o link de primeiro acesso.
           </p>
         </div>
@@ -896,6 +896,9 @@ function PostPaymentScreen() {
           <p className="text-xs text-blue-700 leading-relaxed">
             Abra o e-mail que enviamos e clique no botão <strong>"Acessar o Painel"</strong> para
             fazer seu primeiro acesso e aceitar os Termos de Serviço.
+          </p>
+          <p className="text-xs text-blue-600 leading-relaxed mt-1.5">
+            Se você optou por boleto, o acesso será liberado após a confirmação do pagamento.
           </p>
         </div>
 

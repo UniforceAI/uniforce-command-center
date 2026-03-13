@@ -9,7 +9,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-stripe-test-mode",
 };
 
-const TEST_MODE_ISP_IDS = ["uniforce", "uniforce-sandbox"];
+const TEST_MODE_ISP_IDS = ["uniforce"];
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -80,7 +80,7 @@ Deno.serve(async (req) => {
       }
       const { data: targetIspRow } = await supabaseAdmin
         .from("isps")
-        .select("isp_id,isp_nome,stripe_customer_id,stripe_test_customer_id,stripe_subscription_id,stripe_subscription_status,stripe_billing_source,stripe_test_mode_enabled,stripe_product_name")
+        .select("isp_id,isp_nome,stripe_customer_id,stripe_test_customer_id,stripe_subscription_id,stripe_subscription_status,stripe_billing_source")
         .eq("isp_id", target_isp_id)
         .single();
       if (!targetIspRow) {
@@ -92,9 +92,7 @@ Deno.serve(async (req) => {
       isp = targetIspRow;
     }
 
-    // isTestMode: ISP sandbox explícito OU stripe_test_mode_enabled=true na tabela isps
-    // stripe_test_mode_enabled=true é setado pelo onboard-create-isp quando sandbox_mode=true
-    const isTestMode = TEST_MODE_ISP_IDS.includes(isp.isp_id) || isp.stripe_test_mode_enabled === true;
+    const isTestMode = TEST_MODE_ISP_IDS.includes(isp.isp_id);
     const stripeKey = isTestMode
       ? (Deno.env.get("STRIPE_TEST_SECRET_KEY") ?? "")
       : (Deno.env.get("STRIPE_SECRET_KEY") ?? "");

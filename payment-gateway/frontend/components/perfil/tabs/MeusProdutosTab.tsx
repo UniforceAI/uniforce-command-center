@@ -425,12 +425,19 @@ export function MeusProdutosTab() {
                 </div>
               </div>
               <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50 border">
-                <CreditCard className="h-4 w-4 text-muted-foreground shrink-0" />
+                {sub!.payment_method?.type === "boleto"
+                  ? <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
+                  : <CreditCard className="h-4 w-4 text-muted-foreground shrink-0" />
+                }
                 <div>
                   <p className="text-xs text-muted-foreground">Forma de pagamento</p>
                   {sub!.payment_method ? (
                     <p className="text-sm font-medium capitalize">
-                      {sub!.payment_method.brand} •••• {sub!.payment_method.last4}
+                      {sub!.payment_method.type === "card"
+                        ? `${sub!.payment_method.brand} •••• ${sub!.payment_method.last4}`
+                        : sub!.payment_method.type === "boleto"
+                        ? "Boleto Bancário"
+                        : sub!.payment_method.type ?? "Não configurado"}
                     </p>
                   ) : (
                     <p className="text-sm text-muted-foreground">Não configurado</p>

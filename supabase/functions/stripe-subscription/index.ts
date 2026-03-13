@@ -12,7 +12,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-stripe-test-mode",
 };
 
-const TEST_MODE_ISP_IDS = ["uniforce"];
+const TEST_MODE_ISP_IDS = ["uniforce", "uniforce-sandbox"];
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -64,9 +64,9 @@ Deno.serve(async (req) => {
         .from("isps")
         .select(
           "isp_id,stripe_customer_id,stripe_test_customer_id,stripe_subscription_id," +
-          "stripe_subscription_status,stripe_product_id,stripe_price_id,stripe_product_name," +
+          "stripe_test_subscription_id,stripe_subscription_status,stripe_product_id,stripe_price_id,stripe_product_name," +
           "stripe_monthly_amount,stripe_current_period_start,stripe_current_period_end," +
-          "stripe_cancel_at_period_end,stripe_trial_end,stripe_billing_source"
+          "stripe_cancel_at_period_end,stripe_trial_end,stripe_billing_source,stripe_test_mode_enabled"
         )
         .eq("isp_id", targetIspId)
         .single();
@@ -80,13 +80,18 @@ Deno.serve(async (req) => {
       );
     }
 
-    // isTestMode SOMENTE para uniforce
-    const isTestMode = TEST_MODE_ISP_IDS.includes(isp.isp_id);
+    // isTestMode: ISPs hardcoded OU com flag stripe_test_mode_enabled=true no banco
+    const isTestMode = TEST_MODE_ISP_IDS.includes(isp.isp_id) || isp.stripe_test_mode_enabled === true;
     const customerId = isTestMode
       ? (isp.stripe_test_customer_id ?? isp.stripe_customer_id)
       : isp.stripe_customer_id;
 
-    if (!isp.stripe_subscription_id) {
+    // Em modo teste: usa stripe_test_subscription_id; em live: usa stripe_subscription_id
+    const subscriptionId = isTestMode
+      ? (isp.stripe_test_subscription_id ?? isp.stripe_subscription_id)
+      : isp.stripe_subscription_id;
+
+    if (!subscriptionId) {
       return new Response(
         JSON.stringify({
           subscription: null,
@@ -108,7 +113,7 @@ Deno.serve(async (req) => {
     });
 
     const subscription = await stripe.subscriptions.retrieve(
-      isp.stripe_subscription_id,
+      subscriptionId,
       { expand: ["default_payment_method", "items.data.price.product"] }
     );
 
