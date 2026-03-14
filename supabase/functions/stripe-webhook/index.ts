@@ -174,6 +174,18 @@ Deno.serve(async (req) => {
 
           // Concluir onboarding se ISP estava em payment_pending
           await supabaseAdmin.rpc("complete_isp_onboarding", { p_isp_id: ispId });
+
+          // Fire-and-forget: graduar lead para cliente no Notion CRM
+          const fnUrl = Deno.env.get("SUPABASE_URL") ?? "";
+          const srvKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+          fetch(`${fnUrl}/functions/v1/notion-sync`, {
+            method: "POST",
+            headers: {
+              "Authorization": `Bearer ${srvKey}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ action: "graduate_to_client", isp_id: ispId }),
+          }).catch((err) => console.error("notion-sync graduate_to_client fire-and-forget error:", err));
         } else {
           // Sandbox (uniforce): atualiza apenas colunas de teste
           await supabaseAdmin.from("isps").update({

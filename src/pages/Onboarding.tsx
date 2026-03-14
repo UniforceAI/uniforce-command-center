@@ -760,6 +760,13 @@ function GoogleCompleteForm({ onComplete }: GoogleCompleteFormProps) {
       const user = sessData?.session?.user;
       if (!user) throw new Error("Sessão Google não encontrada. Feche e tente novamente.");
 
+      // Persistir phone no user_metadata (Google OAuth não inclui telefone)
+      if (phone.trim()) {
+        await externalSupabase.auth.updateUser({
+          data: { phone: phone.trim() },
+        });
+      }
+
       onComplete({
         admin_name: user.user_metadata?.full_name ?? user.email ?? "",
         isp_nome: ispNome.trim(),
