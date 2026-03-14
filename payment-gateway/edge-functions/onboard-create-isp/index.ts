@@ -94,15 +94,19 @@ serve(async (req) => {
         .eq("isp_id", row.isp_id);
     }
 
-    // Fire-and-forget: criar lead no Notion CRM
-    fetch(`${supabaseUrl}/functions/v1/notion-sync`, {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${serviceKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ action: "create_lead", isp_id: row.isp_id }),
-    }).catch((err) => console.error("notion-sync create_lead fire-and-forget error:", err));
+    // Criar lead no Notion CRM (await garante execução antes do isolate encerrar)
+    try {
+      await fetch(`${supabaseUrl}/functions/v1/notion-sync`, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${serviceKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ action: "create_lead", isp_id: row.isp_id }),
+      });
+    } catch (err) {
+      console.error("notion-sync create_lead error (non-blocking):", err);
+    }
 
     return new Response(JSON.stringify({ isp_id: row.isp_id, isp_nome: row.isp_nome }), {
       status: 200, headers: { ...CORS, "Content-Type": "application/json" },

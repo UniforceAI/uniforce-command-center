@@ -174,25 +174,29 @@ Deno.serve(async (req) => {
 
           // Concluir onboarding se ISP estava em payment_pending
           await supabaseAdmin.rpc("complete_isp_onboarding", { p_isp_id: ispId });
+        } else {
+          // Sandbox: atualiza colunas de teste
+          await supabaseAdmin.from("isps").update({
+            stripe_test_customer_id:     session.customer as string,
+            stripe_test_subscription_id: sub.id,
+            stripe_test_mode_enabled:    true,
+          }).eq("isp_id", ispId);
+        }
 
-          // Fire-and-forget: graduar lead para cliente no Notion CRM
+        // Graduar lead para cliente no Notion CRM (live E sandbox)
+        try {
           const fnUrl = Deno.env.get("SUPABASE_URL") ?? "";
           const srvKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-          fetch(`${fnUrl}/functions/v1/notion-sync`, {
+          await fetch(`${fnUrl}/functions/v1/notion-sync`, {
             method: "POST",
             headers: {
               "Authorization": `Bearer ${srvKey}`,
               "Content-Type": "application/json",
             },
             body: JSON.stringify({ action: "graduate_to_client", isp_id: ispId }),
-          }).catch((err) => console.error("notion-sync graduate_to_client fire-and-forget error:", err));
-        } else {
-          // Sandbox (uniforce): atualiza apenas colunas de teste
-          await supabaseAdmin.from("isps").update({
-            stripe_test_customer_id:     session.customer as string,
-            stripe_test_subscription_id: sub.id,
-            stripe_test_mode_enabled:    true,
-          }).eq("isp_id", ispId);
+          });
+        } catch (err) {
+          console.error("notion-sync graduate_to_client error (non-blocking):", err);
         }
         break;
       }
