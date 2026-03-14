@@ -53,7 +53,7 @@ serve(async (req) => {
       });
     }
 
-    const { isp_nome, cnpj, instancia_isp, erp_base_url, erp_api_key, erp_api_token, sandbox_mode } = await req.json();
+    const { isp_nome, cnpj, instancia_isp, erp_base_url, erp_api_key, erp_api_token, sandbox_mode, ip_blocking_requested } = await req.json();
 
     // Validações básicas
     if (!isp_nome?.trim() || !instancia_isp || !erp_base_url?.trim() || !erp_api_key?.trim()) {
@@ -106,6 +106,27 @@ serve(async (req) => {
       });
     } catch (err) {
       console.error("notion-sync create_lead error (non-blocking):", err);
+    }
+
+    // Enviar email de IPs se solicitado
+    if (ip_blocking_requested === true) {
+      try {
+        await fetch(`${supabaseUrl}/functions/v1/send-onboarding-email`, {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${serviceKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            action: "ip_liberation",
+            admin_name: user.user_metadata?.full_name || isp_nome,
+            admin_email: user.email,
+            erp_type: instancia_isp === "ixc" ? "IXC" : "ISPBox",
+          }),
+        });
+      } catch (err) {
+        console.error("send-onboarding-email error (non-blocking):", err);
+      }
     }
 
     return new Response(JSON.stringify({ isp_id: row.isp_id, isp_nome: row.isp_nome }), {

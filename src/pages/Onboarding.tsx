@@ -9,17 +9,21 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Loader2, Building2, Server, CreditCard, CheckCircle2, AlertCircle,
-  ChevronRight, Users, Clock, Heart,
+  ChevronRight, Heart,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { externalSupabase } from "@/integrations/supabase/external-client";
-import { useStripeProducts } from "@/hooks/useStripeProducts";
-import { useStripeCheckout } from "@/hooks/useStripeSubscription";
+import { useStripePricingTable } from "@/hooks/useStripePricingTable";
+import {
+  STRIPE_PUBLISHABLE_KEY,
+  STRIPE_TEST_PUBLISHABLE_KEY,
+  STRIPE_PRICING_TABLE_ID,
+  STRIPE_TEST_PRICING_TABLE_ID,
+} from "@/lib/stripeConfig";
 import { IxcTutorialLightbox } from "@/components/onboarding/IxcTutorialLightbox";
 
 const FUNCTIONS_URL = "https://yqdqmudsnjhixtxldqwi.supabase.co/functions/v1";
@@ -531,7 +535,7 @@ function Step2({ step1, onNext, onBack, sandboxMode }: Step2Props) {
   );
 }
 
-// ─── Step 3: Plano de Pagamento ──────────────────────────────────────────────
+// ─── Step 3: Plano de Pagamento (Stripe Pricing Table) ──────────────────────
 
 interface Step3Props {
   ispId: string;
@@ -541,51 +545,31 @@ interface Step3Props {
 }
 
 function Step3({ ispId, clientCount, sandboxMode, onBack }: Step3Props) {
-  const { toast } = useToast();
-  // testMode=true → stripe-list-products usa conta TEST sem consultar DB do ISP
-  const { data: catalog, isLoading, isError, refetch } = useStripeProducts(undefined, sandboxMode);
-  const checkout = useStripeCheckout(ispId);
+  const pricingTableLoaded = useStripePricingTable();
   const [lockInAccepted, setLockInAccepted] = useState(false);
-  const [selectedPriceId, setSelectedPriceId] = useState<string | null>(null);
-
-  const plans = catalog?.plans ?? [];
+  const [userEmail, setUserEmail] = useState("");
 
   useEffect(() => {
-    // Preselecionar o plano mais barato (Retention) por padrão
-    if (plans.length > 0 && !selectedPriceId) {
-      setSelectedPriceId(plans[0].monthly_price_id ?? null);
-    }
-  }, [plans]);
+    externalSupabase.auth.getUser().then(({ data }) => {
+      if (data.user?.email) setUserEmail(data.user.email);
+    });
+  }, []);
 
-  const handleCheckout = async (priceId: string) => {
+  // Salvar contract_accepted_at quando o checkbox é aceito
+  useEffect(() => {
+    if (!lockInAccepted) return;
     const contractAcceptedAt = new Date().toISOString();
-    const { error: updateErr } = await externalSupabase
+    externalSupabase
       .from("isps")
       .update({ contract_accepted_at: contractAcceptedAt })
-      .eq("isp_id", ispId);
+      .eq("isp_id", ispId)
+      .then(({ error }) => {
+        if (error) console.warn("contract_accepted_at update failed:", error.message);
+      });
+  }, [lockInAccepted, ispId]);
 
-    if (updateErr) {
-      console.warn("contract_accepted_at update failed:", updateErr.message);
-    }
-
-    checkout.mutate(
-      {
-        price_id: priceId,
-        success_url: `${window.location.origin}/onboarding?payment=success`,
-        cancel_url: `${window.location.origin}/onboarding?step=3`,
-      },
-      {
-        onError: (err) => {
-          toast({
-            title: "Erro ao iniciar pagamento",
-            description: err instanceof Error ? err.message : "Tente novamente ou entre em contato com o suporte.",
-            variant: "destructive",
-          });
-        },
-      }
-    );
-  };
-
+  const pricingTableId = sandboxMode ? STRIPE_TEST_PRICING_TABLE_ID : STRIPE_PRICING_TABLE_ID;
+  const publishableKey = sandboxMode ? STRIPE_TEST_PUBLISHABLE_KEY : STRIPE_PUBLISHABLE_KEY;
   const today = new Date().toLocaleDateString("pt-BR");
 
   return (
@@ -602,99 +586,38 @@ function Step3({ ispId, clientCount, sandboxMode, onBack }: Step3Props) {
         </p>
       </div>
 
-      {isLoading ? (
-        <div className="flex justify-center py-16">
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      {/* Checkbox de aceite de 3 meses — gate para a pricing table */}
+      <div className="flex items-start gap-3 p-4 rounded-lg border bg-muted/30 mb-6">
+        <Checkbox
+          id="lock-in"
+          checked={lockInAccepted}
+          onCheckedChange={(v) => setLockInAccepted(Boolean(v))}
+          className="mt-0.5"
+        />
+        <div>
+          <Label htmlFor="lock-in" className="text-sm cursor-pointer font-medium">
+            Concordo com o período mínimo de 3 meses de vigência
+          </Label>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Assinatura iniciada em: <strong>{today}</strong>. Após o período mínimo, pode ser cancelada a qualquer momento.
+          </p>
         </div>
-      ) : isError ? (
-        <div className="flex flex-col items-center justify-center py-12 gap-4 text-center">
-          <AlertCircle className="h-10 w-10 text-muted-foreground" />
-          <div>
-            <p className="font-medium text-foreground">Não foi possível carregar os planos</p>
-            <p className="text-sm text-muted-foreground mt-1">Verifique sua conexão e tente novamente.</p>
+      </div>
+
+      {/* Pricing Table — aparece somente após aceite */}
+      {lockInAccepted && (
+        pricingTableLoaded ? (
+          <stripe-pricing-table
+            pricing-table-id={pricingTableId}
+            publishable-key={publishableKey}
+            client-reference-id={ispId}
+            customer-email={userEmail || undefined}
+          />
+        ) : (
+          <div className="flex justify-center py-16">
+            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
           </div>
-          <Button variant="outline" onClick={() => refetch()} className="gap-2">
-            <Loader2 className="h-4 w-4" /> Tentar novamente
-          </Button>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {plans.map((plan, i) => {
-            const isFirst = i === 0;
-            const isSelected = selectedPriceId === plan.monthly_price_id;
-
-            return (
-              <Card
-                key={plan.id}
-                className={`relative flex flex-col cursor-pointer transition-all ${
-                  isSelected
-                    ? "border-primary shadow-lg ring-2 ring-primary"
-                    : "hover:border-primary/30"
-                }`}
-                onClick={() => setSelectedPriceId(plan.monthly_price_id ?? null)}
-              >
-                {isFirst && !isSelected && (
-                  <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-                    <Badge className="bg-primary text-primary-foreground text-xs">Recomendado para começar</Badge>
-                  </div>
-                )}
-                {isSelected && (
-                  <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-                    <Badge className="bg-green-600 text-white text-xs">Selecionado</Badge>
-                  </div>
-                )}
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-base">{plan.name}</CardTitle>
-                  <div className="mt-2">
-                    <span className="text-3xl font-bold">
-                      R$ {plan.monthly_amount?.toLocaleString("pt-BR") ?? "—"}
-                    </span>
-                    <span className="text-muted-foreground text-sm">/mês</span>
-                  </div>
-                </CardHeader>
-                <CardContent className="flex-1">
-                  {plan.description && (
-                    <p className="text-sm text-muted-foreground leading-relaxed">
-                      {plan.description}
-                    </p>
-                  )}
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
-      )}
-
-      {!isLoading && plans.length > 0 && (
-        <div className="mt-6 space-y-4">
-          <div className="flex items-start gap-3 p-4 rounded-lg border bg-muted/30">
-            <Checkbox
-              id="lock-in"
-              checked={lockInAccepted}
-              onCheckedChange={(v) => setLockInAccepted(Boolean(v))}
-              className="mt-0.5"
-            />
-            <div>
-              <Label htmlFor="lock-in" className="text-sm cursor-pointer font-medium">
-                Concordo com o período mínimo de 3 meses de vigência
-              </Label>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Assinatura iniciada em: <strong>{today}</strong>. Após o período mínimo, pode ser cancelada a qualquer momento.
-              </p>
-            </div>
-          </div>
-
-          <Button
-            onClick={() => {
-              if (selectedPriceId) handleCheckout(selectedPriceId);
-            }}
-            disabled={!lockInAccepted || checkout.isPending || !selectedPriceId}
-            className="w-full gap-2"
-          >
-            {checkout.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />}
-            {checkout.isPending ? "Redirecionando..." : "Contratar e ir para pagamento"}
-          </Button>
-        </div>
+        )
       )}
 
       <div className="text-center mt-4">
