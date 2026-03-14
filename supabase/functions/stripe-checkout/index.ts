@@ -80,7 +80,7 @@ Deno.serve(async (req) => {
       }
       const { data: targetIspRow } = await supabaseAdmin
         .from("isps")
-        .select("isp_id,isp_nome,stripe_customer_id,stripe_test_customer_id,stripe_subscription_id,stripe_subscription_status,stripe_billing_source")
+        .select("isp_id,isp_nome,stripe_customer_id,stripe_test_customer_id,stripe_subscription_id,stripe_subscription_status,stripe_billing_source,stripe_test_mode_enabled")
         .eq("isp_id", target_isp_id)
         .single();
       if (!targetIspRow) {
@@ -92,7 +92,7 @@ Deno.serve(async (req) => {
       isp = targetIspRow;
     }
 
-    const isTestMode = TEST_MODE_ISP_IDS.includes(isp.isp_id);
+    const isTestMode = TEST_MODE_ISP_IDS.includes(isp.isp_id) || isp.stripe_test_mode_enabled === true;
     const stripeKey = isTestMode
       ? (Deno.env.get("STRIPE_TEST_SECRET_KEY") ?? "")
       : (Deno.env.get("STRIPE_SECRET_KEY") ?? "");
