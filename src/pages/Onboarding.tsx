@@ -10,7 +10,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
   Loader2, Building2, Server, CreditCard, CheckCircle2, AlertCircle,
   ChevronRight, Heart,
@@ -18,9 +17,12 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { externalSupabase } from "@/integrations/supabase/external-client";
 import { useStripePricingTable } from "@/hooks/useStripePricingTable";
-import { useStripeProducts } from "@/hooks/useStripeProducts";
-import { useStripeCheckout } from "@/hooks/useStripeSubscription";
-import { STRIPE_PUBLISHABLE_KEY, STRIPE_PRICING_TABLE_ID } from "@/lib/stripeConfig";
+import {
+  STRIPE_PUBLISHABLE_KEY,
+  STRIPE_TEST_PUBLISHABLE_KEY,
+  STRIPE_PRICING_TABLE_ID,
+  STRIPE_TEST_PRICING_TABLE_ID,
+} from "@/lib/stripeConfig";
 import { IxcTutorialLightbox } from "@/components/onboarding/IxcTutorialLightbox";
 
 const FUNCTIONS_URL = "https://yqdqmudsnjhixtxldqwi.supabase.co/functions/v1";
@@ -544,21 +546,12 @@ interface Step3Props {
 }
 
 function Step3({ ispId, clientCount, sandboxMode, onBack }: Step3Props) {
-  const { toast } = useToast();
   const pricingTable = useStripePricingTable();
-  const [lockInAccepted, setLockInAccepted] = useState(false);
   const [contractSaved, setContractSaved] = useState(false);
   const [userEmail, setUserEmail] = useState("");
 
-  // Sandbox only: buscar produtos via API + checkout direto
-  // Em LIVE, a pricing table carrega os produtos — não precisa do hook
-  const { data: catalog, isLoading: productsLoading } = useStripeProducts(
-    sandboxMode ? undefined : "",
-    sandboxMode,
-  );
-  const checkout = useStripeCheckout(sandboxMode ? ispId : undefined);
-  const [selectedPriceId, setSelectedPriceId] = useState<string | null>(null);
-  const plans = catalog?.plans ?? [];
+  const pricingTableId = sandboxMode ? STRIPE_TEST_PRICING_TABLE_ID : STRIPE_PRICING_TABLE_ID;
+  const publishableKey = sandboxMode ? STRIPE_TEST_PUBLISHABLE_KEY : STRIPE_PUBLISHABLE_KEY;
 
   useEffect(() => {
     externalSupabase.auth.getUser().then(({ data }) => {
@@ -566,21 +559,13 @@ function Step3({ ispId, clientCount, sandboxMode, onBack }: Step3Props) {
     });
   }, []);
 
-  // Preselecionar Retention em sandbox
+  // Salvar contract_accepted_at UMA VEZ ao montar (usuário já aceitou os termos ao avançar)
   useEffect(() => {
-    if (sandboxMode && plans.length > 0 && !selectedPriceId) {
-      setSelectedPriceId(plans[0].monthly_price_id ?? null);
-    }
-  }, [plans, sandboxMode]);
-
-  // Salvar contract_accepted_at UMA VEZ quando o checkbox é aceito
-  useEffect(() => {
-    if (!lockInAccepted || contractSaved) return;
+    if (contractSaved) return;
     setContractSaved(true);
-    const contractAcceptedAt = new Date().toISOString();
     externalSupabase
       .from("isps")
-      .update({ contract_accepted_at: contractAcceptedAt })
+      .update({ contract_accepted_at: new Date().toISOString() })
       .eq("isp_id", ispId)
       .then(({ error }) => {
         if (error) {
@@ -588,28 +573,7 @@ function Step3({ ispId, clientCount, sandboxMode, onBack }: Step3Props) {
           setContractSaved(false);
         }
       });
-  }, [lockInAccepted, ispId, contractSaved]);
-
-  const handleSandboxCheckout = (priceId: string) => {
-    checkout.mutate(
-      {
-        price_id: priceId,
-        success_url: `${window.location.origin}/onboarding?payment=success`,
-        cancel_url: `${window.location.origin}/onboarding?step=3`,
-      },
-      {
-        onError: (err) => {
-          toast({
-            title: "Erro ao iniciar pagamento",
-            description: err instanceof Error ? err.message : "Tente novamente.",
-            variant: "destructive",
-          });
-        },
-      }
-    );
-  };
-
-  const today = new Date().toLocaleDateString("pt-BR");
+  }, [ispId, contractSaved]);
 
   return (
     <div className="max-w-3xl mx-auto">
@@ -625,98 +589,26 @@ function Step3({ ispId, clientCount, sandboxMode, onBack }: Step3Props) {
         </p>
       </div>
 
-      {/* LIVE: Stripe Pricing Table */}
-      {!sandboxMode && (
-        pricingTable.error ? (
-          <div className="flex flex-col items-center justify-center py-12 gap-3 text-center">
-            <AlertCircle className="h-8 w-8 text-muted-foreground" />
-            <p className="text-sm text-muted-foreground">Não foi possível carregar os planos. Recarregue a página.</p>
-          </div>
-        ) : pricingTable.loaded ? (
-          <stripe-pricing-table
-            pricing-table-id={STRIPE_PRICING_TABLE_ID}
-            publishable-key={STRIPE_PUBLISHABLE_KEY}
-            client-reference-id={ispId}
-            customer-email={userEmail || undefined}
-          />
-        ) : (
-          <div className="flex justify-center py-16">
-            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-          </div>
-        )
-      )}
-
-      {/* Sandbox: cards com produtos */}
-      {sandboxMode && (
-        productsLoading ? (
-          <div className="flex justify-center py-16">
-            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {plans.map((plan) => {
-              const isSelected = selectedPriceId === plan.monthly_price_id;
-              return (
-                <Card
-                  key={plan.id}
-                  className={`relative flex flex-col cursor-pointer transition-all ${
-                    isSelected ? "border-primary shadow-lg ring-2 ring-primary" : "hover:border-primary/30"
-                  }`}
-                  onClick={() => setSelectedPriceId(plan.monthly_price_id ?? null)}
-                >
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-base">{plan.name}</CardTitle>
-                    <div className="mt-2">
-                      <span className="text-3xl font-bold">
-                        R$ {plan.monthly_amount?.toLocaleString("pt-BR") ?? "—"}
-                      </span>
-                      <span className="text-muted-foreground text-sm">/mês</span>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="flex-1">
-                    {plan.description && (
-                      <p className="text-sm text-muted-foreground leading-relaxed">{plan.description}</p>
-                    )}
-                  </CardContent>
-                </Card>
-              );
-            })}
-          </div>
-        )
-      )}
-
-      {/* Checkbox de aceite + botão de contratação (após ver os planos) */}
-      <div className="mt-6 space-y-4">
-        <div className="flex items-start gap-3 p-4 rounded-lg border bg-muted/30">
-          <Checkbox
-            id="lock-in"
-            checked={lockInAccepted}
-            onCheckedChange={(v) => setLockInAccepted(Boolean(v))}
-            className="mt-0.5"
-          />
-          <div>
-            <Label htmlFor="lock-in" className="text-sm cursor-pointer font-medium">
-              Concordo com o período mínimo de 3 meses de vigência
-            </Label>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              Assinatura iniciada em: <strong>{today}</strong>. Após o período mínimo, pode ser cancelada a qualquer momento.
-            </p>
-          </div>
+      {/* Stripe Pricing Table — LIVE e Sandbox usam o mesmo componente */}
+      {pricingTable.error ? (
+        <div className="flex flex-col items-center justify-center py-12 gap-3 text-center">
+          <AlertCircle className="h-8 w-8 text-muted-foreground" />
+          <p className="text-sm text-muted-foreground">Não foi possível carregar os planos. Recarregue a página.</p>
         </div>
+      ) : pricingTable.loaded ? (
+        <stripe-pricing-table
+          pricing-table-id={pricingTableId}
+          publishable-key={publishableKey}
+          client-reference-id={ispId}
+          customer-email={userEmail || undefined}
+        />
+      ) : (
+        <div className="flex justify-center py-16">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        </div>
+      )}
 
-        {sandboxMode && (
-          <Button
-            onClick={() => { if (selectedPriceId) handleSandboxCheckout(selectedPriceId); }}
-            disabled={!lockInAccepted || !selectedPriceId || checkout.isPending}
-            className="w-full gap-2"
-          >
-            {checkout.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />}
-            {checkout.isPending ? "Redirecionando..." : "Contratar e ir para pagamento"}
-          </Button>
-        )}
-      </div>
-
-      <div className="text-center mt-4">
+      <div className="text-center mt-6">
         <Button variant="ghost" onClick={onBack} className="text-muted-foreground text-sm">
           Voltar
         </Button>
