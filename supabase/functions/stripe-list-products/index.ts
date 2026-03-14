@@ -61,6 +61,7 @@ Deno.serve(async (req) => {
     // Se o usuário é 'uniforce' e passou um target diferente → usa o target (super_admin viewing client).
     // Qualquer outro ISP → usa o próprio isp_id (ignora target se diferente).
     let effectiveIspId: string | null = null;
+    let ispTestModeEnabled = false;
 
     const authHeader = req.headers.get("Authorization");
     if (authHeader) {
@@ -71,19 +72,28 @@ Deno.serve(async (req) => {
       );
 
       const { data: ownData } = await supabase.rpc("get_isp_stripe_data");
-      const ownIspId: string | null = ownData?.[0]?.isp_id ?? null;
+      const ownIsp = ownData?.[0] ?? null;
+      const ownIspId: string | null = ownIsp?.isp_id ?? null;
 
       // Super_admin (isp_id='uniforce') pode ver qualquer ISP
       if (ownIspId === "uniforce" && targetIspId && targetIspId !== "uniforce") {
         effectiveIspId = targetIspId;
+        // Buscar flag test_mode do ISP alvo
+        const supabaseAdmin = createClient(
+          Deno.env.get("SUPABASE_URL") ?? "",
+          Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
+        );
+        const { data: targetRow } = await supabaseAdmin
+          .from("isps").select("stripe_test_mode_enabled").eq("isp_id", targetIspId).maybeSingle();
+        ispTestModeEnabled = targetRow?.stripe_test_mode_enabled === true;
       } else {
-        // ISP normal: usa o próprio isp_id (seguro — ignora qualquer target diferente)
         effectiveIspId = ownIspId ?? targetIspId;
+        ispTestModeEnabled = ownIsp?.stripe_test_mode_enabled === true;
       }
     }
 
-    // isTestMode SOMENTE para uniforce — jamais para clientes reais
-    const isTestMode = TEST_MODE_ISP_IDS.includes(effectiveIspId ?? "");
+    // isTestMode: hardcoded para uniforce OU flag no DB (sandbox onboarding)
+    const isTestMode = TEST_MODE_ISP_IDS.includes(effectiveIspId ?? "") || ispTestModeEnabled;
 
     const stripeKey = isTestMode
       ? (Deno.env.get("STRIPE_TEST_SECRET_KEY") ?? "")
