@@ -20,10 +20,7 @@ import { externalSupabase } from "@/integrations/supabase/external-client";
 import { useStripePricingTable } from "@/hooks/useStripePricingTable";
 import { useStripeProducts } from "@/hooks/useStripeProducts";
 import { useStripeCheckout } from "@/hooks/useStripeSubscription";
-import {
-  STRIPE_PUBLISHABLE_KEY,
-  STRIPE_PRICING_TABLE_ID,
-} from "@/lib/stripeConfig";
+import { STRIPE_PUBLISHABLE_KEY, STRIPE_PRICING_TABLE_ID } from "@/lib/stripeConfig";
 import { IxcTutorialLightbox } from "@/components/onboarding/IxcTutorialLightbox";
 
 const FUNCTIONS_URL = "https://yqdqmudsnjhixtxldqwi.supabase.co/functions/v1";
@@ -548,13 +545,18 @@ interface Step3Props {
 
 function Step3({ ispId, clientCount, sandboxMode, onBack }: Step3Props) {
   const { toast } = useToast();
-  const pricingTableLoaded = useStripePricingTable();
+  const pricingTable = useStripePricingTable();
   const [lockInAccepted, setLockInAccepted] = useState(false);
+  const [contractSaved, setContractSaved] = useState(false);
   const [userEmail, setUserEmail] = useState("");
 
-  // Sandbox: buscar produtos via API + checkout direto
-  const { data: catalog, isLoading: productsLoading } = useStripeProducts(undefined, sandboxMode);
-  const checkout = useStripeCheckout(ispId);
+  // Sandbox only: buscar produtos via API + checkout direto
+  // Em LIVE, a pricing table carrega os produtos — não precisa do hook
+  const { data: catalog, isLoading: productsLoading } = useStripeProducts(
+    sandboxMode ? undefined : "",
+    sandboxMode,
+  );
+  const checkout = useStripeCheckout(sandboxMode ? ispId : undefined);
   const [selectedPriceId, setSelectedPriceId] = useState<string | null>(null);
   const plans = catalog?.plans ?? [];
 
@@ -571,18 +573,22 @@ function Step3({ ispId, clientCount, sandboxMode, onBack }: Step3Props) {
     }
   }, [plans, sandboxMode]);
 
-  // Salvar contract_accepted_at quando o checkbox é aceito
+  // Salvar contract_accepted_at UMA VEZ quando o checkbox é aceito
   useEffect(() => {
-    if (!lockInAccepted) return;
+    if (!lockInAccepted || contractSaved) return;
+    setContractSaved(true);
     const contractAcceptedAt = new Date().toISOString();
     externalSupabase
       .from("isps")
       .update({ contract_accepted_at: contractAcceptedAt })
       .eq("isp_id", ispId)
       .then(({ error }) => {
-        if (error) console.warn("contract_accepted_at update failed:", error.message);
+        if (error) {
+          console.warn("contract_accepted_at update failed:", error.message);
+          setContractSaved(false);
+        }
       });
-  }, [lockInAccepted, ispId]);
+  }, [lockInAccepted, ispId, contractSaved]);
 
   const handleSandboxCheckout = (priceId: string) => {
     checkout.mutate(
@@ -639,7 +645,12 @@ function Step3({ ispId, clientCount, sandboxMode, onBack }: Step3Props) {
 
       {/* Planos — aparece somente após aceite */}
       {lockInAccepted && !sandboxMode && (
-        pricingTableLoaded ? (
+        pricingTable.error ? (
+          <div className="flex flex-col items-center justify-center py-12 gap-3 text-center">
+            <AlertCircle className="h-8 w-8 text-muted-foreground" />
+            <p className="text-sm text-muted-foreground">Não foi possível carregar os planos. Recarregue a página.</p>
+          </div>
+        ) : pricingTable.loaded ? (
           <stripe-pricing-table
             pricing-table-id={STRIPE_PRICING_TABLE_ID}
             publishable-key={STRIPE_PUBLISHABLE_KEY}

@@ -12,7 +12,17 @@ const CORS = {
 const LOGO_URL =
   "https://yqdqmudsnjhixtxldqwi.supabase.co/storage/v1/object/public/Uniforce/LOGO%201.png";
 
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
 function buildIpLiberationEmail(adminName: string, erpType: string): string {
+  const safeName = escapeHtml(adminName);
+  const safeErp = escapeHtml(erpType);
   return `<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -40,16 +50,16 @@ function buildIpLiberationEmail(adminName: string, erpType: string): string {
               </h1>
 
               <p style="margin:0 0 16px;font-size:15px;color:#5a6170;line-height:1.6;">
-                Ola ${adminName},
+                Ola ${safeName},
               </p>
 
               <p style="margin:0 0 20px;font-size:15px;color:#5a6170;line-height:1.6;">
                 Sua integracao com a Uniforce esta quase pronta! Identificamos que seu servidor
-                <strong style="color:#000E1D;">${erpType}</strong> usa restricao de acesso por IP.
+                <strong style="color:#000E1D;">${safeErp}</strong> usa restricao de acesso por IP.
               </p>
 
               <p style="margin:0 0 16px;font-size:15px;color:#5a6170;line-height:1.6;">
-                Para que possamos importar seus dados com sucesso, libere os IPs abaixo no firewall do seu ${erpType}:
+                Para que possamos importar seus dados com sucesso, libere os IPs abaixo no firewall do seu ${safeErp}:
               </p>
 
               <!-- Servidor de Automacao -->
@@ -88,7 +98,7 @@ function buildIpLiberationEmail(adminName: string, erpType: string): string {
 
               <p style="margin:0 0 6px;font-size:15px;font-weight:600;color:#000E1D;">Como fazer:</p>
               <ol style="margin:0 0 24px;padding-left:20px;font-size:14px;color:#5a6170;line-height:1.8;">
-                <li>Acesse seu ${erpType} &rarr; Configuracoes &rarr; Seguranca &rarr; IPs Permitidos</li>
+                <li>Acesse seu ${safeErp} &rarr; Configuracoes &rarr; Seguranca &rarr; IPs Permitidos</li>
                 <li>Adicione os <strong>4 IPs</strong> acima</li>
                 <li>Salve e aguarde nossa confirmacao por e-mail</li>
               </ol>
