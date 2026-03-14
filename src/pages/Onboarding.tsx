@@ -625,26 +625,8 @@ function Step3({ ispId, clientCount, sandboxMode, onBack }: Step3Props) {
         </p>
       </div>
 
-      {/* Checkbox de aceite de 3 meses — gate para os planos */}
-      <div className="flex items-start gap-3 p-4 rounded-lg border bg-muted/30 mb-6">
-        <Checkbox
-          id="lock-in"
-          checked={lockInAccepted}
-          onCheckedChange={(v) => setLockInAccepted(Boolean(v))}
-          className="mt-0.5"
-        />
-        <div>
-          <Label htmlFor="lock-in" className="text-sm cursor-pointer font-medium">
-            Concordo com o período mínimo de 3 meses de vigência
-          </Label>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            Assinatura iniciada em: <strong>{today}</strong>. Após o período mínimo, pode ser cancelada a qualquer momento.
-          </p>
-        </div>
-      </div>
-
-      {/* Planos — aparece somente após aceite */}
-      {lockInAccepted && !sandboxMode && (
+      {/* LIVE: Stripe Pricing Table */}
+      {!sandboxMode && (
         pricingTable.error ? (
           <div className="flex flex-col items-center justify-center py-12 gap-3 text-center">
             <AlertCircle className="h-8 w-8 text-muted-foreground" />
@@ -664,55 +646,75 @@ function Step3({ ispId, clientCount, sandboxMode, onBack }: Step3Props) {
         )
       )}
 
-      {/* Sandbox: checkout direto com cards */}
-      {lockInAccepted && sandboxMode && (
+      {/* Sandbox: cards com produtos */}
+      {sandboxMode && (
         productsLoading ? (
           <div className="flex justify-center py-16">
             <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
           </div>
         ) : (
-          <div className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {plans.map((plan) => {
-                const isSelected = selectedPriceId === plan.monthly_price_id;
-                return (
-                  <Card
-                    key={plan.id}
-                    className={`relative flex flex-col cursor-pointer transition-all ${
-                      isSelected ? "border-primary shadow-lg ring-2 ring-primary" : "hover:border-primary/30"
-                    }`}
-                    onClick={() => setSelectedPriceId(plan.monthly_price_id ?? null)}
-                  >
-                    <CardHeader className="pb-3">
-                      <CardTitle className="text-base">{plan.name}</CardTitle>
-                      <div className="mt-2">
-                        <span className="text-3xl font-bold">
-                          R$ {plan.monthly_amount?.toLocaleString("pt-BR") ?? "—"}
-                        </span>
-                        <span className="text-muted-foreground text-sm">/mês</span>
-                      </div>
-                    </CardHeader>
-                    <CardContent className="flex-1">
-                      {plan.description && (
-                        <p className="text-sm text-muted-foreground leading-relaxed">{plan.description}</p>
-                      )}
-                    </CardContent>
-                  </Card>
-                );
-              })}
-            </div>
-
-            <Button
-              onClick={() => { if (selectedPriceId) handleSandboxCheckout(selectedPriceId); }}
-              disabled={!selectedPriceId || checkout.isPending}
-              className="w-full gap-2"
-            >
-              {checkout.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />}
-              {checkout.isPending ? "Redirecionando..." : "Contratar e ir para pagamento"}
-            </Button>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {plans.map((plan) => {
+              const isSelected = selectedPriceId === plan.monthly_price_id;
+              return (
+                <Card
+                  key={plan.id}
+                  className={`relative flex flex-col cursor-pointer transition-all ${
+                    isSelected ? "border-primary shadow-lg ring-2 ring-primary" : "hover:border-primary/30"
+                  }`}
+                  onClick={() => setSelectedPriceId(plan.monthly_price_id ?? null)}
+                >
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base">{plan.name}</CardTitle>
+                    <div className="mt-2">
+                      <span className="text-3xl font-bold">
+                        R$ {plan.monthly_amount?.toLocaleString("pt-BR") ?? "—"}
+                      </span>
+                      <span className="text-muted-foreground text-sm">/mês</span>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="flex-1">
+                    {plan.description && (
+                      <p className="text-sm text-muted-foreground leading-relaxed">{plan.description}</p>
+                    )}
+                  </CardContent>
+                </Card>
+              );
+            })}
           </div>
         )
       )}
+
+      {/* Checkbox de aceite + botão de contratação (após ver os planos) */}
+      <div className="mt-6 space-y-4">
+        <div className="flex items-start gap-3 p-4 rounded-lg border bg-muted/30">
+          <Checkbox
+            id="lock-in"
+            checked={lockInAccepted}
+            onCheckedChange={(v) => setLockInAccepted(Boolean(v))}
+            className="mt-0.5"
+          />
+          <div>
+            <Label htmlFor="lock-in" className="text-sm cursor-pointer font-medium">
+              Concordo com o período mínimo de 3 meses de vigência
+            </Label>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Assinatura iniciada em: <strong>{today}</strong>. Após o período mínimo, pode ser cancelada a qualquer momento.
+            </p>
+          </div>
+        </div>
+
+        {sandboxMode && (
+          <Button
+            onClick={() => { if (selectedPriceId) handleSandboxCheckout(selectedPriceId); }}
+            disabled={!lockInAccepted || !selectedPriceId || checkout.isPending}
+            className="w-full gap-2"
+          >
+            {checkout.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />}
+            {checkout.isPending ? "Redirecionando..." : "Contratar e ir para pagamento"}
+          </Button>
+        )}
+      </div>
 
       <div className="text-center mt-4">
         <Button variant="ghost" onClick={onBack} className="text-muted-foreground text-sm">
