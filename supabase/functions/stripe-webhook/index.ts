@@ -193,6 +193,23 @@ Deno.serve(async (req) => {
           }).eq("isp_id", ispId);
         }
 
+        // Registrar plano contratado em isp_subscription_items (alimenta Meus Serviços + 90 dias)
+        if (prod?.id) {
+          await supabaseAdmin.from("isp_subscription_items").upsert({
+            isp_id:                 ispId,
+            stripe_subscription_id: sub.id,
+            product_id:             prod.id,
+            product_name:           prod.name ?? "Plano",
+            product_type:           "plan",
+            billing_source:         "stripe",
+            status:                 sub.status === "active" || sub.status === "trialing" ? "active" : sub.status,
+            started_at:             new Date().toISOString(),
+            monthly_amount:         (price?.unit_amount ?? 0) / 100,
+            currency:               price?.currency?.toUpperCase() ?? "BRL",
+            is_test_mode:           !isLive,
+          }, { onConflict: "stripe_subscription_id, product_id" });
+        }
+
         // Graduar lead para cliente no Notion CRM (live E sandbox)
         try {
           const fnUrl = Deno.env.get("SUPABASE_URL") ?? "";
