@@ -601,7 +601,7 @@ function Step3({ ispId, clientCount, sandboxMode, onBack }: Step3Props) {
       ) : pricingTable.loaded ? (
         <div className="relative">
           {!lockInAccepted && (
-            <div className="absolute inset-0 z-10 bg-background/60 backdrop-blur-[2px] rounded-lg cursor-not-allowed" />
+            <div className="absolute inset-0 z-10 bg-background/20 rounded-lg cursor-not-allowed" />
           )}
           <stripe-pricing-table
             pricing-table-id={pricingTableId}
