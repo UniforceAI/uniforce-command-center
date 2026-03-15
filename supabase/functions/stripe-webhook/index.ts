@@ -175,11 +175,21 @@ Deno.serve(async (req) => {
           // Concluir onboarding se ISP estava em payment_pending
           await supabaseAdmin.rpc("complete_isp_onboarding", { p_isp_id: ispId });
         } else {
-          // Sandbox: atualiza colunas de teste
+          // Sandbox: atualiza colunas de teste + billing (paridade com LIVE)
           await supabaseAdmin.from("isps").update({
             stripe_test_customer_id:     session.customer as string,
             stripe_test_subscription_id: sub.id,
             stripe_test_mode_enabled:    true,
+            stripe_subscription_status:  sub.status,
+            stripe_product_id:           prod?.id ?? null,
+            stripe_price_id:             price?.id ?? null,
+            stripe_product_name:         prod?.name ?? null,
+            stripe_monthly_amount:       (price?.unit_amount ?? 0) / 100,
+            stripe_current_period_start: periodStart ? new Date(periodStart * 1000).toISOString() : null,
+            stripe_current_period_end:   periodEnd   ? new Date(periodEnd   * 1000).toISOString() : null,
+            stripe_cancel_at_period_end: sub.cancel_at_period_end,
+            stripe_trial_end:            sub.trial_end ? new Date(sub.trial_end * 1000).toISOString() : null,
+            stripe_billing_source:       "stripe",
           }).eq("isp_id", ispId);
         }
 
@@ -244,10 +254,19 @@ Deno.serve(async (req) => {
             stripe_trial_end:            sub.trial_end ? new Date(sub.trial_end * 1000).toISOString() : null,
           }).eq("isp_id", ispId);
         } else {
-          // Sandbox: só atualiza o sub_id de teste e a flag
+          // Sandbox: atualiza colunas de teste + billing (paridade com LIVE)
           await supabaseAdmin.from("isps").update({
             stripe_test_subscription_id: sub.id,
             stripe_test_mode_enabled:    true,
+            stripe_subscription_status:  sub.status,
+            stripe_product_id:           productId,
+            stripe_price_id:             price?.id ?? null,
+            stripe_product_name:         productName,
+            stripe_monthly_amount:       (price?.unit_amount ?? 0) / 100,
+            stripe_current_period_start: periodStart2 ? new Date(periodStart2 * 1000).toISOString() : null,
+            stripe_current_period_end:   periodEnd2   ? new Date(periodEnd2   * 1000).toISOString() : null,
+            stripe_cancel_at_period_end: sub.cancel_at_period_end,
+            stripe_trial_end:            sub.trial_end ? new Date(sub.trial_end * 1000).toISOString() : null,
           }).eq("isp_id", ispId);
         }
         break;
@@ -276,8 +295,17 @@ Deno.serve(async (req) => {
             stripe_cancel_at_period_end: false,
           }).eq("isp_id", ispId);
         } else {
+          // Sandbox: limpa colunas de teste + billing (paridade com LIVE)
           await supabaseAdmin.from("isps").update({
             stripe_test_subscription_id: null,
+            stripe_subscription_status:  "canceled",
+            stripe_product_id:           null,
+            stripe_price_id:             null,
+            stripe_product_name:         null,
+            stripe_monthly_amount:       null,
+            stripe_current_period_start: null,
+            stripe_current_period_end:   null,
+            stripe_cancel_at_period_end: false,
           }).eq("isp_id", ispId);
         }
         break;
