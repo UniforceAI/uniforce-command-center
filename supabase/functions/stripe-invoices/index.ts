@@ -60,7 +60,7 @@ Deno.serve(async (req) => {
       isp = targetIsp ?? null;
     }
 
-    const isTestMode = TEST_MODE_ISP_IDS.includes(isp?.isp_id ?? "");
+    const isTestMode = TEST_MODE_ISP_IDS.includes(isp?.isp_id ?? "") || isp?.stripe_test_mode_enabled === true;
     const customerId = isTestMode
       ? (isp?.stripe_test_customer_id ?? null)
       : (isp?.stripe_customer_id ?? null);
