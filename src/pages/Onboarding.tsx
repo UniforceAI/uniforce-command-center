@@ -165,6 +165,17 @@ function Step1({ onNext }: { onNext: (data: Step1Data) => void }) {
       });
       if (error) throw error;
       if (!data.user) throw new Error("Usuário não criado.");
+
+      // signUp com mailer_autoconfirm=false não retorna sessão.
+      // signIn imediato para obter sessão (allow_unverified_email_sign_ins=true).
+      if (!data.session) {
+        const { error: signInErr } = await externalSupabase.auth.signInWithPassword({
+          email: form.email.trim(),
+          password: form.password,
+        });
+        if (signInErr) throw signInErr;
+      }
+
       onNext(form);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
