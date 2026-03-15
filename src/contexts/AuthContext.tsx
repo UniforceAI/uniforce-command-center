@@ -58,6 +58,7 @@ interface AuthContextType {
   error: string | null;
   isSuperAdmin: boolean;
   isBillingBlocked: boolean;
+  emailConfirmed: boolean;
   selectedIsp: IspOption | null;
   availableIsps: IspOption[];
   selectIsp: (isp: IspOption) => void;
@@ -74,6 +75,7 @@ const AuthContext = createContext<AuthContextType>({
   error: null,
   isSuperAdmin: false,
   isBillingBlocked: false,
+  emailConfirmed: false,
   selectedIsp: null,
   availableIsps: [],
   selectIsp: () => {},
@@ -279,6 +281,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const isSuperAdmin     = profile?.role === "super_admin";
   // Guard triplo: billingBlocked state + não é super_admin + isp_id presente
   const isBillingBlocked = billingBlocked && !isSuperAdmin && !!profile?.isp_id;
+  // Email confirmado: true se email_confirmed_at está preenchido (Google OAuth preenche automaticamente)
+  const emailConfirmed   = !!user?.email_confirmed_at;
 
   // ── ISP selection (localStorage — persiste cross-tab e após freeze) ─
   const selectIsp = useCallback((isp: IspOption) => {
@@ -472,7 +476,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     <AuthContext.Provider
       value={{
         user, session, profile, isLoading, error,
-        isSuperAdmin, isBillingBlocked,
+        isSuperAdmin, isBillingBlocked, emailConfirmed,
         selectedIsp, availableIsps,
         selectIsp, clearSelectedIsp,
         signOut, refreshProfile,

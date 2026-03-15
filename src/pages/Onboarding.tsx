@@ -160,6 +160,7 @@ function Step1({ onNext }: { onNext: (data: Step1Data) => void }) {
             full_name: form.admin_name.trim(),
             phone: form.phone.trim(),
           },
+          emailRedirectTo: `${window.location.origin}/auth?confirmed=1`,
         },
       });
       if (error) throw error;
@@ -779,11 +780,80 @@ function GoogleCompleteForm({ onComplete }: GoogleCompleteFormProps) {
 
 function PostPaymentScreen() {
   const [email, setEmail] = useState("");
+  const [emailConfirmed, setEmailConfirmed] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState<"card" | "boleto" | null>(null);
+  const [resending, setResending] = useState(false);
+  const [resendCooldown, setResendCooldown] = useState(0);
+
   useEffect(() => {
     externalSupabase.auth.getUser().then(({ data }) => {
       if (data.user?.email) setEmail(data.user.email);
+      if (data.user?.email_confirmed_at) setEmailConfirmed(true);
     });
   }, []);
+
+  // Poll para detectar payment method (webhook pode demorar)
+  useEffect(() => {
+    let cancelled = false;
+    let attempts = 0;
+
+    const poll = async () => {
+      try {
+        const { data: sessData } = await externalSupabase.auth.getSession();
+        const token = sessData?.session?.access_token;
+        if (!token) return;
+
+        // Buscar o ISP do user para ver o payment method
+        const { data: profile } = await externalSupabase
+          .from("profiles")
+          .select("isp_id")
+          .eq("id", sessData.session!.user.id)
+          .maybeSingle();
+
+        if (!profile?.isp_id || cancelled) return;
+
+        const { data: isp } = await externalSupabase
+          .from("isps")
+          .select("onboarding_payment_method")
+          .eq("isp_id", profile.isp_id)
+          .maybeSingle();
+
+        if (cancelled) return;
+
+        if (isp?.onboarding_payment_method) {
+          setPaymentMethod(isp.onboarding_payment_method as "card" | "boleto");
+          return;
+        }
+      } catch { /* retry */ }
+
+      if (!cancelled && ++attempts < 10) {
+        setTimeout(poll, 2000);
+      }
+    };
+
+    poll();
+    return () => { cancelled = true; };
+  }, []);
+
+  // Cooldown timer for resend button
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const t = setTimeout(() => setResendCooldown((c) => c - 1), 1000);
+    return () => clearTimeout(t);
+  }, [resendCooldown]);
+
+  const handleResend = async () => {
+    if (resendCooldown > 0 || resending) return;
+    setResending(true);
+    try {
+      await externalSupabase.auth.resend({ type: "signup", email });
+      setResendCooldown(60);
+    } catch { /* silent */ }
+    setResending(false);
+  };
+
+  const isBoleto = paymentMethod === "boleto";
+
   return (
     <Card className="max-w-lg mx-auto text-center">
       <CardContent className="pt-10 pb-8 space-y-6">
@@ -794,31 +864,74 @@ function PostPaymentScreen() {
         </div>
 
         <div>
-          <h2 className="text-xl font-bold text-foreground mb-2">Assinatura confirmada!</h2>
+          <h2 className="text-xl font-bold text-foreground mb-2">
+            {isBoleto ? "Assinatura iniciada!" : "Assinatura confirmada!"}
+          </h2>
           <p className="text-muted-foreground text-sm leading-relaxed">
-            Sua assinatura foi ativada com sucesso. Enviamos um e-mail de boas-vindas para{" "}
-            <strong>{email || "seu endereço de e-mail"}</strong> com o link de primeiro acesso.
+            {isBoleto
+              ? "Seu boleto foi gerado com sucesso. O acesso ao painel será liberado após a confirmação do pagamento."
+              : "Sua assinatura foi ativada com sucesso."}
           </p>
         </div>
 
-        <div className="rounded-lg border bg-blue-50 border-blue-200 p-4 text-left">
-          <p className="text-sm font-medium text-blue-900 mb-1">Próximo passo</p>
-          <p className="text-xs text-blue-700 leading-relaxed">
-            Abra o e-mail que enviamos e clique no botão <strong>"Acessar o Painel"</strong> para
-            fazer seu primeiro acesso e aceitar os Termos de Serviço.
+        {isBoleto && (
+          <div className="rounded-lg border bg-amber-50 border-amber-200 p-4 text-left">
+            <p className="text-sm font-medium text-amber-900 mb-1">Pagamento via boleto</p>
+            <p className="text-xs text-amber-800 leading-relaxed">
+              O boleto foi enviado para <strong>{email || "seu e-mail"}</strong>.
+              Após o pagamento, o processamento pode levar até 3 dias úteis.
+              Você receberá um e-mail de confirmação quando o acesso for liberado.
+            </p>
+          </div>
+        )}
+
+        {/* Email confirmation section */}
+        {!emailConfirmed && (
+          <div className="rounded-lg border bg-blue-50 border-blue-200 p-4 text-left">
+            <p className="text-sm font-medium text-blue-900 mb-1">
+              Confirme seu e-mail para ativar sua conta
+            </p>
+            <p className="text-xs text-blue-700 leading-relaxed mb-3">
+              Enviamos um link de confirmação para <strong>{email || "seu endereço de e-mail"}</strong>.
+              Abra o e-mail e clique no link para ativar o acesso ao painel.
+            </p>
+            <button
+              onClick={handleResend}
+              disabled={resendCooldown > 0 || resending}
+              className="text-xs text-blue-600 underline hover:text-blue-800 disabled:opacity-50 disabled:no-underline"
+            >
+              {resending
+                ? "Enviando..."
+                : resendCooldown > 0
+                ? `Reenviar em ${resendCooldown}s`
+                : "Reenviar e-mail de confirmação"}
+            </button>
+          </div>
+        )}
+
+        {emailConfirmed && !isBoleto && (
+          <div className="rounded-lg border bg-blue-50 border-blue-200 p-4 text-left">
+            <p className="text-sm font-medium text-blue-900 mb-1">Tudo pronto!</p>
+            <p className="text-xs text-blue-700 leading-relaxed">
+              Sua conta está ativa. Acesse o painel para começar a usar a Uniforce.
+            </p>
+          </div>
+        )}
+
+        {!emailConfirmed && (
+          <p className="text-xs text-muted-foreground">
+            Não recebeu o e-mail? Verifique a pasta de spam ou aguarde alguns minutos.
           </p>
-        </div>
+        )}
 
-        <p className="text-xs text-muted-foreground">
-          Não recebeu o e-mail? Verifique a pasta de spam ou aguarde alguns minutos.
-        </p>
-
-        <a
-          href="/configuracoes/perfil?new_account=1"
-          className="inline-flex items-center gap-2 text-sm text-primary underline hover:opacity-80"
-        >
-          Acessar o painel agora <ChevronRight className="h-3.5 w-3.5" />
-        </a>
+        {emailConfirmed && (
+          <a
+            href="/configuracoes/perfil?new_account=1"
+            className="inline-flex items-center gap-2 text-sm text-primary underline hover:opacity-80"
+          >
+            Acessar o painel agora <ChevronRight className="h-3.5 w-3.5" />
+          </a>
+        )}
       </CardContent>
     </Card>
   );

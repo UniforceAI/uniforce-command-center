@@ -1,6 +1,7 @@
 import { ReactNode, useState, useEffect } from "react";
 import { Navigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
+import { EmailVerificationPending } from "@/components/auth/EmailVerificationPending";
 import uniconIcon from "@/assets/uniforce-icon.png";
 
 interface ProtectedRouteProps {
@@ -9,7 +10,7 @@ interface ProtectedRouteProps {
 }
 
 export function ProtectedRoute({ children, requireSelectedIsp = true }: ProtectedRouteProps) {
-  const { user, profile, isLoading, error, isSuperAdmin, selectedIsp, signOut } = useAuth();
+  const { user, profile, isLoading, error, isSuperAdmin, emailConfirmed, selectedIsp, signOut } = useAuth();
   const [showEscape, setShowEscape] = useState(false);
   const [progress, setProgress] = useState(0);
 
@@ -148,6 +149,11 @@ export function ProtectedRoute({ children, requireSelectedIsp = true }: Protecte
 
   if (!user) {
     return <Navigate to="/auth" replace />;
+  }
+
+  // Gate: email não confirmado → tela de verificação pendente
+  if (user && !emailConfirmed) {
+    return <EmailVerificationPending email={user.email ?? ""} onSignOut={handleForceLogout} />;
   }
 
   if (error || !profile) {
