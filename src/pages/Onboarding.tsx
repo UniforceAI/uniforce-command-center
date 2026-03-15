@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Loader2, Building2, Server, CreditCard, CheckCircle2, AlertCircle,
   ChevronRight, Heart,
@@ -547,11 +548,13 @@ interface Step3Props {
 
 function Step3({ ispId, clientCount, sandboxMode, onBack }: Step3Props) {
   const pricingTable = useStripePricingTable();
+  const [lockInAccepted, setLockInAccepted] = useState(false);
   const [contractSaved, setContractSaved] = useState(false);
   const [userEmail, setUserEmail] = useState("");
 
   const pricingTableId = sandboxMode ? STRIPE_TEST_PRICING_TABLE_ID : STRIPE_PRICING_TABLE_ID;
   const publishableKey = sandboxMode ? STRIPE_TEST_PUBLISHABLE_KEY : STRIPE_PUBLISHABLE_KEY;
+  const today = new Date().toLocaleDateString("pt-BR");
 
   useEffect(() => {
     externalSupabase.auth.getUser().then(({ data }) => {
@@ -559,9 +562,9 @@ function Step3({ ispId, clientCount, sandboxMode, onBack }: Step3Props) {
     });
   }, []);
 
-  // Salvar contract_accepted_at UMA VEZ ao montar (usuário já aceitou os termos ao avançar)
+  // Salvar contract_accepted_at UMA VEZ quando checkbox é aceito
   useEffect(() => {
-    if (contractSaved) return;
+    if (!lockInAccepted || contractSaved) return;
     setContractSaved(true);
     externalSupabase
       .from("isps")
@@ -573,7 +576,7 @@ function Step3({ ispId, clientCount, sandboxMode, onBack }: Step3Props) {
           setContractSaved(false);
         }
       });
-  }, [ispId, contractSaved]);
+  }, [lockInAccepted, ispId, contractSaved]);
 
   return (
     <div className="max-w-3xl mx-auto">
@@ -589,26 +592,49 @@ function Step3({ ispId, clientCount, sandboxMode, onBack }: Step3Props) {
         </p>
       </div>
 
-      {/* Stripe Pricing Table — LIVE e Sandbox usam o mesmo componente */}
+      {/* Pricing Table visível mas bloqueada até aceitar permanência mínima */}
       {pricingTable.error ? (
         <div className="flex flex-col items-center justify-center py-12 gap-3 text-center">
           <AlertCircle className="h-8 w-8 text-muted-foreground" />
           <p className="text-sm text-muted-foreground">Não foi possível carregar os planos. Recarregue a página.</p>
         </div>
       ) : pricingTable.loaded ? (
-        <stripe-pricing-table
-          pricing-table-id={pricingTableId}
-          publishable-key={publishableKey}
-          client-reference-id={ispId}
-          customer-email={userEmail || undefined}
-        />
+        <div className="relative">
+          {!lockInAccepted && (
+            <div className="absolute inset-0 z-10 bg-background/60 backdrop-blur-[2px] rounded-lg cursor-not-allowed" />
+          )}
+          <stripe-pricing-table
+            pricing-table-id={pricingTableId}
+            publishable-key={publishableKey}
+            client-reference-id={ispId}
+            customer-email={userEmail || undefined}
+          />
+        </div>
       ) : (
         <div className="flex justify-center py-16">
           <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
         </div>
       )}
 
-      <div className="text-center mt-6">
+      {/* Checkbox de permanência mínima — desbloqueia a pricing table */}
+      <div className="flex items-start gap-3 p-4 rounded-lg border bg-muted/30 mt-6">
+        <Checkbox
+          id="lock-in"
+          checked={lockInAccepted}
+          onCheckedChange={(v) => setLockInAccepted(Boolean(v))}
+          className="mt-0.5"
+        />
+        <div>
+          <Label htmlFor="lock-in" className="text-sm cursor-pointer font-medium">
+            Concordo com o período mínimo de 3 meses de vigência
+          </Label>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Assinatura iniciada em: <strong>{today}</strong>. Após o período mínimo, pode ser cancelada a qualquer momento.
+          </p>
+        </div>
+      </div>
+
+      <div className="text-center mt-4">
         <Button variant="ghost" onClick={onBack} className="text-muted-foreground text-sm">
           Voltar
         </Button>
